@@ -455,14 +455,14 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         definition = {"fields": fields}
         coll = self._aget_database()[collection]
 
-        if await self._search_index_exists_async(coll, index_name):
+        if await self._asearch_index_exists(coll, index_name):
             try:
                 await coll.update_search_index(index_name, definition)
                 return
             except OperationFailure:
                 pass
             await coll.drop_search_index(index_name)
-            await self._wait_for_search_index_drop_async(coll, index_name)
+            await self._await_search_index_drop(coll, index_name)
 
         await coll.create_search_index(
             SearchIndexModel(
@@ -481,7 +481,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         return bool(existing)
 
     @staticmethod
-    async def _search_index_exists_async(coll: Any, index_name: str) -> bool:
+    async def _asearch_index_exists(coll: Any, index_name: str) -> bool:
         try:
             cursor = await coll.list_search_indexes(name=index_name)
             existing = await cursor.to_list(length=1)
@@ -511,14 +511,14 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
 
     @classmethod
-    async def _wait_for_search_index_drop_async(
+    async def _await_search_index_drop(
         cls,
         coll: Any,
         index_name: str,
     ) -> None:
         deadline = time.monotonic() + cls.INDEX_DROP_WAIT_TIMEOUT_S
         while time.monotonic() < deadline:
-            if not await cls._search_index_exists_async(coll, index_name):
+            if not await cls._asearch_index_exists(coll, index_name):
                 return
             await asyncio.sleep(cls.INDEX_DROP_WAIT_INTERVAL_S)
         raise OperationFailure(

@@ -58,7 +58,7 @@ async def login(
 
 @router.post("/refresh", response_model=BaseResponse[RefreshResponse])
 async def refresh(request: RefreshRequest) -> BaseResponse[RefreshResponse]:
-    token_pair = await AuthService().refresh_access_token(
+    token_pair = await AuthService().arefresh_access_token(
         RefreshToken(request.refresh_token)
     )
     return BaseResponse(

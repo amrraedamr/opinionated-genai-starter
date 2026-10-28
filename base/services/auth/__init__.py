@@ -86,24 +86,24 @@ class AuthService(metaclass=Singleton):
         )
         return TokenPair(access_token=access_token, refresh_token=refresh_token)
 
-    async def refresh_access_token(self, refresh_token: RefreshToken) -> TokenPair:
+    async def arefresh_access_token(self, refresh_token: RefreshToken) -> TokenPair:
         payload = self._decode_local_token(refresh_token, expected_type="refresh")
         user_id: str = payload.get("user_id", "")
         user = await self._user_store.aget(uuid.UUID(user_id))
         return self.generate_token_pair(user)
 
-    async def validate_user(
+    async def avalidate_user(
         self,
         credentials: HTTPAuthorizationCredentials,
     ) -> UserDTO:
         token = credentials.credentials
         if settings.idp_resource_server_enabled and self._is_idp_token(token):
-            return await self._validate_idp_user(token)
-        return await self._validate_local_user(token)
+            return await self._avalidate_idp_user(token)
+        return await self._avalidate_local_user(token)
 
     # Private — local JWT
 
-    async def _validate_local_user(self, token: str) -> UserDTO:
+    async def _avalidate_local_user(self, token: str) -> UserDTO:
         payload = self._decode_local_token(
             AccessToken(token), expected_type="access"
         )
@@ -161,7 +161,7 @@ class AuthService(metaclass=Singleton):
         iss = unverified.get("iss")
         return isinstance(iss, str) and iss == settings.idp_issuer
 
-    async def _validate_idp_user(self, token: str) -> UserDTO:
+    async def _avalidate_idp_user(self, token: str) -> UserDTO:
         if self._jwks_client is None:
             raise_error(AuthErrors.IDP_NOT_CONFIGURED)
         try:

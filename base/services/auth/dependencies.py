@@ -8,11 +8,11 @@ from base.services.auth.auths import http_bearer
 http_bearer_dependency = Depends(http_bearer)
 
 
-async def validate_user(
+async def avalidate_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = http_bearer_dependency,
 ) -> UserDTO:
-    return await AuthService().validate_user(credentials)
+    return await AuthService().avalidate_user(credentials)
 
 
-validate_user_dependency = Depends(validate_user)
+validate_user_dependency = Depends(avalidate_user)
