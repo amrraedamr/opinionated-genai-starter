@@ -40,7 +40,7 @@ Derived from which modules import `base.models.orm` (the domain marker).
 | --- | --- | --- |
 | `models/orm/user.py`, `user_identity.py` | `services/identity/` | Concrete tables owned by one service |
 | `models/orm/conversation.py`, `chat_history_message.py` | `services/chat-api/` | Concrete tables owned by one service |
-| `models/orm/prompt.py` | Whichever service owns prompt storage | Concrete table |
+| `models/orm/prompt.py` | Whichever service owns prompt storage | Defines **two** tables: `prompt` and `active_prompt` — they must move together |
 | `services/store/{user,user_identity}.py` | `services/identity/` | Bound to those tables |
 | `services/store/conversation.py`, `store/chat_history/sql.py` | `services/chat-api/` | Bound to those tables |
 | `services/auth/` (the user-lookup half) | `services/identity/` | See [doc 05](05-service-contracts.md) |

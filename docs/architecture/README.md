@@ -16,7 +16,7 @@ The repository is already ~97% reusable library and ~3% application:
 | Package | Lines | Nature |
 | --- | ---: | --- |
 | `base/services` | 11,335 | Infrastructure — reusable |
-| `base/models` | 2,108 | Mostly reusable (5 concrete tables are not) |
+| `base/models` | 2,108 | Mostly reusable (7 concrete tables are not) |
 | `base/tools` | 1,111 | Infrastructure — reusable |
 | `base/clients` | 860 | Infrastructure — reusable |
 | `base/routers` | **414** | **Application surface — the only truly app-specific code** |

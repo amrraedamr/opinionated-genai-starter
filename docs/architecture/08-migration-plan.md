@@ -76,6 +76,24 @@ design.
 upgrade head` on a *fresh* database produces the identical schema; `alembic check` reports
 no pending autogenerate diff against the existing one.
 
+**Regression target** (captured from the unmodified starter — `uv sync`, `import
+base.main` and `alembic upgrade head` all verified green before any refactor):
+
+```bash
+SQL_BACKEND=sqlite SQLITE_DB_PATH=/tmp/x/app.db uv run alembic upgrade head
+```
+
+must yield **19 objects — 7 tables** (`active_prompt`, `alembic_version`,
+`chat_history_message`, `conversation`, `prompt`, `user`, `user_identity`) **and 12
+indexes** (`idx_active_prompt_updated_at`, `idx_chat_history_message_conv_seq`,
+`idx_conversation_created_at`, `idx_conversation_user_id`, `idx_prompt_created_at`,
+`idx_prompt_key`, `idx_user_created_at`, `idx_user_email`,
+`idx_user_first_name_last_name`, `idx_user_identity_provider`,
+`idx_user_identity_user_id`, `idx_user_updated_at`).
+
+Note `prompt` and `active_prompt` both come from `models/orm/prompt.py`, so they move
+together.
+
 ---
 
 ## Phase 3 — Dependency extras and settings composition

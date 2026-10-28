@@ -171,8 +171,8 @@ checkout (editable during development) instead of from PyPI.
 | Task | Command |
 | --- | --- |
 | Install everything | `uv sync --all-packages` |
-| Install one service only | `uv sync --package chat-api` |
-| Run a service | `uv run --package chat-api serve` |
+| Install one service only | `UV_PROJECT_ENVIRONMENT=.venvs/chat-api uv sync --package chat-api` |
+| Run a service | `UV_PROJECT_ENVIRONMENT=.venvs/chat-api uv run --package chat-api serve` |
 | Add a dep to one service | `uv add --package chat-api some-lib` |
 | Add a dep to the library | `uv add --package base --optional llm some-lib` |
 | Run one service's migrations | `cd services/chat-api && uv run alembic upgrade head` |
@@ -180,6 +180,16 @@ checkout (editable during development) instead of from PyPI.
 
 `uv sync --package chat-api` installs **only** that service's dependency closure. This is
 the mechanism behind small per-service images in [doc 06](06-build-and-deploy.md).
+
+> **A workspace has one shared `.venv`.** Plain `uv sync --package svc-b` *uninstalls*
+> `svc-a`, so two services cannot run locally from the same environment. Set
+> `UV_PROJECT_ENVIRONMENT=.venvs/<service>` to get coexisting per-service environments, and
+> add `.venvs/` to `.gitignore`.
+>
+> Verified: with `base` exposing `redis` and `vectors` extras, a service declaring
+> `base[redis]` imports `redis` and raises `ModuleNotFoundError` on `qdrant_client`, while a
+> service declaring `base[vectors]` is the exact inverse — both sharing the core library's
+> `httpx`, under a single `uv.lock`.
 
 ---
 
