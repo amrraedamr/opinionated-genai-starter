@@ -196,7 +196,7 @@ uv run alembic current
 │   │   ├── auth/
 │   │   │   ├── __init__.py               # AuthService — JWT + optional IdP Bearer
 │   │   │   ├── auths.py                  # HTTPBearer scheme
-│   │   │   ├── dependencies.py           # validate_user / validate_user_dependency
+│   │   │   ├── dependencies.py           # avalidate_user / validate_user_dependency
 │   │   │   └── oauth/                    # Login-with-X (OIDC/OAuth providers)
 │   │   │       ├── __init__.py           # OAuthService
 │   │   │       └── providers.py          # Provider registry + profile fetch
@@ -930,7 +930,7 @@ JWT-based authentication with RS256 (RSA asymmetric keys), optional social Login
 - `OAuthService` (`base/services/auth/oauth/`) — OAuth/OIDC authorize + callback + exchange for Google / Facebook / Microsoft / GitHub / Apple
 - `user_identity` table — links `(provider, subject)` → local `user.id` (stable app UUID for FKs)
 - `PasswordHashingService` (`base/tools/security.py`) — Argon2 (password accounts only; social-only users have `password_hash=null`)
-- `validate_user` / `validate_user_dependency` — route protection
+- `avalidate_user` / `validate_user_dependency` — route protection
 
 **Local password flow:**
 1. Register: hash password, create user
