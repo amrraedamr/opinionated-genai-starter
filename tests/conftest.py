@@ -51,6 +51,9 @@ os.environ.update(
         "AUTH_PUBLIC_KEY_PATH": str(PUBLIC_KEY),
         "OPENAI_LLM_API_KEY": "sk-test",
         "OPENAI_API_KEY": "sk-test",
+        "AZURE_OPENAI_LLM_API_KEY": "sk-test",
+        "AZURE_OPENAI_LLM_ENDPOINT": "https://example.openai.azure.com",
+        "AZURE_OPENAI_LLM_DEPLOYMENT_NAME": "gpt-test",
     }
 )
 
