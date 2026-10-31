@@ -20,7 +20,7 @@ class PromptDTO(TimestampMixin, Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUIDType(binary=True), primary_key=True, default=uuid.uuid4, init=False
+        UUIDType(binary=True), primary_key=True, insert_default=uuid.uuid4, init=False
     )
 
     key: Mapped[str] = mapped_column(String(255))

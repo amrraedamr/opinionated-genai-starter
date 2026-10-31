@@ -21,7 +21,7 @@ class UserDTO(TimestampMixin, Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUIDType(binary=True), primary_key=True, default=uuid.uuid4, init=False
+        UUIDType(binary=True), primary_key=True, insert_default=uuid.uuid4, init=False
     )
 
     email: Mapped[str] = mapped_column(String(255), unique=True)

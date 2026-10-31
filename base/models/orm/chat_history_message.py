@@ -39,7 +39,7 @@ class ChatHistoryMessageDTO(TimestampMixin, Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUIDType(binary=True), primary_key=True, default=uuid.uuid4, init=False
+        UUIDType(binary=True), primary_key=True, insert_default=uuid.uuid4, init=False
     )
 
     conversation_id: Mapped[uuid.UUID] = mapped_column(
@@ -54,7 +54,7 @@ class ChatHistoryMessageDTO(TimestampMixin, Base):
     tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=None)
     tool_call_id: Mapped[str | None] = mapped_column(String(255), default=None)
     token_count: Mapped[int | None] = mapped_column(Integer, default=None)
-    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSON, default_factory=dict)
 
     conversation: Mapped["ConversationDTO"] = relationship(
         "ConversationDTO",

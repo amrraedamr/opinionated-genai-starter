@@ -29,15 +29,15 @@ class Base(MappedAsDataclass, DeclarativeBase):
         return self.__class__(**data)
 
 
-class TimestampMixin:
+class TimestampMixin(MappedAsDataclass):
     created_at: MappedColumn[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
+        insert_default=lambda: datetime.now(UTC),
         init=False,
     )
     updated_at: MappedColumn[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(UTC),
+        insert_default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
         init=False,
     )
