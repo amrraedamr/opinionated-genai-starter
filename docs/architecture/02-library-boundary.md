@@ -107,7 +107,7 @@ run_migrations(ChatBase.metadata, settings)
 # base/main.py — current
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], ...)
-init_routers(app, routers=routers, prefix="/api/7r")
+init_routers(app, routers=routers, prefix=settings.api_prefix)
 AppExceptionHandler().register(app)
 ```
 

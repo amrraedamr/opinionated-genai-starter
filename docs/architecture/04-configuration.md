@@ -190,7 +190,7 @@ class ChatApiSettings(
     )
 
     service_name: str = "chat_api"
-    api_prefix: str = "/api/7r"
+    api_prefix: str = "/api/chat"
 
     cors_origins: str = ""
 
