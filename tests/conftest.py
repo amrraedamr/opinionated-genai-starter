@@ -86,4 +86,6 @@ def client(app_environment: pathlib.Path):
 
 @pytest.fixture(scope="session")
 def api_prefix() -> str:
-    return "/api/7r"
+    from base.services.configuration import settings
+
+    return settings.api_prefix

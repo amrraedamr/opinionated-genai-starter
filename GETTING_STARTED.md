@@ -2,7 +2,7 @@
 
 A friendly entry point for this opinionated GenAI starter. If you've just cloned the repo and want to be up and running in a few minutes — and then know where to look next — you're in the right place.
 
-For a deep architecture reference, see [`README.md`](README.md).
+For what this is and why it is shaped this way, see [`README.md`](README.md).
 
 ---
 
@@ -65,7 +65,7 @@ openssl rsa -in keys/private.pem -pubout -out keys/public.pem
 #    - Optional Login-with-X: set OAUTH_PROVIDERS=google,apple,… plus each
 #      provider’s client id/secret (Apple: TEAM_ID + KEY_ID + .p8). Optional
 #      enterprise IdP Bearer: IDP_RESOURCE_SERVER_ENABLED + IDP_ISSUER/AUDIENCE/JWKS.
-#      See README.md#authentication.
+#      See `.env.example` for every variable, grouped by feature.
 
 # 4. Apply database migrations
 #    Creates the SQLite file (or updates the schema for MySQL / PostgreSQL).
@@ -97,7 +97,7 @@ The following five commands take you from cold start to streaming a chat respons
 
 ```bash
 # 1. Register a user
-curl -sS -X POST http://localhost:8000/api/7r/auth/register \
+curl -sS -X POST http://localhost:8000/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{
     "email": "demo@example.com",
@@ -107,26 +107,26 @@ curl -sS -X POST http://localhost:8000/api/7r/auth/register \
   }'
 
 # 2. Log in and capture the access token
-ACCESS_TOKEN=$(curl -sS -X POST http://localhost:8000/api/7r/auth/login \
+ACCESS_TOKEN=$(curl -sS -X POST http://localhost:8000/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email": "demo@example.com", "password": "Demo!Pass123"}' \
   | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["accessToken"])')
 
 # 3. Create a conversation
-CONVERSATION_ID=$(curl -sS -X POST http://localhost:8000/api/7r/conversations \
+CONVERSATION_ID=$(curl -sS -X POST http://localhost:8000/api/conversations \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"title": "Smoke test"}' \
   | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["conversationId"])')
 
 # 4. Send a non-streaming message
-curl -sS -X POST "http://localhost:8000/api/7r/conversations/$CONVERSATION_ID/messages" \
+curl -sS -X POST "http://localhost:8000/api/conversations/$CONVERSATION_ID/messages" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content": "Say hi in one short sentence."}'
 
 # 5. List the messages so far
-curl -sS "http://localhost:8000/api/7r/conversations/$CONVERSATION_ID/messages" \
+curl -sS "http://localhost:8000/api/conversations/$CONVERSATION_ID/messages" \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
@@ -134,7 +134,7 @@ For SSE streaming, set `?streaming=true` and use `curl -N` so it doesn't buffer:
 
 ```bash
 curl -N -X POST \
-  "http://localhost:8000/api/7r/conversations/$CONVERSATION_ID/messages?streaming=true" \
+  "http://localhost:8000/api/conversations/$CONVERSATION_ID/messages?streaming=true" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"content": "Tell me a one-line joke about Python."}'
@@ -165,7 +165,7 @@ async def list_items(current_user: UserDTO = validate_user_dependency) -> list[s
     return ["one", "two", "three"]
 ```
 
-It's now mounted at `/api/7r/items` after the next reload.
+It's now mounted at `/api/items` after the next reload.
 
 ### Register a prompt
 
@@ -254,8 +254,18 @@ Call it from a router with `await GreeterAgent().arun()` after populating the `E
 
 ## Where to go next
 
-- [`README.md`](README.md) — full architecture reference: DI metaclass system, every service, store layer, models, error handling, debug trace, etc.
-- [`README.md#authentication`](README.md#authentication) — password auth, Login-with-X (incl. Apple), and enterprise IdP resource-server mode.
-- [`README.md#api-endpoints`](README.md#api-endpoints) — endpoint matrix for auth (incl. OAuth), users, and conversations.
-- [`README.md#agents-abstractagent`](README.md#agents-abstractagent) — the agent template-method pattern in detail.
-- [`README.md#llm-openai`](README.md#llm-openai) — both API surfaces, the `LLMError` hierarchy, retry / content-filter behaviour, and `OpenAIMessageAdapter`.
+- [`README.md`](README.md) — what this is, what you get, and how it fits together.
+- **http://localhost:8000/docs** — the endpoint matrix, generated from the code
+  rather than written down and left to rot.
+- [`.env.example`](.env.example) — every setting, grouped by the feature it
+  turns on: OAuth providers, enterprise IdP, LLM keys, storage backends.
+- [`base/services/agents/__init__.py`](base/services/agents/__init__.py) — the
+  agent template method, and the hooks a concrete agent fills in.
+- [`base/services/tool_calling/`](base/services/tool_calling/) — declaring a
+  tool and letting the model call it.
+- [`base/services/rag/`](base/services/rag/) — chunking, ingestion, retrieval.
+- [`base/services/llm/openai_service.py`](base/services/llm/openai_service.py)
+  — both OpenAI surfaces, the `LLMError` hierarchy, and retry behaviour.
+- [`docs/going-multi-service.md`](docs/going-multi-service.md) — when one app
+  should become several, and what that costs.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the conventions a review will ask about.

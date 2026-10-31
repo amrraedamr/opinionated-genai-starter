@@ -65,7 +65,7 @@ async def register_request(
 init_routers(
     app,
     routers=routers,
-    prefix="/api/7r",
+    prefix=settings.api_prefix,
 )
 
 
