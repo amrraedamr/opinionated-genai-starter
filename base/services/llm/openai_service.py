@@ -60,6 +60,7 @@ from base.services.common.meta import KeyedSingleton
 from base.services.execution_context import ExecutionContext
 from base.services.llm.error_handler import OpenAIErrorHandler
 from base.services.logging.console import ConsoleLoggerService
+from base.services.usage import UsageTracker
 from base.tools import openai_clients
 from base.tools.stream import StreamIterator
 
@@ -830,6 +831,15 @@ class OpenAIService(metaclass=KeyedSingleton):
         """
         input_tokens, output_tokens, total_tokens = self._extract_token_counts(usage)
         effective_label = label or "openai"
+
+        UsageTracker().record(
+            model=self._model,
+            label=effective_label,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            duration_ms=duration_ms,
+            error=error,
+        )
 
         if self._execution_context.debug_trace.started_at:
             self._execution_context.debug_trace.calls.append(
