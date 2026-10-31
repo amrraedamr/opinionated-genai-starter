@@ -1,4 +1,3 @@
-import math
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
@@ -17,6 +16,7 @@ from base.models.view_models.database import (
     SortingOrder,
     SortingParams,
 )
+from base.tools import pagination
 from base.tools.errors import ServiceHealthCheckError
 
 T = TypeVar("T")
@@ -184,32 +184,16 @@ class AbstractSQLService(ABC):
         """Performs select queries with pagination."""
         count_query = select(func.count()).select_from(sql_query.subquery())
         total: int = self.query(count_query, lambda res: res.scalar()) or 0
-        total_pages: int = (
-            math.ceil(total / page_params.size) if page_params.size > 0 else 0
-        )
 
-        if total == 0 or page_params.page > total_pages:
-            return PaginatedResult(
-                data=[],
-                page=page_params.page,
-                size=page_params.size,
-                total=total,
-                total_pages=total_pages,
+        def fetch(skip: int, limit: int) -> list[Any]:
+            rows: list[Any] = self.query(
+                sql_query.offset(skip).limit(limit),
+                lambda res: list(res.fetchall()),
+                expunge=expunge,
             )
+            return self._extract_paginated_data(rows, return_all, has_subquery)
 
-        offset: int = (page_params.page - 1) * page_params.size
-        fetch_query = sql_query.offset(offset).limit(page_params.size)
-        result: list[Any] = self.query(
-            fetch_query, lambda res: list(res.fetchall()), expunge=expunge
-        )
-
-        return PaginatedResult(
-            data=self._extract_paginated_data(result, return_all, has_subquery),
-            page=page_params.page,
-            size=page_params.size,
-            total=total,
-            total_pages=total_pages,
-        )
+        return pagination.paginate(total, page_params, fetch)
 
     async def apaginate(
         self,
@@ -222,32 +206,16 @@ class AbstractSQLService(ABC):
         """Performs select queries with pagination asynchronously."""
         count_query = select(func.count()).select_from(sql_query.subquery())
         total: int = await self.aquery(count_query, lambda res: res.scalar()) or 0
-        total_pages: int = (
-            math.ceil(total / page_params.size) if page_params.size > 0 else 0
-        )
 
-        if total == 0 or page_params.page > total_pages:
-            return PaginatedResult(
-                data=[],
-                page=page_params.page,
-                size=page_params.size,
-                total=total,
-                total_pages=total_pages,
+        async def afetch(skip: int, limit: int) -> list[Any]:
+            rows: list[Any] = await self.aquery(
+                sql_query.offset(skip).limit(limit),
+                lambda res: list(res.fetchall()),
+                expunge=expunge,
             )
+            return self._extract_paginated_data(rows, return_all, has_subquery)
 
-        offset: int = (page_params.page - 1) * page_params.size
-        fetch_query = sql_query.offset(offset).limit(page_params.size)
-        result: list[Any] = await self.aquery(
-            fetch_query, lambda res: list(res.fetchall()), expunge=expunge
-        )
-
-        return PaginatedResult(
-            data=self._extract_paginated_data(result, return_all, has_subquery),
-            page=page_params.page,
-            size=page_params.size,
-            total=total,
-            total_pages=total_pages,
-        )
+        return await pagination.apaginate(total, page_params, afetch)
 
     @staticmethod
     def _extract_paginated_data(
