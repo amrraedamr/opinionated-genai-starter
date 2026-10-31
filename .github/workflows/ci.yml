@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.18"
+
+      - name: Lockfile is current
+        run: uv lock --check
+
+      - run: uv sync
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Tests
+        run: uv run pytest
+
+      - name: Migrations reach head from empty
+        env:
+          APP_NAME: ci
+          ENVIRONMENT: local
+          SQL_BACKEND: sqlite
+          SQLITE_DB_PATH: ${{ runner.temp }}/ci.db
+          AUTH_PRIVATE_KEY_PATH: ${{ runner.temp }}/private.pem
+          AUTH_PUBLIC_KEY_PATH: ${{ runner.temp }}/public.pem
+          OPENAI_LLM_API_KEY: sk-test
+          OPENAI_API_KEY: sk-test
+        run: |
+          openssl genrsa -out "$AUTH_PRIVATE_KEY_PATH" 2048
+          openssl rsa -in "$AUTH_PRIVATE_KEY_PATH" -pubout -out "$AUTH_PUBLIC_KEY_PATH"
+          uv run alembic upgrade head
+
+      - name: Package builds
+        run: uv build
