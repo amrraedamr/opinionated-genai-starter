@@ -47,3 +47,11 @@ class TokenCounter(metaclass=KeyedSingleton):
     def count_batch(self, texts: list[str]) -> int:
         """Count total tokens across multiple strings."""
         return sum(self.count(t) for t in texts)
+
+    def encode(self, text: str) -> list[int]:
+        """Tokens for a string, for callers that need to split on them."""
+        return self._encoding.encode(text) if text else []
+
+    def decode(self, tokens: list[int]) -> str:
+        """Turn tokens back into text. Inverse of `encode`."""
+        return self._encoding.decode(tokens) if tokens else ""

@@ -54,6 +54,9 @@ os.environ.update(
         "AZURE_OPENAI_LLM_API_KEY": "sk-test",
         "AZURE_OPENAI_LLM_ENDPOINT": "https://example.openai.azure.com",
         "AZURE_OPENAI_LLM_DEPLOYMENT_NAME": "gpt-test",
+        "AZURE_OPENAI_EMBEDDING_API_KEY": "sk-test",
+        "AZURE_OPENAI_EMBEDDING_ENDPOINT": "https://example.openai.azure.com",
+        "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME": "embed-test",
     }
 )
 
