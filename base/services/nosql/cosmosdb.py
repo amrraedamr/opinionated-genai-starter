@@ -1,4 +1,3 @@
-import math
 from typing import Any
 
 from azure.cosmos import ContainerProxy, exceptions
@@ -10,6 +9,7 @@ from base.services.common.meta import SingletonABC
 from base.services.configuration import settings
 from base.services.logging.console import ConsoleLoggerService
 from base.services.nosql import AbstractNoSQLService
+from base.tools import pagination
 from base.tools.errors import ServiceHealthCheckError
 
 
@@ -619,36 +619,17 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         projection: dict[str, Any] | None = None,
         sort: list[tuple[str, int]] | None = None,
     ) -> PaginatedResult[dict[str, Any]]:
-        total: int = self.count(collection, filter)
-        total_pages: int = (
-            math.ceil(total / page_params.size) if page_params.size > 0 else 0
-        )
-
-        if total == 0 or page_params.page > total_pages:
-            return PaginatedResult(
-                data=[],
-                page=page_params.page,
-                size=page_params.size,
-                total=total,
-                total_pages=total_pages,
-            )
-
-        offset: int = (page_params.page - 1) * page_params.size
-        data: list[dict[str, Any]] = self.find_many(
-            collection,
-            filter,
-            projection=projection,
-            sort=sort,
-            skip=offset,
-            limit=page_params.size,
-        )
-
-        return PaginatedResult(
-            data=data,
-            page=page_params.page,
-            size=page_params.size,
-            total=total,
-            total_pages=total_pages,
+        return pagination.paginate(
+            self.count(collection, filter),
+            page_params,
+            lambda skip, limit: self.find_many(
+                collection,
+                filter,
+                projection=projection,
+                sort=sort,
+                skip=skip,
+                limit=limit,
+            ),
         )
 
     async def apaginate(
@@ -659,36 +640,17 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         projection: dict[str, Any] | None = None,
         sort: list[tuple[str, int]] | None = None,
     ) -> PaginatedResult[dict[str, Any]]:
-        total: int = await self.acount(collection, filter)
-        total_pages: int = (
-            math.ceil(total / page_params.size) if page_params.size > 0 else 0
-        )
-
-        if total == 0 or page_params.page > total_pages:
-            return PaginatedResult(
-                data=[],
-                page=page_params.page,
-                size=page_params.size,
-                total=total,
-                total_pages=total_pages,
-            )
-
-        offset: int = (page_params.page - 1) * page_params.size
-        data: list[dict[str, Any]] = await self.afind_many(
-            collection,
-            filter,
-            projection=projection,
-            sort=sort,
-            skip=offset,
-            limit=page_params.size,
-        )
-
-        return PaginatedResult(
-            data=data,
-            page=page_params.page,
-            size=page_params.size,
-            total=total,
-            total_pages=total_pages,
+        return await pagination.apaginate(
+            await self.acount(collection, filter),
+            page_params,
+            lambda skip, limit: self.afind_many(
+                collection,
+                filter,
+                projection=projection,
+                sort=sort,
+                skip=skip,
+                limit=limit,
+            ),
         )
 
     # Health Check

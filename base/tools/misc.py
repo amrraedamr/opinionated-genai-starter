@@ -33,13 +33,14 @@ def _make_json_serializable(obj: Any) -> Any:
         return obj
 
 
-def is_uuid(uuid_str: str | UUID | None) -> UUID | None:
-    if isinstance(uuid_str, UUID):
-        return uuid_str
+def parse_uuid(value: str | UUID | None) -> UUID | None:
+    """Coerce a value to a UUID, or None when it is not one."""
+    if isinstance(value, UUID):
+        return value
 
     try:
-        return UUID(uuid_str)
-    except (ValueError, TypeError):
+        return UUID(value)
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
@@ -103,6 +104,21 @@ def try_parse_json(content: str) -> tuple[bool, Any]:
 def is_json(content: str) -> bool:
     ok, _ = try_parse_json(content)
     return ok
+
+
+def parse_json_pairs(
+    keys: tuple[str, ...] | list[str], values: list[str | None]
+) -> dict[str, Any]:
+    """Zip keys to values, JSON-decoding each value and keeping the raw string if it is not JSON."""
+    parsed: dict[str, Any] = {}
+    for index, key in enumerate(keys):
+        raw = values[index]
+        if raw is None:
+            parsed[key] = None
+            continue
+        ok, value = try_parse_json(raw)
+        parsed[key] = value if ok else raw
+    return parsed
 
 
 def parse_arguments(args: dict[str, str]) -> dict[str, Any]:

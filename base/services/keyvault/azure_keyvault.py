@@ -9,6 +9,7 @@ from typing_extensions import Self
 
 from base.services.common.meta import Singleton
 from base.services.configuration import settings
+from base.tools import resources
 
 
 class AzureKeyVaultService(metaclass=Singleton):
@@ -58,20 +59,14 @@ class AzureKeyVaultService(metaclass=Singleton):
         return self._async_client
 
     def close(self) -> None:
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-        if self._credential is not None:
-            self._credential.close()
-            self._credential = None
+        resources.close_all(self._client, self._credential)
+        self._client = None
+        self._credential = None
 
     async def aclose(self) -> None:
-        if self._async_client is not None:
-            await self._async_client.close()
-            self._async_client = None
-        if self._async_credential is not None:
-            await self._async_credential.close()
-            self._async_credential = None
+        await resources.aclose_all(self._async_client, self._async_credential)
+        self._async_client = None
+        self._async_credential = None
 
     def __enter__(self) -> Self:
         return self

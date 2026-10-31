@@ -1,7 +1,6 @@
 import inspect
 import json
 from collections.abc import AsyncGenerator
-from json import JSONDecodeError
 from typing import Any, ClassVar
 from uuid import UUID
 
@@ -10,7 +9,7 @@ from base.models.definitions.cache import CacheChannels, CacheKeys
 from base.services.cache import AbstractCacheService
 from base.services.common.meta import SingletonABC
 from base.tools.deserializers import ExpansiveDecoder
-from base.tools.misc import generic_deep_deserialize
+from base.tools.misc import generic_deep_deserialize, parse_json_pairs
 from base.tools.serializers import serialize
 
 
@@ -99,7 +98,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         )
         if not result or len(result) != len(hashset_keys):
             return None
-        return self._parse_hashset_pairs(hashset_keys, result)
+        return parse_json_pairs(hashset_keys, result)
 
     async def aget_hashset_pairs(
         self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
@@ -109,23 +108,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         )
         if not result or len(result) != len(hashset_keys):
             return None
-        return self._parse_hashset_pairs(hashset_keys, result)
-
-    @staticmethod
-    def _parse_hashset_pairs(
-        hashset_keys: tuple[str, ...], result: list[str | None]
-    ) -> dict[str, Any]:
-        parsed: dict[str, Any] = {}
-        for i, hash_key in enumerate(hashset_keys):
-            raw = result[i]
-            if raw is None:
-                parsed[hash_key] = None
-                continue
-            try:
-                parsed[hash_key] = json.loads(raw)
-            except JSONDecodeError:
-                parsed[hash_key] = raw
-        return parsed
+        return parse_json_pairs(hashset_keys, result)
 
     def get_hashset_all(
         self, key: CacheKeys | str, namespace: UUID | None = None

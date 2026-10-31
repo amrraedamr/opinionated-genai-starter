@@ -1,8 +1,5 @@
-from httpx import Timeout
 from openai import (
     AsyncOpenAI,
-    DefaultAsyncHttpxClient,
-    DefaultHttpxClient,
     OpenAI,
 )
 from openai.types import CreateEmbeddingResponse
@@ -11,6 +8,7 @@ from base.models.definitions.model import ProviderType
 from base.models.view_models.llm_exception import LLMConfigError
 from base.models.view_models.model import EmbeddingConfigurations
 from base.services.common.meta import KeyedSingleton
+from base.tools import openai_clients
 
 
 class OpenAITextEmbeddingService(metaclass=KeyedSingleton):
@@ -42,37 +40,12 @@ class OpenAITextEmbeddingService(metaclass=KeyedSingleton):
         self._client, self._async_client = self._initialize_clients()
 
     def _initialize_clients(self) -> tuple[OpenAI, AsyncOpenAI]:
-        base_url: str | None = self._config.api_host or None
-
-        if self._config.api_type == ProviderType.AZURE_OPENAI:
-            if not base_url:
-                raise LLMConfigError("api_host is required for Azure OpenAI")
-
-            base_url = base_url.rstrip("/")
-            if not base_url.endswith("/openai/v1"):
-                base_url = f"{base_url}/openai/v1"
-            base_url = f"{base_url}/"
-
-        timeout = Timeout(
-            self.DEFAULT_TIMEOUT_TOTAL,
-            connect=self.DEFAULT_TIMEOUT_CONNECT,
-        )
-
-        return (
-            OpenAI(
-                api_key=self._config.api_key,
-                base_url=base_url,
-                timeout=timeout,
-                max_retries=0,
-                http_client=DefaultHttpxClient(http2=True),
-            ),
-            AsyncOpenAI(
-                api_key=self._config.api_key,
-                base_url=base_url,
-                timeout=timeout,
-                max_retries=0,
-                http_client=DefaultAsyncHttpxClient(http2=True),
-            ),
+        return openai_clients.create_clients(
+            api_key=self._config.api_key,
+            api_host=self._config.api_host,
+            api_type=self._config.api_type,
+            timeout_total=self.DEFAULT_TIMEOUT_TOTAL,
+            timeout_connect=self.DEFAULT_TIMEOUT_CONNECT,
         )
 
     # Internals
