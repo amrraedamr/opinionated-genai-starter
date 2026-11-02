@@ -4,8 +4,6 @@ chat_api does not own users. It only needs a token signed by a key it trusts,
 so these tests mint tokens directly and never call identity.
 """
 
-from __future__ import annotations
-
 import uuid
 from datetime import UTC, datetime
 

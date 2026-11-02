@@ -1,7 +1,5 @@
 """The authentication surface identity owns."""
 
-from __future__ import annotations
-
 import uuid
 
 

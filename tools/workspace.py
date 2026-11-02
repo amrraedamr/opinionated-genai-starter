@@ -4,8 +4,6 @@ These run as plain scripts (`uv run python tools/<name>.py`), so `tools/` is on
 `sys.path` and this module is importable as `workspace`.
 """
 
-from __future__ import annotations
-
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

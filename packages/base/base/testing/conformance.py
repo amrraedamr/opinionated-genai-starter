@@ -5,8 +5,6 @@ and the backend is held to the same contract as every other one. That is what
 makes swapping SQL for Mongo a verified claim rather than an intention.
 """
 
-from __future__ import annotations
-
 import uuid
 from typing import Any
 

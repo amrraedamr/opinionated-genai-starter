@@ -108,7 +108,7 @@ Now use that token against **chat_api**, a different service with a different
 database:
 
 ```bash
-curl -s -X POST http://localhost:8001/api/chat/conversations \
+curl -s -X POST http://localhost:8001/api/7r/conversations \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"title":"First"}'
@@ -126,7 +126,7 @@ No `user`. That is the whole point.
 And `chat_api` has no auth routes at all — token issuing belongs to identity:
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/api/chat/auth/login
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/api/7r/auth/login
 # 404
 ```
 

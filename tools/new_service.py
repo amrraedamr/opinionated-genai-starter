@@ -7,8 +7,6 @@ Writes `services/<name>/` and nothing else. Run `uv lock` afterwards to add it
 to the workspace lockfile.
 """
 
-from __future__ import annotations
-
 import argparse
 import pathlib
 import shutil

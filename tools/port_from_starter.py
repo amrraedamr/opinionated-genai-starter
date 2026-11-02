@@ -13,8 +13,6 @@ silent. Pass a stable ref or sha, not FETCH_HEAD: this fetches `upstream`
 first and would overwrite it.
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 import subprocess

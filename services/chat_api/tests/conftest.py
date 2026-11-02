@@ -1,7 +1,5 @@
 """Shared fixtures for chat_api tests."""
 
-from __future__ import annotations
-
 import pathlib
 from collections.abc import Iterator
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -31,7 +29,7 @@ class Event(BaseModel):
         *,
         producer: str,
         correlation_id: UUID | None = None,
-    ) -> Event:
+    ) -> "Event":
         body = payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
         return cls(
             topic=topic,

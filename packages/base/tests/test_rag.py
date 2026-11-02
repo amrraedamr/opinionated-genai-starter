@@ -1,7 +1,5 @@
 """Chunking, ingestion and retrieval, end to end against an in-memory store."""
 
-from __future__ import annotations
-
 from typing import Any
 
 import pytest

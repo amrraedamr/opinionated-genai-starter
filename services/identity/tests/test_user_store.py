@@ -1,7 +1,5 @@
 """UserStore held to the same contract as every other AbstractStore."""
 
-from __future__ import annotations
-
 import uuid
 from typing import Any
 

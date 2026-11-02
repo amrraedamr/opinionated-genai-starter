@@ -7,8 +7,6 @@
 Prints a JSON array by default, suitable for a GitHub Actions matrix.
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import subprocess

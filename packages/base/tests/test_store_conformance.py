@@ -4,8 +4,6 @@ Proves the suite exercises a real implementation. A SQL or Mongo store passes
 the same class by swapping `make_store`.
 """
 
-from __future__ import annotations
-
 import uuid
 from dataclasses import dataclass, field
 from typing import Any

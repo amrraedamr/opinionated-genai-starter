@@ -1,7 +1,5 @@
 """Tool declaration, dispatch, and the loop that runs a turn to an answer."""
 
-from __future__ import annotations
-
 import json
 from typing import Any
 from uuid import uuid4

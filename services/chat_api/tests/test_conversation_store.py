@@ -1,7 +1,5 @@
 """ConversationStore keeps ownership in the query and takes messages down with it."""
 
-from __future__ import annotations
-
 from typing import Any
 from uuid import uuid4
 

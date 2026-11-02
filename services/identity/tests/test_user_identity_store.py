@@ -1,7 +1,5 @@
 """UserIdentityStore looks a social account up by the provider's own identifiers."""
 
-from __future__ import annotations
-
 from typing import Any
 from uuid import uuid4
 

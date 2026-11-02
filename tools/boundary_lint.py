@@ -13,8 +13,6 @@ Rules, each from docs/architecture:
   6. No ForeignKey crosses a service boundary.
 """
 
-from __future__ import annotations
-
 import ast
 
 from workspace import BASE, ROOT, SERVICES, python_files, service_names

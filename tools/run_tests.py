@@ -7,8 +7,6 @@ process serves one service. Collecting two services into a single pytest run
 makes the second reuse the first's engine, so each gets its own process here.
 """
 
-from __future__ import annotations
-
 import pathlib
 import subprocess
 import sys
