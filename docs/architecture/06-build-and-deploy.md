@@ -4,15 +4,11 @@ One build definition, N images. Per-service deployability without per-service bu
 
 ---
 
-## Today
+## Current build
 
-A single root `Dockerfile` does `COPY . .` and `uv sync --locked`, producing one image
-containing everything. `run.sh` hardcodes `.venv/bin/api`, which resolves to
-`base.main:app`.
-
-The existing structure is good — two-stage build, non-root `appuser`, `UV_COMPILE_BYTECODE`,
-`--no-install-project` for dependency-layer caching, healthcheck. It needs to become
-**parameterised by service** rather than rewritten.
+`docker/service.Dockerfile` is parameterised by service. It validates the
+workspace lock, installs only the selected service's dependency closure, and
+removes the other service sources before producing the runtime image.
 
 ---
 
@@ -92,8 +88,8 @@ Notes on the deltas from today's Dockerfile:
 Each service keeps a three-line `Dockerfile` for tools that expect one in-place:
 
 ```dockerfile
-# services/chat-api/Dockerfile
-# Build from the repo root: docker build -f docker/service.Dockerfile --build-arg SERVICE=chat-api .
+# services/chat_api/Dockerfile
+# Build from the repo root: docker build -f docker/service.Dockerfile --build-arg SERVICE=chat_api .
 ```
 
 ### Entrypoint
@@ -166,12 +162,12 @@ services:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
 
-  chat-api:
+  chat_api:
     build:
       context: ..
       dockerfile: docker/service.Dockerfile
-      args: { SERVICE: chat-api }
-    env_file: [../.env.shared, ../services/chat-api/.env]
+      args: { SERVICE: chat_api }
+    env_file: [../.env.shared, ../services/chat_api/.env]
     environment:
       RUN_MIGRATIONS: "1"
       IDENTITY_BASE_URL: http://identity:8000
@@ -186,7 +182,7 @@ services:
 `depends_on: service_healthy` works.
 
 A developer working on one service runs infra in Docker and that single service on the
-host via `uv run --package chat-api serve` — fast reload, real dependencies.
+host via `uv run --package chat_api serve` — fast reload, real dependencies.
 
 ---
 
@@ -227,7 +223,6 @@ jobs:
     steps:
       - run: uv sync --package ${{ matrix.service }}
       - run: uv run --package ${{ matrix.service }} ruff check .
-      - run: uv run --package ${{ matrix.service }} pytest
       - run: docker build -f docker/service.Dockerfile --build-arg SERVICE=${{ matrix.service }} .
 ```
 
@@ -286,3 +281,11 @@ in-flight streams finish within `graceful_timeout` (gunicorn is already configur
 
 Verify per service that `Stored.delete_scope()` still runs for streams terminated by
 shutdown rather than by response completion.
+
+## Production topology
+
+Build and deploy `chat_api`, `identity`, and `ingestion_worker` independently. Run one migration Job per service database before rollout, never on every replica — concurrent migrations race. Supply managed PostgreSQL and Redis dependencies, platform secrets, readiness/liveness probes, and graceful termination. `chat_api` gets only the public verification key; the private signing key is scoped to `identity`.
+
+This repository deliberately ships no platform manifests. Kubernetes, ECS, Container Apps and Nomad disagree about secrets, ingress and autoscaling, so a committed example would be placeholder YAML that rots rather than something you can run. The requirements above are what your platform's manifests have to satisfy.
+
+Compose is local-only. Multi-replica request limits need an ingress/API gateway and, where required, Redis-backed global enforcement. The shared middleware provides safe single-process backpressure, trusted hosts, request-size limits, security headers, and consistent overload responses without pretending to be a distributed rate limiter.

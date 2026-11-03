@@ -1,0 +1,21 @@
+[project]
+name = "identity"
+version = "0.1.0"
+description = "identity service"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "base[server,sql,postgres,sqlite,auth,redis]",
+]
+
+[project.scripts]
+serve = "identity.app:start"
+
+[tool.uv.sources]
+base = { workspace = true }
+
+[tool.uv.build-backend]
+module-root = ""
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"

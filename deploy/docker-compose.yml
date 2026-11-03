@@ -1,0 +1,118 @@
+# LOCAL DEVELOPMENT ONLY. See docs/architecture/06-build-and-deploy.md for production.
+# Full local stack: infrastructure plus every service.
+#
+#   docker compose -f deploy/docker-compose.infra.yml -f deploy/docker-compose.yml up --build
+#
+# Each service reads ../.env.shared first, then its own .env, exactly as it
+# does outside Docker. Copy the .example files before the first run.
+name: genai-starter
+
+include:
+  - docker-compose.infra.yml
+
+services:
+  chat_api:
+    build:
+      context: ..
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: chat_api
+    image: genai/chat_api:local
+    env_file:
+      - path: ../.env.shared
+        required: false
+      - path: ../services/chat_api/.env
+        required: false
+    environment:
+      RUN_MIGRATIONS: "1"
+      ENVIRONMENT: local
+      SERVICE_NAME: chat_api
+      SQL_BACKEND: postgresql
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: chat_api_db
+      PG_USERNAME: local
+      PG_PASSWORD: local
+      DB_SSL_ENABLED: "false"
+      REDIS_URL: redis://redis:6379/0
+      AUTH_PUBLIC_KEY_PATH: /keys/public.pem
+    volumes:
+      - ../keys/public.pem:/keys/public.pem:ro
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  identity:
+    build:
+      context: ..
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: identity
+    image: genai/identity:local
+    env_file:
+      - path: ../.env.shared
+        required: false
+      - path: ../services/identity/.env
+        required: false
+    environment:
+      RUN_MIGRATIONS: "1"
+      ENVIRONMENT: local
+      SERVICE_NAME: identity
+      API_PREFIX: /api/identity
+      SQL_BACKEND: postgresql
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: identity_db
+      PG_USERNAME: local
+      PG_PASSWORD: local
+      DB_SSL_ENABLED: "false"
+      REDIS_URL: redis://redis:6379/1
+      AUTH_PRIVATE_KEY_PATH: /keys/private.pem
+      AUTH_PUBLIC_KEY_PATH: /keys/public.pem
+    volumes:
+      - ../keys:/keys:ro
+    ports:
+      - "8003:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ingestion_worker:
+    build:
+      context: ..
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: ingestion_worker
+    image: genai/ingestion_worker:local
+    env_file:
+      - path: ../.env.shared
+        required: false
+      - path: ../services/ingestion_worker/.env
+        required: false
+    environment:
+      ENVIRONMENT: local
+      SERVICE_NAME: ingestion_worker
+      RUN_MIGRATIONS: "1"
+      BROKER: redis
+      REDIS_URL: redis://redis:6379/2
+      SQL_BACKEND: postgresql
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: ingestion_worker_db
+      PG_USERNAME: local
+      PG_PASSWORD: local
+      DB_SSL_ENABLED: "false"
+    # No HTTP surface, so the image's /livez probe does not apply.
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

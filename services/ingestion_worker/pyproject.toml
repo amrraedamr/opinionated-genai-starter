@@ -1,0 +1,23 @@
+[project]
+name = "ingestion_worker"
+version = "0.1.0"
+description = "Consumes domain events with a durable inbox"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "base[redis,sql,sqlite,postgres]",
+    "contracts",
+]
+
+[project.scripts]
+serve = "ingestion_worker.worker:start"
+
+[tool.uv.sources]
+base = { workspace = true }
+contracts = { workspace = true }
+
+[tool.uv.build-backend]
+module-root = ""
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"

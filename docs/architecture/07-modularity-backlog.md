@@ -160,7 +160,7 @@ instances are created on first use — which, for anything touched at import tim
 Connection pools (SQLAlchemy async engines, Redis, Mongo clients) created pre-fork are
 shared across workers and produce intermittent, hard-to-reproduce failures.
 
-Rule: **create no client at import time.** Capabilities create their clients in `startup()`,
+Rule: **create no client at import time.** Capabilities create their clients in `astartup()`,
 which runs post-fork. Worth a dedicated test that asserts no engine exists after importing
 a service module.
 
@@ -174,7 +174,7 @@ This matters more with many services because each new service re-inherits the pa
 `tools/locale.py` + `canned_messages` localise them. With several services, a gateway or
 client cannot tell which service produced `RECORD_NOT_FOUND`.
 
-Prefix error codes with the owning service (`chat-api.RECORD_NOT_FOUND`) and keep
+Prefix error codes with the owning service (`chat_api.RECORD_NOT_FOUND`) and keep
 per-service message catalogues, with `base` owning only infrastructure-level codes. Keep
 the existing `AppExceptionHandler` shape — only the code namespace changes.
 
@@ -225,14 +225,41 @@ prefixes come from settings ([doc 02](02-library-boundary.md)).
 
 ```
 make up             # infra + all services
-make dev s=chat-api # infra in docker, one service on host with reload
-make migrate s=chat-api
-make test s=chat-api
+make dev s=chat_api # infra in docker, one service on host with reload
+make migrate s=chat_api
+make test s=chat_api
 make new s=billing
 ```
 
 Cosmetic individually; collectively it is what stops people shelling out to half-remembered
 `docker compose` incantations.
+
+It must export `UV_PROJECT_ENVIRONMENT=.venvs/$(s)` for per-service targets — a uv
+workspace otherwise shares one `.venv`, and `uv sync --package b` uninstalls service `a`.
+See [doc 01](01-workspace-layout.md).
+
+---
+
+## 14. Connection-backed readiness capabilities
+
+Phase 1 landed the `Capability` protocol and `/readyz`, but only `Prompts` and
+`TerminalCapture` implement it. Neither touches a network. A service whose database or
+cache is unreachable still reports ready.
+
+Add `SQL()`, `Redis()`, `LLM()` and `Vectors()` capabilities whose `probe()` issues a
+cheap round trip (`SELECT 1`, `PING`, a models list) and whose `shutdown()` disposes the
+pool. They must create their clients in `astartup()`, never in `__init__` — gunicorn runs
+with `preload: True`, so an `__init__`-built pool is shared across forked workers.
+
+---
+
+## 15. Per-service prompt template discovery
+
+`PromptLoader.initialize(template_packages)` now takes the packages explicitly, and
+templates live in the service (`chat_api/prompts/templates/`). What is still missing is
+any check that two services' prompt *keys* do not collide when they share a Redis
+`PROMPT_RELOAD` channel. `CacheChannels.for_app(...)` already namespaces the channel;
+the registry inside `PromptLoader` is still flat and global.
 
 ---
 

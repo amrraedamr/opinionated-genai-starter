@@ -70,21 +70,21 @@ Each service must declare **its own `DeclarativeBase`**, reusing `base`'s behavi
 **mixins** rather than inheritance of the declarative root:
 
 ```python
-# services/chat-api/chat_api/models/orm/__init__.py
+# services/chat_api/chat_api/models/orm/__init__.py
 from sqlalchemy.orm import DeclarativeBase, MappedAsDataclass
 
-from base.models.orm.mixins import SerializableMixin, TimestampMixin
+from base.models.orm import SerializableMixin, TimestampMixin
 
 
 class ChatBase(MappedAsDataclass, DeclarativeBase, SerializableMixin):
-    """Declarative root for chat-api. Owns its own MetaData."""
+    """Declarative root for chat_api. Owns its own MetaData."""
 
 
-__all__ = ["ChatBase", "TimestampMixin"]
+__all__ = ["ChatBase", "SerializableMixin", "TimestampMixin"]
 ```
 
 ```python
-# services/chat-api/chat_api/models/orm/conversation.py
+# services/chat_api/chat_api/models/orm/conversation.py
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import MappedColumn, mapped_column
@@ -93,7 +93,7 @@ from sqlalchemy_utils.types.uuid import UUIDType
 from chat_api.models.orm import ChatBase, TimestampMixin
 
 
-class Conversation(ChatBase, TimestampMixin):
+class Conversation(TimestampMixin, ChatBase):
     __tablename__ = "conversation"
 
     id: MappedColumn[UUID] = mapped_column(
@@ -103,6 +103,12 @@ class Conversation(ChatBase, TimestampMixin):
     user_id: MappedColumn[UUID] = mapped_column(UUIDType(binary=False), index=True)
     title: MappedColumn[str] = mapped_column(default="")
 ```
+
+> **Keep the existing mixin order when converting a table.** These models use
+> `MappedAsDataclass`, where the base-class order determines both the generated
+> `__init__` signature and column declaration order. Converting
+> `class X(TimestampMixin, Base)` to `class X(ChatBase, TimestampMixin)` changes the MRO
+> for no benefit; swapping only the declarative root keeps the move a true rename.
 
 ### What `base` keeps
 
@@ -130,7 +136,7 @@ graph TD
     A["base: AbstractStore / AbstractSequenceStore<br/>(contract only, zero tables)"]
 
     A --> I["identity<br/>PostgreSQL + Alembic<br/>user, user_identity"]
-    A --> C["chat-api<br/>PostgreSQL + Alembic<br/>conversation, chat_message"]
+    A --> C["chat_api<br/>PostgreSQL + Alembic<br/>conversation, chat_message"]
     A --> W["ingestion-worker<br/>MongoDB + Qdrant<br/>no migrations"]
     A --> G["gateway<br/>no database at all"]
 
@@ -175,22 +181,21 @@ Depends on neither. A gateway or BFF has no store and no migrations.
 
 ## Per-service migrations
 
-Each SQL service gets its own `alembic.ini` and `alembic/` directory, with `env.py`
-importing only its own models.
+Each SQL service gets its own `alembic.ini` and `alembic/` directory. The shared machinery
+— engine construction, offline/online modes, type comparison — lives in
+`base.tools.migrations`, so a service's `env.py` only declares what is its own: its models
+and its settings.
 
 ```python
-# services/chat-api/alembic/env.py  (sketch — structure mirrors today's root env.py)
+# services/chat_api/alembic/env.py
+import chat_api.models.orm.chat_history_message    # noqa: F401
+import chat_api.models.orm.conversation            # noqa: F401
+import chat_api.models.orm.prompt                  # noqa: F401
+from base.tools.migrations import run_migrations
 from chat_api.models.orm import ChatBase
 from chat_api.settings import settings
 
-import chat_api.models.orm.conversation            # noqa: F401
-import chat_api.models.orm.chat_history_message    # noqa: F401
-
-target_metadata = ChatBase.metadata
-
-
-def _get_async_url() -> str:
-    return settings.sql_async_url
+run_migrations(ChatBase.metadata, settings)
 ```
 
 Keep today's `_compare_type` hook that suppresses false-positive `UUIDType` diffs on
@@ -240,7 +245,7 @@ Ranked by preference:
 | — | **Shared table** | ~~Never~~ | Defeats the architecture |
 
 For pattern 3, the owning service publishes `UserRegistered` / `UserDeactivated` to the
-broker, and consumers keep a **local, narrow, read-only projection** — e.g. chat-api holds
+broker, and consumers keep a **local, narrow, read-only projection** — e.g. chat_api holds
 `user_id` + `display_name` only, in *its own* database. It is a cache, not a copy: it may
 be rebuilt from events at any time.
 

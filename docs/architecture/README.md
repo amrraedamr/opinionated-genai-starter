@@ -3,9 +3,10 @@
 Design for evolving this starter from **one application** into a **multi-app / microservice
 starter** that still shares a single opinionated foundation.
 
-> **Status: design only.** Nothing in these documents has been implemented. They describe
-> the target state and the path to it. Read [`08-migration-plan.md`](08-migration-plan.md)
-> for the sequencing.
+> **Status: implemented.** All seven phases described here are built. The workspace holds
+> `base` and `contracts` under `packages/`, and `chat_api`, `identity` and
+> `ingestion_worker` under `services/`. Where implementation diverged from the original
+> design, these documents were corrected to match the code.
 
 ---
 

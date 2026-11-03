@@ -1,5 +1,11 @@
 # 05 — Service Contracts
 
+> **Implementation note (phase 2).** All of `base/services/auth/` now lives in
+> `services/chat_api/chat_api/services/auth/`, not in `base`. It could not stay in the
+> library once `UserDTO` and `UserStore` moved out. The split described below is still
+> the target — phase 5 lifts the stateless verification half back into `base` — but the
+> starting point is "chat_api owns all of auth", not "base owns all of auth".
+
 How services authenticate, call each other, and stay debuggable once there is more than one
 of them.
 
@@ -41,7 +47,7 @@ graph LR
 
     C[Client] -->|credentials| I
     I -->|signed JWT| C
-    C -->|Bearer JWT| CA[chat-api]
+    C -->|Bearer JWT| CA[chat_api]
     C -->|Bearer JWT| W[other services]
     CA --> V
     W --> V
@@ -90,7 +96,7 @@ async def current_principal(
 principal_dependency = Depends(current_principal)
 ```
 
-Every service uses this. `chat-api` learns the caller's `user_id` with **zero** database
+Every service uses this. `chat_api` learns the caller's `user_id` with **zero** database
 access and **zero** knowledge of the user schema. The existing enterprise IdP settings
 (`idp_issuer`, `idp_jwks_url`, `idp_algorithms`) slot straight into `TokenVerifier` —
 verifying a first-party token and an Entra token becomes the same code path.
@@ -141,7 +147,7 @@ class ServiceClient:
 ```
 
 ```python
-# services/chat-api/chat_api/clients/identity.py
+# services/chat_api/chat_api/clients/identity.py
 from contracts.v1.identity import UserProfile
 
 from base.services.http.service_client import ServiceClient
@@ -299,3 +305,9 @@ IDENTITY_BASE_URL=http://identity:8000
 
 Compose supplies service DNS locally; the platform supplies it in deployment. No registry,
 no mesh, no new moving part. If a mesh is later adopted, only the injected URLs change.
+
+## Reliable delivery
+
+Domain writes never call the broker. The owning service writes a versioned event envelope to its own outbox in the same SQL transaction, then a dispatcher publishes committed rows and records success or retry timing. Consumers validate supported envelope versions. Redis Streams uses consumer groups, idle pending reclamation, bounded exponential backoff, and a per-topic DLQ. `broker-ops replay-dlq` provides an explicit operational replay path.
+
+The ingestion worker owns its inbox database. It commits a claim before invoking a handler and commits processed/failed state afterward; stale processing claims can be retried. This is infrastructure state owned by the worker, not a shared domain table.

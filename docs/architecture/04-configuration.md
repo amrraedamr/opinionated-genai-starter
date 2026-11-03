@@ -26,9 +26,9 @@ Two consequences for multiple services:
 
 1. **Inheriting one god-class gives every service every field.** A worker with no HTTP
    surface still carries `oauth_apple_private_key_path`. Worse, you lose the ability to
-   *require* a field: `OPENAI_API_KEY` cannot be mandatory in `chat-api` if the same class
+   *require* a field: `OPENAI_API_KEY` cannot be mandatory in `chat_api` if the same class
    must also validate for a service that has no LLM.
-2. **A subclass is invisible to `base`.** If `chat-api` defines
+2. **A subclass is invisible to `base`.** If `chat_api` defines
    `class Settings(BaseSettings)`, the 20 modules inside `base` still import the *base*
    instance. The subclass is never consulted.
 
@@ -61,8 +61,6 @@ class CoreSettings(BaseSettings, metaclass=SingletonSettings):
     service_name: str                       # required — identifies the service everywhere
     environment: str = "local"
     log_level: str = "INFO"
-    api_prefix: str = "/api"
-    max_gunicorn_workers: int = 2
 ```
 
 `service_name` is deliberately **required and unnamed-by-default**. It is the namespace key
@@ -70,26 +68,36 @@ for Redis channels (`CacheChannels.for_app`), cache keys, queue names, log field
 trace attributes — a wrong default here causes cross-service collisions, so the service
 must state it.
 
+> **Nothing subsystem-specific belongs here.** Serving knobs (`api_prefix`, `api_host`,
+> `api_port`, `max_gunicorn_workers`) live in `ServerSettingsMixin`, because they pair with
+> the `server` extra — a broker-consuming worker installs neither uvicorn nor gunicorn and
+> must not carry a worker count it can never act on. The test for `CoreSettings` membership
+> is: *would a worker with no HTTP surface and no database still need this?*
+
 ### Layer 2 — mixins per subsystem
 
 One mixin per optional subsystem, mirroring the dependency extras in
 [doc 02](02-library-boundary.md). A service includes a mixin only if it uses that subsystem.
 
 ```python
-# packages/base/base/services/configuration/mixins.py
+# packages/base/base/services/configuration/mixins/ — one file per mixin
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
+
+
+class ServerSettingsMixin(BaseModel):
+    """HTTP serving. Pairs with the `server` extra (uvicorn + gunicorn)."""
+
+    api_prefix: str = "/api"
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+    max_gunicorn_workers: int = 2
 
 
 class SQLSettingsMixin(BaseModel):
     sql_backend: Literal["sqlite", "mysql", "postgresql"] = "sqlite"
     sqlite_db_path: str = "database/app.db"
-    db_host: str = ""
-    db_port: int = 5432
-    db_name: str = ""
-    db_user: str = ""
-    db_password: str = ""
     db_pool_size: int = 10
     db_max_overflow: int = 20
     db_pool_timeout: int = 30
@@ -97,75 +105,91 @@ class SQLSettingsMixin(BaseModel):
     db_ssl_enabled: bool = True
 
 
-class LLMSettingsMixin(BaseModel):
-    llm_provider: str = "openai"
-    openai_api_key: str = Field(default="")
-    openai_base_url: str = ""
-    default_model: str = "gpt-4o-mini"
-    llm_timeout_seconds: int = 120
-
-
-class RedisSettingsMixin(BaseModel):
-    redis_url: str = "redis://localhost:6379/0"
-    cache_ttl_seconds: int = 300
+class PostgresSettingsMixin(BaseModel):
+    pg_host: str = ""
+    pg_port: str = "5432"
+    pg_database: str = ""
+    pg_ssl_root_cert: str = ""
+    pg_username: str = Field(
+        default="", validation_alias=AliasChoices("POSTGRES_USER", "PG_USERNAME")
+    )
+    pg_password: str = Field(
+        default="", validation_alias=AliasChoices("POSTGRES_PASSWORD", "PG_PASSWORD")
+    )
 
 
 class TokenVerificationMixin(BaseModel):
     """Verify tokens. Does NOT issue them — see doc 05."""
     auth_public_key_path: str = "keys/public.pem"
-    auth_algorithms: str = "RS256"
-    auth_issuer: str = ""
-    auth_audience: str = ""
 
 
 class TokenIssuingMixin(TokenVerificationMixin):
-    """Only the identity service should include this."""
+    """Only a service that issues tokens should include this."""
     auth_private_key_path: str = "keys/private.pem"
     access_token_expiry_seconds: int = 900
     refresh_token_expiry_seconds: int = 604800
 ```
 
-Further mixins lift the remaining groups from today's file unchanged:
-`OAuthSettingsMixin`, `IdpResourceServerMixin`, `MongoSettingsMixin`,
-`VectorSettingsMixin`, `BlobSettingsMixin`, `KeyVaultSettingsMixin`.
+The full set, each lifting one group from today's file **verbatim**:
+`SQLSettingsMixin`, `PostgresSettingsMixin`, `MySQLSettingsMixin`, `RedisSettingsMixin`,
+`LLMSettingsMixin`, `EmbeddingSettingsMixin`, `TokenVerificationMixin`,
+`TokenIssuingMixin`, `OAuthSettingsMixin`, `IdpResourceServerMixin`,
+`MongoSettingsMixin`, `CosmosSettingsMixin`, `BlobSettingsMixin`,
+`KeyVaultSettingsMixin`, `QdrantSettingsMixin`, `AzureSearchSettingsMixin`,
+
+
+> **Field names are unchanged, deliberately.** Earlier drafts of this document sketched
+> generic names (`db_host`, `db_name`, `openai_api_key`, `default_model`). Renaming would
+> break every existing `.env`, every deployment variable, and the `AliasChoices` that let
+> `POSTGRES_USER` and `PG_USERNAME` both work — for no architectural gain. The grouping is
+> the point; the names are not. `pg_*` and `mysql_*` are also what makes
+> `PostgresSettingsMixin` and `MySQLSettingsMixin` separable at all.
+>
+> The one rename that *was* worth it: `app_name` becomes `service_name`, because it is now
+> the cross-service namespace key and must be stated rather than defaulted.
 
 ### Layer 3 — the service composes and extends
 
 ```python
-# services/chat-api/chat_api/settings.py
-from pydantic import Field
+# services/chat_api/chat_api/settings.py
 from pydantic_settings import SettingsConfigDict
 
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
+    IdpResourceServerMixin,
     LLMSettingsMixin,
+    OAuthSettingsMixin,
+    PostgresSettingsMixin,
     RedisSettingsMixin,
     SQLSettingsMixin,
-    TokenVerificationMixin,
+    ServerSettingsMixin,
+    TokenIssuingMixin,
 )
 
 
 class ChatApiSettings(
     CoreSettings,
+    ServerSettingsMixin,
     SQLSettingsMixin,
-    LLMSettingsMixin,
+    PostgresSettingsMixin,
     RedisSettingsMixin,
-    TokenVerificationMixin,
+    LLMSettingsMixin,
+    # chat_api still issues tokens and owns users. Phase 5 moves that to the
+    # identity service, at which point this drops to TokenVerificationMixin.
+    TokenIssuingMixin,
+    OAuthSettingsMixin,
+    IdpResourceServerMixin,
 ):
     model_config = SettingsConfigDict(
         env_file=("../../.env.shared", ".env", ".env.local"),
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
-    service_name: str = "chat-api"
+    service_name: str = "chat_api"
+    api_prefix: str = "/api/7r"
 
-    # Tightened: required here, absent elsewhere
-    openai_api_key: str = Field(min_length=1)
-
-    # Service-specific
-    max_tokens_per_conversation: int = 8_000
-    conversation_retention_days: int = 90
     cors_origins: str = ""
 
     @property
@@ -175,6 +199,18 @@ class ChatApiSettings(
 
 settings = ChatApiSettings()
 ```
+
+Verified: `ChatApiSettings` carries `sql_backend`, `pg_database`, `redis_url`,
+`openai_llm_api_key`, `auth_private_key_path` and `oauth_providers`, and carries **no**
+`qdrant_url`, `mongodb_host`, `azure_cosmos_account_uri`, `azure_search_endpoint`,
+`mysql_host`, `azure_blob_account_url`, `keyvault_url` or `openai_embedding_model`.
+
+> **On tightening a field to required.** An earlier draft made `openai_api_key`
+> `Field(min_length=1)` here. That is the right move for a real deployment and the wrong
+> one for a starter: it would stop `chat_api` booting on a fresh clone before any key
+> exists, and the whole regression suite — register, login, conversations — needs no LLM
+> call. The mechanism is what matters and it is available; the starter leaves the field
+> optional and documents tightening it as a per-deployment decision.
 
 This is the inheritance model asked for — just granular enough that each service carries
 only what it uses, and can **tighten** validation (`openai_api_key` is mandatory here and
@@ -197,23 +233,50 @@ hook.
 _settings: CoreSettings | None = None
 
 
-def configure(instance: CoreSettings) -> None:
+def configure(instance: CoreSettings) -> CoreSettings:
     """Called once by the service composition root, before anything else."""
     global _settings
     _settings = instance
+    return instance
 
 
 def get_settings() -> CoreSettings:
     if _settings is None:
         raise RuntimeError(
-            "Settings not configured. Call base.services.configuration.configure(...) "
-            "in your service entrypoint before importing base services."
+            "Settings not configured. Call "
+            "base.services.configuration.configure(YourSettings()) in your "
+            "service entrypoint before using any base service."
         )
     return _settings
+
+
+def is_configured() -> bool: ...
+def reset() -> None: ...        # for tests
 ```
 
-The 20 `settings.foo` sites in `base` become `get_settings().foo`. A deprecation shim can
-keep the old import working during the migration.
+Every `settings.foo` site in `base` becomes `get_settings().foo`. **No deprecation shim**
+was needed: the old module-level `settings` singleton is deleted outright, because every
+call site reads its fields inside a function body rather than at import time, so the
+migration is total and the failure mode for a missed one is an immediate `ImportError`
+rather than a silently stale object.
+
+The composition root registers settings before importing anything that reads them:
+
+```python
+# services/chat_api/chat_api/app.py
+from base.services.configuration import configure
+
+from chat_api.settings import settings
+
+configure(settings)
+
+from base.app import create_app  # noqa: E402 — must follow configure()
+...
+```
+
+`alembic/env.py` hands its settings to `base.tools.migrations.run_migrations`, which calls
+`configure()` the same way, so migrations and the running service resolve configuration
+identically.
 
 ### Mechanism 2 — Protocols (static)
 
@@ -221,14 +284,17 @@ Runtime lookup alone loses type safety. Each `base` subsystem declares the shape
 and type checkers verify structurally that a service's composed settings satisfy it:
 
 ```python
-# packages/base/base/services/sql/protocol.py
+# packages/base/base/services/configuration/protocols/sql.py — one file per mixin
 from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
 class SupportsSQLConfig(Protocol):
     sql_backend: str
+    sqlite_db_path: str
     db_pool_size: int
+    db_max_overflow: int
+    db_pool_timeout: int
     db_pool_recycle: int
     db_ssl_enabled: bool
 ```
@@ -237,7 +303,33 @@ class SupportsSQLConfig(Protocol):
 class SQLService:
     def __init__(self, config: SupportsSQLConfig | None = None) -> None:
         self._config = config or cast(SupportsSQLConfig, get_settings())
+        self._backend = SQLBackend(self._config.sql_backend)
+        self._client = SQLClient(self._backend, self._config, _key=self._backend.value)
 ```
+
+Shipped under `configuration/protocols/`, mirroring the mixin files one-for-one:
+`SupportsSQLConfig` / `SupportsPostgresConfig` / `SupportsMySQLConfig`,
+`SupportsLLMConfig` / `SupportsEmbeddingConfig`, `SupportsRedisConfig`,
+`SupportsQdrantConfig` / `SupportsAzureSearchConfig`, `SupportsTokenVerificationConfig` /
+`SupportsTokenIssuingConfig` / `SupportsIdpConfig`, and `SupportsServerConfig`. They are
+`runtime_checkable`, so conformance is assertable at runtime — `ChatApiSettings`
+satisfies the SQL, Postgres, LLM, Redis and server protocols and does **not** satisfy the
+Qdrant one.
+
+A mixin writes the fields; its protocol reads them. Keeping the pair in matching files is
+what stops two subsystems inventing different contracts under one name. Protocols that
+describe a collaborator rather than settings — `Capability`, `OutboxRow`, `SupportsClose`
+— stay next to the code that consumes them.
+
+`SupportsServerConfig` earns its place: the gunicorn worker count is read only on the
+non-`local` branch of `run_webserver`, so a service that forgot `ServerSettingsMixin` would
+pass every local test and then fail on container start. The protocol moves that to
+type-check time.
+
+> **`_key` matters here.** `SQLClient` is a `KeyedSingleton` whose default identity key is
+> `hash_args` over its constructor arguments. Passing a whole settings object would
+> serialize every field on every lookup, so the backend name is passed as an explicit
+> `_key` instead.
 
 A service that uses `SQLService` without `SQLSettingsMixin` now fails at type-check time
 with a clear message, rather than at runtime with `AttributeError`.
@@ -256,16 +348,19 @@ with a clear message, rather than at runtime with `AttributeError`.
 .env.shared                  # gitignored
 services/identity/.env.example
 services/identity/.env       # gitignored
-services/chat-api/.env.example
-services/chat-api/.env       # gitignored
+services/chat_api/.env.example
+services/chat_api/.env       # gitignored
 ```
 
-The existing root `.gitignore` already does the right thing and applies at every depth:
+The root `.gitignore` applies at every depth, but it needed one fix: `.env.*` swallows
+`.env.shared.example`, because `!.env.example` un-ignores only that exact name. Without the
+second negation the committed shared template is silently never added.
 
 ```
 .env
 .env.*
 !.env.example
+!.env.*.example
 ```
 
 ### Precedence
@@ -287,12 +382,12 @@ and process env supplies everything.
 
 ### Different keys per service, per deployment
 
-This falls out naturally. `chat-api` and `ingestion-worker` each read `OPENAI_API_KEY` from
+This falls out naturally. `chat_api` and `ingestion-worker` each read `OPENAI_API_KEY` from
 their **own** `.env`, so they can use different keys, different quotas, different models:
 
 ```ini
-# services/chat-api/.env
-SERVICE_NAME=chat-api
+# services/chat_api/.env
+SERVICE_NAME=chat_api
 OPENAI_API_KEY=sk-chat-...
 DEFAULT_MODEL=gpt-4o
 DB_NAME=chat_db
@@ -312,11 +407,11 @@ configuration, so the same separation holds with no extra mechanism.
 ### Compose: keep the files, don't flatten them
 
 ```yaml
-chat-api:
-  build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: chat-api } }
+chat_api:
+  build: { context: ., dockerfile: docker/service.Dockerfile, args: { SERVICE: chat_api } }
   env_file:
     - ./.env.shared
-    - ./services/chat-api/.env
+    - ./services/chat_api/.env
   environment:
     ENVIRONMENT: local
 ```
@@ -359,5 +454,7 @@ user request is worse than one that refuses to start.
   `openai_api_key` above).
 - Instantiate settings in the composition root **before** `create_app()` returns.
 - Surface Pydantic's validation error directly — it already names the offending field.
-- Add a `uv run --package chat-api python -m chat_api.settings --check` entrypoint for CI
+- Add a `uv run --package chat_api python -m chat_api.settings --check` entrypoint for CI
   and for a container `preStart` probe.
+
+Production API controls come from `ServerSettingsMixin`, so only a service with an HTTP surface carries them: `REQUEST_MAX_BYTES`, `TRUSTED_HOSTS`, `REQUEST_CONCURRENCY_LIMIT`, `REQUEST_RATE_LIMIT_PER_MINUTE`, and `AUTH_RATE_LIMIT_PER_MINUTE`. Each service sets its own values — a public chat API and an internal admin API do not share a host allowlist or a rate limit. Structured JSON logs are automatic outside `local`. `CAPTURE_RAW_TRACES` lives in `LLMSettingsMixin` and stays false by default, so normal telemetry does not capture prompts or responses.

@@ -1,261 +1,197 @@
 # Getting Started
 
-A friendly entry point for this opinionated GenAI starter. If you've just cloned the repo and want to be up and running in a few minutes — and then know where to look next — you're in the right place.
+You have cloned a workspace with three services in it. This walks you from
+that to a request crossing two of them and an event reaching a third, then
+shows you how to add your own.
 
-For a deep architecture reference, see [`README.md`](README.md).
-
----
-
-## What is this?
-
-**opinionated-genai-starter** is a batteries-included FastAPI template for building GenAI applications. Instead of wiring auth, chat, agents, and infra from scratch every time, you fork or copy this starter and get a consistent, production-shaped foundation: layered architecture, metaclass-based DI, multi-database support, and pre-wired integrations for the usual GenAI stack.
-
-It's aimed at:
-
-- **Builders** who want a working chat / RAG / agent app in hours, not weeks.
-- **Engineers** who want to swap one piece (say, the LLM provider, the SQL backend, or the vector DB) without rewiring the rest of the stack.
-- **Reviewers** who want to read predictable code: routers stay thin, services own logic, stores own persistence, and abstractions only exist where multiple backends actually exist.
+For what this is and why it is shaped this way, see [`README.md`](README.md).
 
 ---
 
-## What you get out of the box
-
-- **Auth** — JWT (RS256) with access + refresh tokens, Argon2 password hashing, optional Login-with-X (Google/Facebook/Microsoft/GitHub/Apple), optional enterprise IdP Bearer validation, and an `Authorization: Bearer …` dependency you can drop on any route.
-- **Conversations + chat history** — full conversation CRUD, canonical message storage with token counting, monotonic per-conversation sequencing, tool-call pair repair, visibility filtering.
-- **Agents framework** — `AbstractAgent` template-method base; concrete agents read / write a per-request `ExecutionContext` and pipe streamed output through `StreamIterator`.
-- **LLM via OpenAI SDK** — both the Chat Completions and the Responses API, sync + async, streaming + non-streaming, structured-output `parse_*` variants, automatic retries with jittered backoff and `Retry-After` support, Azure OpenAI content-filter detection on both pre-flight 400 responses and incomplete responses, and a typed `LLMError` hierarchy so callers never see raw SDK exceptions.
-- **SSE streaming** — `StreamIterator` integrates with `sse-starlette`; the conversation router shows the full pattern (background-task pump + EventSourceResponse).
-- **Vector search** — Qdrant, Azure AI Search, and MongoDB Atlas Search behind one `AbstractVectorSearchService` interface, plus idempotent Atlas Search index management.
-- **Multi-database SQL** — SQLite (default), MySQL, or PostgreSQL behind one `SQLService` selected by config.
-- **NoSQL** — MongoDB and Azure Cosmos DB behind one `AbstractNoSQLService`.
-- **Cache** — Redis (with pub/sub + distributed locks) or in-memory for tests.
-- **Azure** — Blob Storage, Cosmos DB, and `AzureKeyVaultService` for runtime vault access (settings themselves are env / `.env`; vault-as-settings-source is documented on `Settings` if you need it later).
-- **Debug tracing** — every LLM call is captured (prompt, response, tokens, duration, errors) into a per-request `DebugTrace`; the conversation router persists it onto the assistant message metadata so you can replay any failure later.
-- **Bilingual canned messages** — English / Arabic user-facing strings (`CannedMessages`) auto-mapped from the `LLMError` that triggered them, so end users see localized, safe messages instead of provider stack traces.
-- **Live log streaming** — `POST /logs` returns an SSE stream of the application's stdout/stderr (authenticated).
-
----
-
-## Prerequisites
+## What you need
 
 - **Python 3.12+**
-- **[uv](https://docs.astral.sh/uv/getting-started/installation/)**
-- **OpenSSL** for generating the JWT key pair
-- *(Optional)* **Docker** if you want to point at MySQL / Postgres / MongoDB / Redis containers instead of running with the bundled SQLite
+- **[uv](https://docs.astral.sh/uv/)** — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **Docker** — for Postgres and Redis
+- **openssl** — for the JWT key pair
 
 ---
 
-## Setup in 5 steps
+## 1. Install the workspace
 
 ```bash
-# 1. Install dependencies
-uv sync
+uv sync --all-packages
+```
 
-# 2. Generate the JWT RSA key pair
+One `.venv` at the root holds every member. Do not `uv sync --package <one>`
+on its own — it would uninstall the others. If you genuinely want a service in
+isolation, give it its own environment:
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venvs/chat_api uv sync --package chat_api
+```
+
+## 2. Start the infrastructure
+
+```bash
+docker compose -f deploy/docker-compose.infra.yml up -d
+```
+
+Postgres (with `chat_api_db` and `identity_db` already created), Redis, Mongo
+and Qdrant. Nothing else needs to be running yet.
+
+## 3. Make the signing keys
+
+`identity` signs tokens; everything else only verifies them. Both need a key,
+and they must be the same pair:
+
+```bash
 mkdir -p keys
 openssl genrsa -out keys/private.pem 2048
 openssl rsa -in keys/private.pem -pubout -out keys/public.pem
-
-# 3. Configure
-#    - Copy `.env.example` → `.env` and fill what you need. Defaults in Settings
-#      already work for SQLite + local JWT keys.
-#    - `mkdir -p database` (SQLite file path defaults to `database/app.db`).
-#    - Set LLM keys (e.g. `OPENAI_LLM_API_KEY` or Azure OpenAI vars) when you
-#      hit chat / embeddings endpoints.
-#    - Optional Login-with-X: set OAUTH_PROVIDERS=google,apple,… plus each
-#      provider’s client id/secret (Apple: TEAM_ID + KEY_ID + .p8). Optional
-#      enterprise IdP Bearer: IDP_RESOURCE_SERVER_ENABLED + IDP_ISSUER/AUDIENCE/JWKS.
-#      See README.md#authentication.
-
-# 4. Apply database migrations
-#    Creates the SQLite file (or updates the schema for MySQL / PostgreSQL).
-uv run alembic upgrade head
-
-# 5. Run the API
-uv run api
-# or, equivalently:
-# uv run uvicorn base.main:app --reload
 ```
 
-The API is now serving at `http://localhost:8000`.
+## 4. Configure and migrate each service
 
----
-
-## Open the docs
-
-- **Swagger UI** — http://localhost:8000/docs
-- **ReDoc** — http://localhost:8000/redoc
-- **Health check** — http://localhost:8000/health-check
-
-Swagger is the fastest way to explore the live API: every endpoint, schema, and authentication requirement is rendered automatically.
-
----
-
-## Try it end-to-end (curl)
-
-The following five commands take you from cold start to streaming a chat response. They assume the API is on `http://localhost:8000`. The auth endpoints accept JSON bodies with camelCase keys (Pydantic alias generation).
+Each service has its own `.env`, because each has its own database and its own
+reason to exist.
 
 ```bash
-# 1. Register a user
-curl -sS -X POST http://localhost:8000/api/7r/auth/register \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "email": "demo@example.com",
-    "password": "Demo!Pass123",
-    "firstName": "Demo",
-    "lastName": "User"
-  }'
-
-# 2. Log in and capture the access token
-ACCESS_TOKEN=$(curl -sS -X POST http://localhost:8000/api/7r/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email": "demo@example.com", "password": "Demo!Pass123"}' \
-  | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["accessToken"])')
-
-# 3. Create a conversation
-CONVERSATION_ID=$(curl -sS -X POST http://localhost:8000/api/7r/conversations \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"title": "Smoke test"}' \
-  | python -c 'import sys, json; print(json.load(sys.stdin)["data"]["conversationId"])')
-
-# 4. Send a non-streaming message
-curl -sS -X POST "http://localhost:8000/api/7r/conversations/$CONVERSATION_ID/messages" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "Say hi in one short sentence."}'
-
-# 5. List the messages so far
-curl -sS "http://localhost:8000/api/7r/conversations/$CONVERSATION_ID/messages" \
-  -H "Authorization: Bearer $ACCESS_TOKEN"
+for svc in identity chat_api; do
+  cp services/$svc/.env.example services/$svc/.env
+done
 ```
 
-For SSE streaming, set `?streaming=true` and use `curl -N` so it doesn't buffer:
+Then bring each schema up, from inside the service so its `.env` resolves:
 
 ```bash
-curl -N -X POST \
-  "http://localhost:8000/api/7r/conversations/$CONVERSATION_ID/messages?streaming=true" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"content": "Tell me a one-line joke about Python."}'
+cd services/identity && uv run alembic upgrade head && cd ../..
+cd services/chat_api && uv run alembic upgrade head && cd ../..
 ```
 
-You'll see `StreamStart` → a sequence of `StreamMessage` events with token deltas → `StreamEnd`.
+Two Alembic histories, two databases. Neither knows about the other's tables.
+
+## 5. Run them
+
+Three terminals, or use the compose stack below.
+
+```bash
+cd services/identity   && uv run python -c "from identity.app import start; start()"
+cd services/chat_api   && uv run python -c "from chat_api.app import start; start()"
+cd services/ingestion_worker && uv run python -c "from ingestion_worker.worker import start; start()"
+```
+
+Or all of it, built and wired, in one command:
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build
+```
 
 ---
 
-## Common tasks
+## See the boundary work
 
-### Add a new router
+Register and log in against **identity**:
 
-Drop a file in `base/routers/`, define a `router` named export, and the auto-discovery picks it up — no manual wiring.
+```bash
+curl -s -X POST http://localhost:8003/api/identity/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"Str0ng!Passw0rd","firstName":"You"}'
 
-```python
-# base/routers/items.py
-from fastapi import APIRouter
-
-from base.models.orm.user import UserDTO
-from base.services.auth.dependencies import validate_user_dependency
-
-router = APIRouter(prefix="/items", tags=["Items"])
-
-
-@router.get("")
-async def list_items(current_user: UserDTO = validate_user_dependency) -> list[str]:
-    return ["one", "two", "three"]
+TOKEN=$(curl -s -X POST http://localhost:8003/api/identity/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com","password":"Str0ng!Passw0rd"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["accessToken"])')
 ```
 
-It's now mounted at `/api/7r/items` after the next reload.
+Now use that token against **chat_api**, a different service with a different
+database:
 
-### Register a prompt
-
-Drop a file in `base/services/prompt/templates/`, define a function returning a `Prompt`, and decorate it with `@register_prompt`. The `PromptLoader` auto-imports every module in that directory at startup.
-
-A typical chat-aware template wires three items together: a system instruction, a `MessagesPlaceholder` for prior turns, and a structured user message:
-
-```python
-# base/services/prompt/templates/greeter.py
-from base.models.view_models.prompt import (
-    MessagesPlaceholder,
-    Prompt,
-    PromptTemplate,
-    SystemMessageTemplate,
-    UserMessageTemplate,
-)
-from base.services.prompt.decorator import register_prompt
-
-GREETER_SYSTEM_PROMPT = """You are a friendly multilingual greeter. \
-Reply in {language}."""
-
-USER_INPUT_TEMPLATE = """{user_query}"""
-
-
-@register_prompt
-def greeter() -> Prompt:
-    return Prompt(
-        key="greeter",
-        name="Greeter",
-        description="Greet the user, optionally in context of prior turns.",
-        template=PromptTemplate.from_messages([
-            SystemMessageTemplate(content=GREETER_SYSTEM_PROMPT),
-            MessagesPlaceholder(variable_name="history"),
-            UserMessageTemplate(content=USER_INPUT_TEMPLATE),
-        ]),
-    )
+```bash
+curl -s -X POST http://localhost:8001/api/7r/conversations \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"First"}'
 ```
 
-Render it with both the splice-in history and the structured variables:
+It works because `chat_api` verifies the signature with the public key. It
+never looks up a user, because it has no user table to look in:
 
-```python
-rendered = PromptService().render(
-    "greeter",
-    history=stored_messages,  # list[StoredMessage], or [] if you don't have any
-    user_query="Hello!",
-    language="Arabic",
-)
+```bash
+docker exec -it genai-infra-postgres-1 psql -U local -d chat_api_db -c '\dt'
 ```
 
-`MessagesPlaceholder` defaults to `optional=True`, so passing `history=[]` (or a missing `history` key) is fine. It rejects `system` / `developer` roles inside the placeholder — those are instructions, not conversation.
+No `user`. That is the whole point.
 
-### Write an agent
+And `chat_api` has no auth routes at all — token issuing belongs to identity:
 
-Subclass `AbstractAgent`, set `PROMPT_KEY`, and implement `_execute()`. `arun()` handles the LLM error → canned message → `FlowAbortError` mapping for you. Use the built-in `_aget_history()` helper to feed prior turns into the prompt's `MessagesPlaceholder` — it slices off the trailing `USER` message (which is the current query, already substituted via `{user_query}`):
-
-```python
-# base/services/agents/greeter.py
-from typing import ClassVar
-
-from base.services.agents import AbstractAgent
-from base.services.llm import OpenAIMessageAdapter
-
-
-class GreeterAgent(AbstractAgent):
-    PROMPT_KEY: ClassVar[str] = "greeter"
-    MAX_OUTPUT_TOKENS: ClassVar[int] = 200
-    HISTORY_LIMIT: ClassVar[int | None] = 20
-
-    async def _execute(self) -> None:
-        ctx = self._execution_context
-        rendered = self._prompt_service.render(
-            self.PROMPT_KEY,
-            history=await self._aget_history(),
-            user_query=ctx.flow_variables.user_query,
-            language=ctx.flow_variables.locale.value,
-        )
-        result = await self._aresponses(
-            OpenAIMessageAdapter.to_responses_input(prompt=rendered),
-        )
-        ctx.flow_variables.final_answer = (result.content or "").strip()
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8001/api/7r/auth/login
+# 404
 ```
 
-Call it from a router with `await GreeterAgent().arun()` after populating the `ExecutionContext`.
+---
+
+## See an event cross
+
+`ingestion_worker` has no HTTP surface. It consumes what other services
+publish, through a versioned contract rather than a shared table:
+
+```python
+from contracts.events import Event
+from contracts.v1 import identity
+
+await broker.apublish(Event.of(
+    identity.USER_REGISTERED,
+    {"user_id": str(user.id), "email": user.email},
+    producer="identity",
+))
+```
+
+The worker's log shows it arriving with the correlation id of the request that
+caused it, so one logical operation stays traceable across three processes.
+
+Redis Streams delivers at least once, so handlers must be idempotent — dedupe
+on `event.meta.event_id`.
+
+---
+
+## Add your own service
+
+```bash
+uv run python tools/new_service.py --name billing --storage postgres --http
+uv lock
+```
+
+That writes everything: settings composed from the mixins that storage choice
+implies, an app factory, Alembic wiring, an `.env.example`. Then check you
+have not broken a boundary:
+
+```bash
+uv run python tools/boundary_lint.py
+```
+
+If `billing` needs to know about a user, it holds the id and asks identity, or
+listens for an event. It does not add a foreign key — the lint will tell you
+so if you try.
 
 ---
 
 ## Where to go next
 
-- [`README.md`](README.md) — full architecture reference: DI metaclass system, every service, store layer, models, error handling, debug trace, etc.
-- [`README.md#authentication`](README.md#authentication) — password auth, Login-with-X (incl. Apple), and enterprise IdP resource-server mode.
-- [`README.md#api-endpoints`](README.md#api-endpoints) — endpoint matrix for auth (incl. OAuth), users, and conversations.
-- [`README.md#agents-abstractagent`](README.md#agents-abstractagent) — the agent template-method pattern in detail.
-- [`README.md#llm-openai`](README.md#llm-openai) — both API surfaces, the `LLMError` hierarchy, retry / content-filter behaviour, and `OpenAIMessageAdapter`.
+- [`README.md`](README.md) — the shape, the rules, and what the shared base
+  gives you.
+- [`docs/architecture/`](docs/architecture/) — why it is this way: the library
+  boundary, data ownership, configuration composition, service contracts.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — the conventions a review will ask
+  about, and the boundaries CI enforces.
+- `tools/port_from_starter.py` — bringing a feature across from the single-app
+  [opinionated-genai-starter](https://github.com/amrraedamr/opinionated-genai-starter).
+
+## Reliability and production
+
+For the real event path set `BROKER=redis` in all three services and give each service its own database. Apply migrations for `chat_api`, `identity`, and `ingestion_worker` before starting replicas. API writes commit an outbox row atomically; dispatchers publish after commit. The worker's durable inbox makes handlers idempotent.
+
+`chat_api` must receive only `AUTH_PUBLIC_KEY_PATH`. Only `identity` receives `AUTH_PRIVATE_KEY_PATH`. Configure `TRUSTED_HOSTS`, `REQUEST_MAX_BYTES`, `REQUEST_CONCURRENCY_LIMIT`, `REQUEST_RATE_LIMIT_PER_MINUTE`, and `AUTH_RATE_LIMIT_PER_MINUTE`. These controls are intentionally process-local; enforce global limits and TLS at a gateway/ingress.
+
+Docker Compose is a local developer stack, not a production topology. `docs/architecture/06-build-and-deploy.md` lists what a real deployment has to satisfy.

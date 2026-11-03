@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  workspace:
+    name: Workspace checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.18"
+      - run: uv lock --check
+      - run: uv sync --all-packages
+      - run: uv run ruff check .
+      - name: Architectural boundaries
+        run: uv run python tools/boundary_lint.py
+
+  detect:
+    name: Affected services
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.affected.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.18"
+      - id: affected
+        run: |
+          BASE="origin/${{ github.base_ref || 'main' }}"
+          echo "services=$(uv run python tools/affected.py --base "$BASE")" >> "$GITHUB_OUTPUT"
+
+  service:
+    name: ${{ matrix.service }}
+    needs: detect
+    if: needs.detect.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.detect.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.18"
+      - name: Install only this service
+        run: uv sync --package ${{ matrix.service }}
+        env:
+          UV_PROJECT_ENVIRONMENT: .venvs/${{ matrix.service }}
+      - name: Build image
+        run: |
+          docker build -f docker/service.Dockerfile \
+            --build-arg SERVICE=${{ matrix.service }} \
+            -t ${{ matrix.service }}:${{ github.sha }} .
+      - name: No secrets in image
+        run: |
+          LEAKED=$(docker run --rm --entrypoint sh ${{ matrix.service }}:${{ github.sha }} -c \
+            'find /app -path /app/.venv -prune -o \( -name ".env" -o -name "*.pem" -o -name "*.key" \) -not -name "*.example" -print 2>/dev/null' || true)
+          if [ -n "$LEAKED" ]; then echo "secret material in image:"; echo "$LEAKED"; exit 1; fi

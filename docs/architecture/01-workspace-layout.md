@@ -63,7 +63,7 @@ opinionated-genai-starter/
 │
 ├── services/                      # deployable units — each becomes an image
 │   ├── identity/                  # owns users, login, OAuth, token issuing
-│   ├── chat-api/                  # today's routers; owns conversations
+│   ├── chat_api/                  # today's routers; owns conversations
 │   └── ingestion-worker/          # no HTTP server; broker consumer
 │
 └── tools/
@@ -77,7 +77,7 @@ Every service is the same shape. This uniformity is what makes scaffolding and a
 Dockerfile possible.
 
 ```
-services/chat-api/
+services/chat_api/
 ├── pyproject.toml          # name, its own dependency subset, base extras
 ├── .env.example            # documented; committed
 ├── .env                    # real values; gitignored (already covered by .gitignore)
@@ -100,6 +100,24 @@ services/chat-api/
 > A service that uses MongoDB has no `alembic*` and no `orm/` — it has `documents/`
 > instead. A worker service has no `routers/`. The template omits what is not needed.
 
+#### Why the name appears twice
+
+`services/chat_api/chat_api/` looks redundant but is not: the outer directory is the
+**project** (a deployable unit — pyproject, Dockerfile, migrations, `.env`) and the inner
+one is the **import package**. They are different things that happen to share a name, which
+is the standard Python flat layout — `requests/requests/`, `flask/flask/`,
+`django/django/`.
+
+Two alternatives were tested and rejected:
+
+| Alternative | Why not |
+| --- | --- |
+| Project directory *is* the package (`services/chat_api/app.py` importable as `chat_api.app`) | uv's build backend rejects it — *"Module root must be inside the project"*. Achievable only by switching that service to hatchling with a hand-maintained `force-include` manifest, which fails **silently**: add a `stores/` package, forget the manifest, and local dev still works while the container lacks the module |
+| Inner package named for the domain (`services/chat_api/chat/`) | Works, but every service must invent and remember a second distinct name, and top-level package names must stay globally unique across the workspace or they collide in a shared environment |
+
+Use `src/` layout (`services/chat_api/src/chat_api/`) instead if you prefer the stricter
+convention; it adds nesting rather than removing it, so this starter keeps the flat form.
+
 ---
 
 ## Workspace wiring
@@ -121,8 +139,6 @@ dev = [
     "pre-commit>=2.16.0",
     "pre-commit-hooks>=4.1.0",
     "ruff>=0.15.4,<0.16",
-    "pytest>=8",
-    "pytest-asyncio>=0.24",
 ]
 
 [tool.ruff]
@@ -136,9 +152,9 @@ the quiet benefits of a workspace.
 ### A service referencing `base`
 
 ```toml
-# services/chat-api/pyproject.toml
+# services/chat_api/pyproject.toml
 [project]
-name = "chat-api"
+name = "chat_api"
 version = "0.1.0"
 requires-python = ">=3.12,<3.15"
 dependencies = [
@@ -171,15 +187,45 @@ checkout (editable during development) instead of from PyPI.
 | Task | Command |
 | --- | --- |
 | Install everything | `uv sync --all-packages` |
-| Install one service only | `uv sync --package chat-api` |
-| Run a service | `uv run --package chat-api serve` |
-| Add a dep to one service | `uv add --package chat-api some-lib` |
+| Install one service only | `UV_PROJECT_ENVIRONMENT=.venvs/chat_api uv sync --package chat_api` |
+| Run a service | `UV_PROJECT_ENVIRONMENT=.venvs/chat_api uv run --package chat_api serve` |
+| Add a dep to one service | `uv add --package chat_api some-lib` |
 | Add a dep to the library | `uv add --package base --optional llm some-lib` |
-| Run one service's migrations | `cd services/chat-api && uv run alembic upgrade head` |
+| Run one service's migrations | `cd services/chat_api && uv run alembic upgrade head` |
 | Lint everything | `uv run ruff check .` |
 
-`uv sync --package chat-api` installs **only** that service's dependency closure. This is
-the mechanism behind small per-service images in [doc 06](06-build-and-deploy.md).
+### A workspace has one `.venv` — use `UV_PROJECT_ENVIRONMENT` for per-service installs
+
+This trips people up, so it is worth stating plainly: **a uv workspace resolves to a single
+shared environment.** `uv sync --package chat_api` does not add `chat_api` to what is
+already installed — it makes the environment contain *exactly* `chat_api`'s closure, which
+**uninstalls** any other service that was there. Two services therefore cannot run locally
+out of the same environment.
+
+Point each service at its own environment directory instead:
+
+```bash
+UV_PROJECT_ENVIRONMENT=.venvs/chat_api uv sync --package chat_api
+UV_PROJECT_ENVIRONMENT=.venvs/identity uv sync --package identity
+```
+
+The services now coexist, each with only its own dependency closure, still resolved from
+the single root `uv.lock`. Verified end to end: a `base[redis]` consumer imports `redis`
+and fails on `qdrant_client`; a `base[vectors]` consumer is the exact inverse; both share
+the identical `httpx` build. That is the extras design in [doc 02](02-library-boundary.md)
+working as intended.
+
+`.venvs/` is gitignored. The default `.venv` stays useful for whole-workspace work
+(`uv sync --all-packages`, linting, repo-wide tooling).
+
+> **Task-runner note for [doc 06](06-build-and-deploy.md):** whatever `make dev s=<svc>`
+> ends up being must export `UV_PROJECT_ENVIRONMENT=.venvs/$(s)` so the isolated
+> environment is the default path and nobody has to remember this.
+
+`uv sync --package chat_api` installs **only** that service's dependency closure. In a
+container that single-closure behaviour is exactly what is wanted — the image has one
+service in it — which is the mechanism behind small per-service images in
+[doc 06](06-build-and-deploy.md).
 
 ---
 
