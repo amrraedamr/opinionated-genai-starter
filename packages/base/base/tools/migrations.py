@@ -19,7 +19,7 @@ from alembic import context
 from base.clients.sql.client import SQLClient
 from base.models.definitions.database import SQLBackend
 from base.services.configuration import CoreSettings, configure
-from base.services.sql.protocol import SupportsSQLConfig
+from base.services.configuration.protocols import SupportsSQLConfig
 
 
 def _client(settings: SupportsSQLConfig) -> SQLClient:

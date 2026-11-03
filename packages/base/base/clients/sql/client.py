@@ -24,7 +24,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.models.definitions.database import SQLBackend
 from base.services.common.meta import KeyedSingleton
 from base.services.configuration import get_settings
-from base.services.sql.protocol import SupportsSQLConfig
+from base.services.configuration.protocols import SupportsSQLConfig
 
 _BACKEND_EXTRAS: dict[SQLBackend, tuple[str, str]] = {
     SQLBackend.SQLITE: ("sqlite", "aiosqlite"),

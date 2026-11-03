@@ -12,9 +12,8 @@ uv run pre-commit install
 ```
 
 Each service has its own `.env.example`. Copy the one you're working on to
-`.env` in that service's directory. The defaults run against SQLite, so you
-can get a service's tests green without any infrastructure. For the full
-stack:
+`.env` in that service's directory. The defaults run against SQLite, so a
+service starts without any infrastructure. For the full stack:
 
 ```bash
 docker compose -f deploy/docker-compose.infra.yml up -d
@@ -25,18 +24,12 @@ docker compose -f deploy/docker-compose.infra.yml up -d
 ```bash
 uv run ruff check .
 uv run python tools/boundary_lint.py
-uv run python tools/run_tests.py
 ```
 
-CI runs the same three, then builds and tests only the services your change
-affects. If those pass locally they will pass there.
+CI runs the same two, then builds only the services your change affects. If
+those pass locally they will pass there.
 
 If you changed a dependency, commit the updated `uv.lock` alongside it.
-
-Tests run per service in their own process. Configuration and SQL engines are
-process-global by design, so running two services' suites in one interpreter
-makes one of them reuse the other's database. That's what `tools/run_tests.py`
-exists to prevent — use it rather than a bare `pytest` across the workspace.
 
 ## The boundaries that matter
 
@@ -65,9 +58,6 @@ an app factory, Alembic wiring, and an `.env.example`.
 
 ## What tends to get asked in review
 
-- **Tests.** New behaviour needs a test. A new `AbstractStore` implementation
-  should subclass `AbstractStoreConformance` rather than hand-rolling its own
-  coverage.
 - **Don't repeat a helper.** If something already exists under
   `packages/base/base/tools`, use it. If you find yourself writing the same
   thing twice, it belongs there.

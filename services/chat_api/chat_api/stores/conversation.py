@@ -5,14 +5,19 @@ from sqlalchemy import select
 
 from base.models.view_models.database import FilteredPaginationParams, PaginatedResult
 from base.services.common.meta import SingletonABC
+from base.services.messaging import add_event
 from base.services.store.sql import SQLStore
+from base.tools import correlation
 from base.tools.database import SQLResultFormats
 from chat_api.models.orm.chat_history_message import ChatHistoryMessageDTO
 from chat_api.models.orm.conversation import ConversationDTO
+from chat_api.models.orm.outbox import OutboxEventDTO
 from chat_api.models.view_models.conversation import (
     CreateConversationRequest,
     EditConversationRequest,
 )
+from contracts.events import Event
+from contracts.v1.chat import CONVERSATION_CREATED, ConversationCreated
 
 
 class ConversationStore(SQLStore[ConversationDTO], metaclass=SingletonABC):
@@ -170,9 +175,23 @@ class ConversationStore(SQLStore[ConversationDTO], metaclass=SingletonABC):
     async def acreate_for_user(
         self, user_id: UUID, request: CreateConversationRequest
     ) -> ConversationDTO:
-        return await self._sql_service.aupsert_row(
-            self._build_conversation_entity(user_id, request)
-        )
+        entity = self._build_conversation_entity(user_id, request)
+        async with self._sql_service.atransaction() as session:
+            session.add(entity)
+            await session.flush()
+            event = Event.of(
+                CONVERSATION_CREATED,
+                ConversationCreated(
+                    conversation_id=entity.id,
+                    user_id=user_id,
+                    created_at=entity.created_at,
+                ),
+                producer="chat_api",
+                correlation_id=correlation.current(),
+            )
+            add_event(session, OutboxEventDTO, event)
+            await session.flush()
+        return entity
 
     # Edit
 

@@ -1,3 +1,4 @@
+# LOCAL DEVELOPMENT ONLY. See docs/architecture/06-build-and-deploy.md for production.
 # Full local stack: infrastructure plus every service.
 #
 #   docker compose -f deploy/docker-compose.infra.yml -f deploy/docker-compose.yml up --build
@@ -34,10 +35,9 @@ services:
       PG_PASSWORD: local
       DB_SSL_ENABLED: "false"
       REDIS_URL: redis://redis:6379/0
-      AUTH_PRIVATE_KEY_PATH: /keys/private.pem
       AUTH_PUBLIC_KEY_PATH: /keys/public.pem
     volumes:
-      - ../keys:/keys:ro
+      - ../keys/public.pem:/keys/public.pem:ro
     ports:
       - "8001:8000"
     depends_on:
@@ -98,11 +98,21 @@ services:
     environment:
       ENVIRONMENT: local
       SERVICE_NAME: ingestion_worker
+      RUN_MIGRATIONS: "1"
       BROKER: redis
       REDIS_URL: redis://redis:6379/2
+      SQL_BACKEND: postgresql
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: ingestion_worker_db
+      PG_USERNAME: local
+      PG_PASSWORD: local
+      DB_SSL_ENABLED: "false"
     # No HTTP surface, so the image's /livez probe does not apply.
     healthcheck:
       disable: true
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from base.tools.errors import MissingExtraError
 
@@ -14,6 +14,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
+from base.services.configuration.protocols import SupportsQdrantConfig
 
 
 class QdrantClient(metaclass=Singleton):
@@ -23,11 +24,12 @@ class QdrantClient(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        self._url: str = get_settings().qdrant_url
-        self._api_key: str = get_settings().qdrant_api_key
-        self._grpc_port: int = get_settings().qdrant_grpc_port
-        self._prefer_grpc: bool = get_settings().qdrant_prefer_grpc
-        self._timeout: int = get_settings().qdrant_timeout
+        config = cast(SupportsQdrantConfig, get_settings())
+        self._url: str = config.qdrant_url
+        self._api_key: str = config.qdrant_api_key
+        self._grpc_port: int = config.qdrant_grpc_port
+        self._prefer_grpc: bool = config.qdrant_prefer_grpc
+        self._timeout: int = config.qdrant_timeout
 
         self._sync_client: QdrantSyncClient | None = None
         self._async_client: QdrantAsyncClient | None = None

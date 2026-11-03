@@ -25,9 +25,15 @@ class TeeStream:
         self._flush_task = asyncio.create_task(self._flush_loop())
 
     async def _flush_loop(self):
+        """One failed flush must not end flushing for the life of the process."""
         while True:
             await asyncio.sleep(self._flush_interval)
-            await self._flush_buffer()
+            try:
+                await self._flush_buffer()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logging.exception("Log flush failed; continuing")
 
     async def _flush_buffer(self):
         if not self._buffer:

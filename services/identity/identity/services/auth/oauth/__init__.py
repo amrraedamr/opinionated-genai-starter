@@ -118,7 +118,7 @@ class OAuthService(metaclass=Singleton):
             existing = await self._user_store._aget(profile.email, column_name="email")
 
         if existing is None:
-            existing = await self._user_store.aadd(
+            existing = await self._user_store.aregister(
                 UserDTO(
                     email=profile.email,
                     password_hash=None,

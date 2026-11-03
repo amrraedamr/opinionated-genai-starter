@@ -28,7 +28,7 @@ packages/
 services/
   identity/      users, registration, OAuth, token issuing      → identity_db
   chat_api/      conversations, messages, agents                → chat_api_db
-  ingestion_worker/  consumes events, no HTTP surface           → no database
+  ingestion_worker/  consumes events, durable inbox               → worker_db
 tools/           scaffolder, boundary lint, affected detection, test runner
 deploy/          compose stacks
 docker/          one parameterised image for every service
@@ -155,18 +155,21 @@ Everything in the single-app starter, available to every service:
 Not by reaching into each other's data. Through versioned events on a broker:
 
 ```python
-await broker.apublish(Event.of(
+# Inside the owning service transaction:
+from base.services.messaging import add_event
+
+session.add(user)
+add_event(session, OutboxEventDTO, Event.of(
     identity.USER_REGISTERED,
-    {"user_id": str(user.id), "email": user.email},
+    UserRegistered(user_id=user.id, email=user.email, registered_at=user.created_at),
     producer="identity",
 ))
 ```
 
 `packages/contracts` holds the payload every side agrees on, versioned so a
 producer can move without breaking a consumer. The broker is an abstraction
-with an in-memory implementation for tests and Redis Streams for real use,
-with consumer groups and at-least-once delivery — so handlers must be
-idempotent, and dedupe on `event.meta.event_id`.
+with an in-memory implementation for local development and Redis Streams for
+real use, with consumer groups and at-least-once delivery. The worker persists inbox claims keyed by `event.meta.event_id`, so idempotency survives process restarts.
 
 A correlation id is adopted from `X-Correlation-ID` or a W3C `traceparent`,
 echoed on the response, and carried through the broker onto the worker, so one
@@ -179,13 +182,7 @@ logical request is traceable across the services it touches.
 ```bash
 uv run ruff check .
 uv run python tools/boundary_lint.py
-uv run python tools/run_tests.py
 ```
-
-Tests run **one service per process**. Configuration and SQL engines are
-process-global by design, so running two services' suites in one interpreter
-makes one reuse the other's database. That is what `run_tests.py` prevents —
-use it rather than a bare `pytest` across the workspace.
 
 `CONTRIBUTING.md` covers the rest.
 
@@ -218,3 +215,13 @@ and deploy, and the migration plan that got here.
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+## Production hardening
+
+Registration and conversation creation write their domain row and an outbox row in the same service-owned transaction. Per-service dispatchers publish committed rows to Redis Streams and persist retry state; request handlers never publish directly. The ingestion worker owns a small SQL inbox that commits claims and terminal handler state, so broker redelivery is idempotent across restarts. Redis consumers reclaim idle pending entries, back off bounded retries, and move exhausted deliveries to `<topic>.dlq` with failure metadata.
+
+```bash
+uv run broker-ops replay-dlq identity.user.registered --limit 100
+```
+
+Non-local logging is structured JSON with correlation IDs and redaction. Prompt/response content is not traced or persisted in normal chat history by default. Compose is local only; see `docs/architecture/06-build-and-deploy.md` for what a production deployment has to satisfy. In-process limits are per replica; use an external gateway and Redis-backed/global controls for fleet-wide enforcement.

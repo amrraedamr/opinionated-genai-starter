@@ -80,7 +80,7 @@ One mixin per optional subsystem, mirroring the dependency extras in
 [doc 02](02-library-boundary.md). A service includes a mixin only if it uses that subsystem.
 
 ```python
-# packages/base/base/services/configuration/mixins.py
+# packages/base/base/services/configuration/mixins/ — one file per mixin
 from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -135,8 +135,8 @@ The full set, each lifting one group from today's file **verbatim**:
 `LLMSettingsMixin`, `EmbeddingSettingsMixin`, `TokenVerificationMixin`,
 `TokenIssuingMixin`, `OAuthSettingsMixin`, `IdpResourceServerMixin`,
 `MongoSettingsMixin`, `CosmosSettingsMixin`, `BlobSettingsMixin`,
-`KeyVaultSettingsMixin`, `VectorSettingsMixin`, `AzureSearchSettingsMixin`,
-`PromptSettingsMixin`.
+`KeyVaultSettingsMixin`, `QdrantSettingsMixin`, `AzureSearchSettingsMixin`,
+
 
 > **Field names are unchanged, deliberately.** Earlier drafts of this document sketched
 > generic names (`db_host`, `db_name`, `openai_api_key`, `default_model`). Renaming would
@@ -160,7 +160,6 @@ from base.services.configuration.mixins import (
     LLMSettingsMixin,
     OAuthSettingsMixin,
     PostgresSettingsMixin,
-    PromptSettingsMixin,
     RedisSettingsMixin,
     SQLSettingsMixin,
     ServerSettingsMixin,
@@ -180,7 +179,6 @@ class ChatApiSettings(
     TokenIssuingMixin,
     OAuthSettingsMixin,
     IdpResourceServerMixin,
-    PromptSettingsMixin,
 ):
     model_config = SettingsConfigDict(
         env_file=("../../.env.shared", ".env", ".env.local"),
@@ -286,7 +284,7 @@ Runtime lookup alone loses type safety. Each `base` subsystem declares the shape
 and type checkers verify structurally that a service's composed settings satisfy it:
 
 ```python
-# packages/base/base/services/sql/protocol.py
+# packages/base/base/services/configuration/protocols/sql.py — one file per mixin
 from typing import Protocol, runtime_checkable
 
 
@@ -309,12 +307,19 @@ class SQLService:
         self._client = SQLClient(self._backend, self._config, _key=self._backend.value)
 ```
 
-Shipped: `SupportsSQLConfig` / `SupportsPostgresConfig` / `SupportsMySQLConfig`,
-`SupportsLLMConfig` / `SupportsEmbeddingConfig`, `SupportsCacheConfig`,
-`SupportsVectorConfig` / `SupportsAzureSearchConfig`, and `SupportsServerConfig`. They are
-`runtime_checkable`, so the conformance is also assertable in a test — `ChatApiSettings`
-satisfies the SQL, Postgres, LLM, cache and server protocols and does **not** satisfy the
-vector one.
+Shipped under `configuration/protocols/`, mirroring the mixin files one-for-one:
+`SupportsSQLConfig` / `SupportsPostgresConfig` / `SupportsMySQLConfig`,
+`SupportsLLMConfig` / `SupportsEmbeddingConfig`, `SupportsRedisConfig`,
+`SupportsQdrantConfig` / `SupportsAzureSearchConfig`, `SupportsTokenVerificationConfig` /
+`SupportsTokenIssuingConfig` / `SupportsIdpConfig`, and `SupportsServerConfig`. They are
+`runtime_checkable`, so conformance is assertable at runtime — `ChatApiSettings`
+satisfies the SQL, Postgres, LLM, Redis and server protocols and does **not** satisfy the
+Qdrant one.
+
+A mixin writes the fields; its protocol reads them. Keeping the pair in matching files is
+what stops two subsystems inventing different contracts under one name. Protocols that
+describe a collaborator rather than settings — `Capability`, `OutboxRow`, `SupportsClose`
+— stay next to the code that consumes them.
 
 `SupportsServerConfig` earns its place: the gunicorn worker count is read only on the
 non-`local` branch of `run_webserver`, so a service that forgot `ServerSettingsMixin` would
@@ -451,3 +456,5 @@ user request is worse than one that refuses to start.
 - Surface Pydantic's validation error directly — it already names the offending field.
 - Add a `uv run --package chat_api python -m chat_api.settings --check` entrypoint for CI
   and for a container `preStart` probe.
+
+Production API controls come from `ServerSettingsMixin`, so only a service with an HTTP surface carries them: `REQUEST_MAX_BYTES`, `TRUSTED_HOSTS`, `REQUEST_CONCURRENCY_LIMIT`, `REQUEST_RATE_LIMIT_PER_MINUTE`, and `AUTH_RATE_LIMIT_PER_MINUTE`. Each service sets its own values — a public chat API and an internal admin API do not share a host allowlist or a rate limit. Structured JSON logs are automatic outside `local`. `CAPTURE_RAW_TRACES` lives in `LLMSettingsMixin` and stays false by default, so normal telemetry does not capture prompts or responses.

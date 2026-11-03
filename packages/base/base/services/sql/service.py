@@ -14,8 +14,8 @@ from base.clients.sql.client import SQLClient
 from base.models.definitions.database import SQLBackend
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
+from base.services.configuration.protocols import SupportsSQLConfig
 from base.services.sql import AbstractSQLService
-from base.services.sql.protocol import SupportsSQLConfig
 
 
 class SQLService(AbstractSQLService, metaclass=SingletonABC):

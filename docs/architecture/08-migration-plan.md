@@ -125,8 +125,6 @@ process env proven by test; a deliberately missing extra produces the friendly e
 - `deploy/docker-compose.yml` + `docker-compose.infra.yml` with per-database seeding.
 - `tools/affected.py` + CI matrix; boundary lint; `uv lock --check`.
 - `tools/new_service.py` (copier template).
-- Minimal test infrastructure: `pytest`, the `AbstractStore` conformance suite, one API
-  test for `chat_api`.
 
 **Risk:** low — additive. **Verify:** `docker compose up` brings up the stack healthy;
 scaffolder output builds and boots unmodified.
@@ -223,12 +221,10 @@ docker compose -f deploy/docker-compose.yml up --build
 
 | Target | Command |
 | --- | --- |
-| All suites, each service in its own process | `uv run python tools/run_tests.py` |
 | Architectural boundaries | `uv run python tools/boundary_lint.py` |
 | Services a change affects | `uv run python tools/affected.py --format table` |
 | A new service | `uv run python tools/new_service.py --name billing --storage postgres --http` |
 | Port a starter commit | `uv run python tools/port_from_starter.py --check <sha>` |
 
 One process serves one service: settings and the SQL engine are process-global,
-so `tools/run_tests.py` gives each service its own process rather than
-collecting them into one pytest run.
+so anything that drives more than one service must give each its own process.

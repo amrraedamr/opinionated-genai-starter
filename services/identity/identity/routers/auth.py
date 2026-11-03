@@ -34,7 +34,7 @@ async def register(
         first_name=request.first_name,
         last_name=request.last_name,
     )
-    created = await UserStore().aadd(user)
+    created = await UserStore().aregister(user)
     return BaseResponse(data=CreateUserResponse(user_id=created.id))
 
 

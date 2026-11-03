@@ -4,6 +4,7 @@ from pydantic_settings import SettingsConfigDict
 
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
+    BrokerSettingsMixin,
     IdpResourceServerMixin,
     OAuthSettingsMixin,
     PostgresSettingsMixin,
@@ -20,6 +21,7 @@ class IdentitySettings(
     SQLSettingsMixin,
     PostgresSettingsMixin,
     RedisSettingsMixin,
+    BrokerSettingsMixin,
     TokenIssuingMixin,
     OAuthSettingsMixin,
     IdpResourceServerMixin,

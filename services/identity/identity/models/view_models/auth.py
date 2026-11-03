@@ -1,4 +1,4 @@
-from pydantic import EmailStr, field_validator
+from pydantic import EmailStr, Field, field_validator
 
 from base.models.view_models import BaseModel
 from base.services.auth import AccessToken, RefreshToken, TokenPair
@@ -31,7 +31,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=256)
 
 
 class LoginResponse(BaseModel):
@@ -40,7 +40,7 @@ class LoginResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: RefreshToken
+    refresh_token: RefreshToken = Field(max_length=8192)
 
 
 class RefreshResponse(BaseModel):
@@ -49,7 +49,7 @@ class RefreshResponse(BaseModel):
 
 
 class OAuthExchangeRequest(BaseModel):
-    code: str
+    code: str = Field(min_length=1, max_length=2048)
 
 
 class OAuthProvidersResponse(BaseModel):

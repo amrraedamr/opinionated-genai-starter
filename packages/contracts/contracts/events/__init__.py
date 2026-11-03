@@ -1,5 +1,13 @@
-"""Event envelopes published to the broker."""
+from contracts.events.envelope import (
+    CURRENT_EVENT_VERSION,
+    SUPPORTED_EVENT_VERSIONS,
+    Event,
+    EventMeta,
+)
 
-from contracts.events.envelope import Event, EventMeta
-
-__all__ = ["Event", "EventMeta"]
+__all__ = [
+    "CURRENT_EVENT_VERSION",
+    "SUPPORTED_EVENT_VERSIONS",
+    "Event",
+    "EventMeta",
+]

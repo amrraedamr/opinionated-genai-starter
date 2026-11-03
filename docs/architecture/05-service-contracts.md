@@ -305,3 +305,9 @@ IDENTITY_BASE_URL=http://identity:8000
 
 Compose supplies service DNS locally; the platform supplies it in deployment. No registry,
 no mesh, no new moving part. If a mesh is later adopted, only the injected URLs change.
+
+## Reliable delivery
+
+Domain writes never call the broker. The owning service writes a versioned event envelope to its own outbox in the same SQL transaction, then a dispatcher publishes committed rows and records success or retry timing. Consumers validate supported envelope versions. Redis Streams uses consumer groups, idle pending reclamation, bounded exponential backoff, and a per-topic DLQ. `broker-ops replay-dlq` provides an explicit operational replay path.
+
+The ingestion worker owns its inbox database. It commits a claim before invoking a handler and commits processed/failed state afterward; stale processing claims can be retried. This is infrastructure state owned by the worker, not a shared domain table.

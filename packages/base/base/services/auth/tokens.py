@@ -6,13 +6,13 @@ from typing import Any, cast
 
 from base.models.definitions.errors import AuthErrors
 from base.services.auth.models import AccessToken, Principal, RefreshToken, TokenPair
-from base.services.auth.protocol import (
+from base.services.common.meta import Singleton
+from base.services.configuration import get_settings
+from base.services.configuration.protocols import (
     SupportsIdpConfig,
     SupportsTokenIssuingConfig,
     SupportsTokenVerificationConfig,
 )
-from base.services.common.meta import Singleton
-from base.services.configuration import get_settings
 from base.tools.errors import MissingExtraError, raise_error
 from base.tools.misc import parse_uuid
 

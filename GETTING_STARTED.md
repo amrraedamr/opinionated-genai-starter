@@ -177,19 +177,6 @@ so if you try.
 
 ---
 
-## Running the tests
-
-```bash
-uv run python tools/run_tests.py
-```
-
-One service per process, deliberately. Configuration and SQL engines are
-process-global, so two services' suites in one interpreter would have one
-reusing the other's database. A bare `pytest` across the workspace will give
-you confusing failures for exactly that reason.
-
----
-
 ## Where to go next
 
 - [`README.md`](README.md) — the shape, the rules, and what the shared base
@@ -200,3 +187,11 @@ you confusing failures for exactly that reason.
   about, and the boundaries CI enforces.
 - `tools/port_from_starter.py` — bringing a feature across from the single-app
   [opinionated-genai-starter](https://github.com/amrraedamr/opinionated-genai-starter).
+
+## Reliability and production
+
+For the real event path set `BROKER=redis` in all three services and give each service its own database. Apply migrations for `chat_api`, `identity`, and `ingestion_worker` before starting replicas. API writes commit an outbox row atomically; dispatchers publish after commit. The worker's durable inbox makes handlers idempotent.
+
+`chat_api` must receive only `AUTH_PUBLIC_KEY_PATH`. Only `identity` receives `AUTH_PRIVATE_KEY_PATH`. Configure `TRUSTED_HOSTS`, `REQUEST_MAX_BYTES`, `REQUEST_CONCURRENCY_LIMIT`, `REQUEST_RATE_LIMIT_PER_MINUTE`, and `AUTH_RATE_LIMIT_PER_MINUTE`. These controls are intentionally process-local; enforce global limits and TLS at a gateway/ingress.
+
+Docker Compose is a local developer stack, not a production topology. `docs/architecture/06-build-and-deploy.md` lists what a real deployment has to satisfy.

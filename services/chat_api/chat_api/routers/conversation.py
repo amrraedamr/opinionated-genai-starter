@@ -14,6 +14,7 @@ from base.models.view_models.streams import StreamError
 from base.services.auth import Principal, principal_dependency
 from base.services.background_tasks.in_memory import InMemoryBackgroundTaskService
 from base.services.chat_history import ChatHistoryService
+from base.services.common.meta import Stored, scope_id
 from base.services.execution_context import ExecutionContext
 from base.services.logging.console import ConsoleLoggerService
 from base.tools.errors import ErrorsException, raise_error
@@ -137,6 +138,7 @@ async def send_message(
     )
 
     stream_iterator: StreamIterator | None = None
+    request_scope_id = scope_id.get()
 
     async def run() -> str:
         try:
@@ -148,9 +150,7 @@ async def send_message(
 
             await TestAgent().arun()
 
-            metadata: dict[str, Any] = {
-                "debug": execution_context.debug_trace.serialize(),
-            }
+            metadata: dict[str, Any] = {}
 
             await chat_history_service.aappend_message(
                 conversation_key,
@@ -178,8 +178,10 @@ async def send_message(
             if stream_iterator is None:
                 raise
             logger.error(f"send_message run failed: {e}")
-            await stream_iterator.asend(StreamError(error_code=500, text=str(e)))
+            await stream_iterator.asend(StreamError(error_code=500, text="Internal server error"))
             raise
+        finally:
+            Stored.delete_scope(request_scope_id)
 
     if streaming:
         stream_iterator = StreamIterator()

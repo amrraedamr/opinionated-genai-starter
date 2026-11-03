@@ -1,25 +1,27 @@
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from types import ModuleType
-from uuid import uuid4
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 
 from base.capabilities import Capability
+from base.middleware import (
+    RequestSizeLimitMiddleware,
+    TrafficControlMiddleware,
+    request_context,
+)
 from base.models.definitions.health import ProbeStatus
 from base.models.view_models.health import HealthReport, ProbeResult
-from base.services.common.meta import Stored, scope_id
-from base.services.configuration import CoreSettings
+from base.services.configuration.protocols import SupportsServerConfig
 from base.services.logging.console import ConsoleLoggerService
-from base.tools import correlation
 from base.tools.exception_handlers import AppExceptionHandler
 from base.tools.routers import init_routers
 
 LifespanHook = Callable[[FastAPI], AbstractAsyncContextManager[None]]
-
 DEFAULT_TITLE = "Opinionated GenAI Starter API"
 DEFAULT_VERSION = "0.1"
 
@@ -29,23 +31,18 @@ def _resolve_cors_origins(
     environment: str,
     logger: ConsoleLoggerService,
 ) -> list[str]:
-    """`["*"]` is a local-development convenience, never a deployed default."""
     if cors_origins is not None:
         return list(cors_origins)
     if environment == "local":
         return ["*"]
-    logger.warning(
-        "No cors_origins passed to create_app and environment is %r; "
-        "cross-origin requests will be refused. Pass cors_origins explicitly.",
-        environment,
-    )
+    logger.warning("No CORS origins configured; cross-origin requests are refused")
     return []
 
 
 async def _run_probe(capability: Capability) -> ProbeResult:
     try:
         return await capability.aprobe()
-    except Exception as exc:  # noqa: BLE001 — a probe must never break /readyz
+    except Exception as exc:
         return ProbeResult(
             name=capability.name,
             status=ProbeStatus.FAILED,
@@ -55,7 +52,7 @@ async def _run_probe(capability: Capability) -> ProbeResult:
 
 def create_app(
     *,
-    settings: CoreSettings,
+    settings: SupportsServerConfig,
     routers: ModuleType | None = None,
     prefix: str = "/api",
     capabilities: Sequence[Capability] = (),
@@ -64,14 +61,17 @@ def create_app(
     title: str = DEFAULT_TITLE,
     version: str = DEFAULT_VERSION,
 ) -> FastAPI:
-    """Build a FastAPI application for one service."""
+    """Build one service's FastAPI application.
+
+    `settings` must satisfy `SupportsServerConfig`, so a service with no HTTP
+    surface cannot reach here.
+    """
     logger = ConsoleLoggerService()
     capabilities = tuple(capabilities)
     lifespan_hooks = tuple(lifespan_hooks)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        logger.info("Application starting")
         started: list[Capability] = []
         try:
             async with AsyncExitStack() as stack:
@@ -80,14 +80,12 @@ def create_app(
                 for capability in capabilities:
                     await capability.astartup(app)
                     started.append(capability)
-                    logger.info("Capability started: %s", capability.name)
                 yield
         finally:
-            logger.info("Application shutting down")
             for capability in reversed(started):
                 try:
                     await capability.ashutdown(app)
-                except Exception:  # noqa: BLE001 — one failure must not strand the rest
+                except Exception:
                     logger.exception(
                         "Capability failed to shut down: %s", capability.name
                     )
@@ -100,31 +98,21 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    @app.middleware("http")
-    async def register_request(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        scope_id.set(uuid4())
-        incoming = correlation.adopt(
-            request.headers.get(correlation.HEADER),
-            request.headers.get(correlation.TRACEPARENT),
-        )
-        response = None
-        try:
-            response = await call_next(request)
-            response.headers[correlation.HEADER] = str(incoming)
-            return response
-        finally:
-            should_delete = response is None or not response.headers.get(
-                "content-type", ""
-            ).startswith("text/event-stream")
-            if should_delete:
-                Stored.delete_scope()
+    trusted_hosts = [
+        host.strip() for host in settings.trusted_hosts.split(",") if host.strip()
+    ]
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts or ["*"])
+    app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.request_max_bytes)
+    app.add_middleware(
+        TrafficControlMiddleware,
+        concurrency=settings.request_concurrency_limit,
+        per_minute=settings.request_rate_limit_per_minute,
+        auth_per_minute=settings.auth_rate_limit_per_minute,
+    )
+    app.middleware("http")(request_context)
 
     if routers is not None:
         init_routers(app, routers=routers, prefix=prefix)
-
     AppExceptionHandler().register(app)
 
     @app.get("/", tags=["Main"])
@@ -137,18 +125,15 @@ def create_app(
 
     @app.get("/livez", tags=["Main"])
     async def livez() -> HealthReport:
-        """The process is up."""
         return HealthReport(status=ProbeStatus.OK)
 
     @app.get("/readyz", tags=["Main"])
     async def readyz() -> Response:
-        """Every capability reports whether its backing dependency is usable."""
         checks = list(await asyncio.gather(*(_run_probe(c) for c in capabilities)))
         report = HealthReport.aggregate(checks)
-        status_code = 503 if report.status is ProbeStatus.FAILED else 200
         return JSONResponse(
             content=report.serialize(exclude_none=True),
-            status_code=status_code,
+            status_code=503 if report.status is ProbeStatus.FAILED else 200,
         )
 
     return app

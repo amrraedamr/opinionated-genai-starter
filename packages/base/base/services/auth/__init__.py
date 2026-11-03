@@ -12,12 +12,12 @@ from base.services.auth.models import (
     RefreshToken,
     TokenPair,
 )
-from base.services.auth.protocol import (
+from base.services.auth.tokens import TokenIssuer, TokenVerifier
+from base.services.configuration.protocols import (
     SupportsIdpConfig,
     SupportsTokenIssuingConfig,
     SupportsTokenVerificationConfig,
 )
-from base.services.auth.tokens import TokenIssuer, TokenVerifier
 
 __all__ = [
     "AccessToken",

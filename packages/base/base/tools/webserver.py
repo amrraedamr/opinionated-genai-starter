@@ -16,7 +16,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     ) from exc
 
 from base.services.configuration import get_settings
-from base.tools.server_protocol import SupportsServerConfig
+from base.services.configuration.protocols import SupportsServerConfig
 
 
 def _import_app(app_path: str) -> Any:

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
-from typing import Any, TypeVar
+from typing import Any, TypeVar, final
 
 from base.tools.errors import MissingExtraError
 
@@ -53,6 +53,26 @@ class AbstractSQLService(ABC):
 
     @abstractmethod
     async def adispose(self) -> None: ...
+
+    # Transactions callers drive themselves
+
+    @final
+    def transaction(self) -> AbstractContextManager[Session]:
+        """A unit of work for callers that must control the boundary.
+
+        Use a store for ordinary CRUD. This is for work a store cannot express
+        — several writes that must commit together, or row locking.
+        """
+        return self._get_session()
+
+    @final
+    def atransaction(self) -> AbstractAsyncContextManager[AsyncSession]:
+        """A unit of work for callers that must control the boundary.
+
+        Use a store for ordinary CRUD. This is for work a store cannot express
+        — several writes that must commit together, or row locking.
+        """
+        return self._aget_session()
 
     # Query
 

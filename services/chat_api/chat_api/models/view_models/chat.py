@@ -6,7 +6,7 @@ from base.models.view_models import BaseModel
 
 
 class SendChatRequest(BaseModel):
-    content: str
+    content: str = Field(min_length=1, max_length=16_000)
 
 
 class SendChatResponse(BaseModel):

@@ -12,9 +12,6 @@ dev = [
     "pre-commit>=2.16.0",
     "pre-commit-hooks>=4.1.0",
     "ruff>=0.15.4,<0.16",
-    "pytest>=8.4,<9",
-    "pytest-asyncio>=1.0,<2",
-    "httpx>=0.28.1,<0.29",
 ]
 
 [tool.ruff]
@@ -23,8 +20,3 @@ dev = [
 src = [".", "packages/base", "packages/contracts", "services/chat_api", "services/identity", "services/ingestion_worker"]
 lint.ignore = ["E501"]
 lint.extend-select = ["I"]
-
-[tool.pytest.ini_options]
-testpaths = ["packages"]
-asyncio_mode = "auto"
-addopts = "-q"

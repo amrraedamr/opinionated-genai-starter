@@ -63,7 +63,6 @@ MANUAL = {
 # one needs a human, same as MANUAL, but the reason is about layout rather
 # than a restructured module.
 OUTSIDE = {
-    "tests/": "the starter has one suite; here each service tests itself under services/<name>/tests/",
     "alembic/": "migrations are per service, under services/<name>/alembic/",
     "alembic.ini": "each SQL service has its own alembic.ini",
     "Dockerfile": "replaced by the parameterised docker/service.Dockerfile",

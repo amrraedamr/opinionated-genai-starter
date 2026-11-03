@@ -3,77 +3,80 @@ import importlib
 import pkgutil
 from collections.abc import AsyncGenerator, Sequence
 from types import ModuleType
+from typing import cast
 
 from base.models.definitions.cache import CacheChannels
 from base.models.view_models.prompt import Prompt
-from base.services.cache.memory import InMemoryCacheService
+from base.services.cache.factory import get_cache_service
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
+from base.services.configuration.protocols import SupportsPromptConfig
 from base.services.logging.console import ConsoleLoggerService
+from base.services.prompt.protocol import PromptTemplateStore
 
 
 class PromptLoader(metaclass=Singleton):
+    """In-memory registry of the prompts this service can render.
+
+    Templates arrive from code via `@register_prompt`. Hand `initialize` a
+    store and the templates it holds win over the code ones, both at startup
+    and on every reload published to the fleet.
+    """
+
     def __init__(self) -> None:
         self._prompts: dict[str, Prompt] = {}
-        self._loading: bool = False
         self._templates_loaded: bool = False
-        self._pubsub_reload_task: asyncio.Task[None] | None = None
-        self._cache_service: InMemoryCacheService = InMemoryCacheService()
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
+        self._store: PromptTemplateStore | None = None
+        self._watcher: asyncio.Task[None] | None = None
 
-    async def initialize(self, template_packages: Sequence[ModuleType] = ()) -> None:
-        """Must be called ONCE at app startup.
+    async def initialize(
+        self,
+        template_packages: Sequence[ModuleType] = (),
+        store: PromptTemplateStore | None = None,
+    ) -> None:
+        """Import the service's templates and follow the stored overrides.
 
-        Subscribes to pub/sub for distributed reload events.
-        If load_prompts_from_db is enabled, loads DB overrides.
-
-        `template_packages` are the service's own prompt packages.
+        Call once at startup. When a store is given and the service opted in,
+        its templates are applied before the first request is served and
+        re-applied for as long as the service runs.
         """
-        reload_pubsub: AsyncGenerator[str, None] = self._cache_service.subscribe(
-            CacheChannels.PROMPT_RELOAD.value
-        )
-        self._pubsub_reload_task = asyncio.create_task(
-            self.listen_for_reload_events(reload_pubsub)
-        )
-
-        # Load all templates from code first, so they're available for DB overrides and in-memory access.
         self.load_templates(template_packages)
         self._templates_loaded = True
 
-        if get_settings().load_prompts_from_db:
-            await self.load_prompts_from_db()
+        config = cast(SupportsPromptConfig, get_settings())
+        if config.load_prompts_from_db:
+            if store is None:
+                self._logger.warning(
+                    "load_prompts_from_db is on but no prompt store was given to "
+                    "this service's Prompts capability; serving code templates only"
+                )
+            else:
+                self._store = store
+                await self._areload()
+                self._watcher = asyncio.create_task(
+                    self._awatch_reloads(), name="prompt-reload"
+                )
 
         self._logger.info(
             "PromptLoader initialized with %d prompts", len(self._prompts)
         )
 
     async def shutdown(self) -> None:
-        """Must be called ONCE at app shutdown.
+        """Stop following reloads. Call once at shutdown."""
+        if self._watcher is not None:
+            self._watcher.cancel()
+            await asyncio.gather(self._watcher, return_exceptions=True)
+            self._watcher = None
+        self._logger.info("PromptLoader shut down")
 
-        Cancels pub/sub listener task.
+    async def apublish_reload(self) -> None:
+        """Tell every replica, including this one, to re-read stored prompts.
+
+        Whatever writes a new active version calls this; no replica has to be
+        restarted for the change to take effect.
         """
-        if self._pubsub_reload_task:
-            self._pubsub_reload_task.cancel()
-            self._logger.info("PromptLoader shut down")
-
-    async def listen_for_reload_events(self, pubsub: AsyncGenerator[str, None]) -> None:
-        async for _ in pubsub:
-            self._logger.info("Received prompt reload event, reloading from DB...")
-            await self.load_prompts_from_db()
-            self._logger.info("Prompts reloaded")
-            await asyncio.sleep(0.1)
-
-    async def load_prompts_from_db(self) -> None:
-        # TODO: Implement when DBPromptService is built.
-        # Should query ActivePromptDTO joined with PromptDTO,
-        # deserialize templates, and call self.override() for each.
-        if self._loading:
-            return
-        self._loading = True
-        try:
-            pass
-        finally:
-            self._loading = False
+        await get_cache_service().apublish(self._channel(), "reload")
 
     def load_templates(self, template_packages: Sequence[ModuleType] = ()) -> None:
         """Import the service's template modules so @register_prompt fires.
@@ -110,7 +113,55 @@ class PromptLoader(metaclass=Singleton):
     def list_keys(self) -> list[str]:
         return list(self._prompts.keys())
 
-    def override(self, key: str, prompt: Prompt) -> None:
-        """Override a prompt (used by DB-backed services for hot-reload)."""
-        self._prompts[key] = prompt
-        self._logger.info("Prompt overridden: %s", prompt.key)
+    def _channel(self) -> str:
+        config = cast(SupportsPromptConfig, get_settings())
+        return CacheChannels.PROMPT_RELOAD.for_app(config.service_name)
+
+    async def _areload(self) -> int:
+        """Override the registered prompts with the stored templates.
+
+        A stored row carries the template only, so name and description stay
+        with the prompt declared in code. A key nobody registered is skipped
+        rather than invented. Returns how many were overridden.
+        """
+        if self._store is None:
+            return 0
+
+        applied = 0
+        for key, template in (await self._store.aget_active_templates()).items():
+            current = self._prompts.get(key)
+            if current is None:
+                self._logger.warning(
+                    "Stored prompt %s has no template registered in code; skipping",
+                    key,
+                )
+                continue
+            self._prompts[key] = Prompt(
+                key=key,
+                name=current.name,
+                description=current.description,
+                template=template,
+            )
+            applied += 1
+
+        self._logger.info("Applied %d stored prompt override(s)", applied)
+        return applied
+
+    async def _awatch_reloads(self) -> None:
+        """Re-apply the stored prompts whenever a reload is published.
+
+        A failed reload must not end the subscription, or this replica would
+        serve stale prompts for the rest of its life.
+        """
+        while True:
+            try:
+                events: AsyncGenerator[str, None] = get_cache_service().subscribe(
+                    self._channel()
+                )
+                async for _ in events:
+                    await self._areload()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self._logger.exception("Prompt reload subscription failed; retrying")
+                await asyncio.sleep(1)

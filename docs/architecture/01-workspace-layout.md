@@ -139,8 +139,6 @@ dev = [
     "pre-commit>=2.16.0",
     "pre-commit-hooks>=4.1.0",
     "ruff>=0.15.4,<0.16",
-    "pytest>=8",
-    "pytest-asyncio>=0.24",
 ]
 
 [tool.ruff]

@@ -34,7 +34,7 @@ def package_of(service: str) -> str:
     if (directory / service / "__init__.py").exists():
         return service
     for child in sorted(directory.iterdir()):
-        if child.name in ("tests", "alembic"):
+        if child.name == "alembic":
             continue
         if child.is_dir() and (child / "__init__.py").exists():
             return child.name

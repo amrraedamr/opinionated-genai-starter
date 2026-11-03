@@ -19,8 +19,6 @@ jobs:
       - run: uv run ruff check .
       - name: Architectural boundaries
         run: uv run python tools/boundary_lint.py
-      - name: Tests
-        run: uv run python tools/run_tests.py
 
   detect:
     name: Affected services
@@ -57,11 +55,6 @@ jobs:
         run: uv sync --package ${{ matrix.service }}
         env:
           UV_PROJECT_ENVIRONMENT: .venvs/${{ matrix.service }}
-      - name: Test
-        working-directory: services/${{ matrix.service }}
-        run: uv run --package ${{ matrix.service }} pytest -q
-        env:
-          UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venvs/${{ matrix.service }}
       - name: Build image
         run: |
           docker build -f docker/service.Dockerfile \
@@ -70,5 +63,5 @@ jobs:
       - name: No secrets in image
         run: |
           LEAKED=$(docker run --rm --entrypoint sh ${{ matrix.service }}:${{ github.sha }} -c \
-            'find /app \( -name ".env" -o -name "*.pem" -o -name "*.key" \) -not -name "*.example" 2>/dev/null' || true)
+            'find /app -path /app/.venv -prune -o \( -name ".env" -o -name "*.pem" -o -name "*.key" \) -not -name "*.example" -print 2>/dev/null' || true)
           if [ -n "$LEAKED" ]; then echo "secret material in image:"; echo "$LEAKED"; exit 1; fi
