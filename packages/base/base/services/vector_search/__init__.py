@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from base.models.view_models.vector_search import VectorRecord, VectorSearchResult
+from base.services.vector_search.protocol import SupportsLexicalSearch
 
 
 class AbstractVectorSearchService(ABC):
@@ -199,3 +200,6 @@ class AbstractVectorSearchService(ABC):
     @abstractmethod
     async def adispose(self) -> None:
         """Release async resources."""
+
+
+__all__ = ["AbstractVectorSearchService", "SupportsLexicalSearch"]

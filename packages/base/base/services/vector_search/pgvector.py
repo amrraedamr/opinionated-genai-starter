@@ -149,6 +149,8 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             f"ON {table} USING hnsw (embedding {index_ops})",
             f'CREATE INDEX IF NOT EXISTS "{collection}_metadata_idx" '
             f"ON {table} USING gin (metadata)",
+            f'CREATE INDEX IF NOT EXISTS "{collection}_text_idx" ON {table} '
+            f"USING gin (to_tsvector('simple', coalesce(metadata ->> 'text', '')))",
         ]
 
     def create_collection(
@@ -421,6 +423,61 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         # Keyset paging on the primary key, so a full page implies another.
         next_offset = records[-1].id if len(records) == limit else None
         return records, next_offset
+
+    # Lexical search, the other half of hybrid retrieval
+
+    _LEXICAL_SQL = (
+        "SELECT id, metadata, "
+        "ts_rank_cd(to_tsvector('simple', coalesce(metadata ->> 'text', '')), "
+        "plainto_tsquery('simple', :query)) AS score "
+        "FROM {table} WHERE to_tsvector('simple', "
+        "coalesce(metadata ->> 'text', '')) @@ plainto_tsquery('simple', :query)"
+        "{filters} ORDER BY score DESC LIMIT :limit"
+    )
+
+    def _lexical_sql(
+        self, collection: str, filters: dict[str, Any] | None
+    ) -> tuple[str, dict[str, Any]]:
+        where, params = self._where(filters)
+        return (
+            self._LEXICAL_SQL.format(
+                table=self._table(collection),
+                filters=f" AND {where}" if where else "",
+            ),
+            params,
+        )
+
+    def lexical_search(
+        self,
+        collection: str,
+        query: str,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[VectorSearchResult]:
+        """Full-text search over the stored passage, for fusing with vectors.
+
+        Uses the `simple` text configuration: no stemming, so it behaves the
+        same whatever language the passage is in.
+        """
+        sql, params = self._lexical_sql(collection, filters)
+        params |= {"query": query, "limit": limit}
+        with self._sql.transaction() as session:
+            rows = session.execute(text(sql), params).mappings().all()
+        return [self._to_result(row) for row in rows]
+
+    async def alexical_search(
+        self,
+        collection: str,
+        query: str,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[VectorSearchResult]:
+        """Full-text search over the stored passage, for fusing with vectors."""
+        sql, params = self._lexical_sql(collection, filters)
+        params |= {"query": query, "limit": limit}
+        async with self._sql.atransaction() as session:
+            rows = (await session.execute(text(sql), params)).mappings().all()
+        return [self._to_result(row) for row in rows]
 
     # Health and lifecycle
 
