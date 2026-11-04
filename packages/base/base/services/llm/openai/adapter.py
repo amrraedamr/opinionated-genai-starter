@@ -1,3 +1,6 @@
+from collections.abc import Sequence
+from typing import Any, cast
+
 from base.tools.errors import MissingExtraError
 
 try:
@@ -27,11 +30,13 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.models.definitions.message import MessageRole
 from base.models.view_models.chat_history import StoredMessage
+from base.models.view_models.content import ContentPart, ImagePart, TextPart
 from base.models.view_models.prompt import (
     RenderedPrompt,
     RenderedPromptInstruction,
     RenderedPromptMessage,
 )
+from base.services.tool_calling import Tool
 from base.tools.sanitize import strip_invisible
 
 
@@ -120,6 +125,14 @@ class OpenAIMessageAdapter:
                 content=content,
             )
         if message.role == MessageRole.USER:
+            if message.parts:
+                return ChatCompletionUserMessageParam(
+                    role="user",
+                    content=cast(
+                        Any,
+                        OpenAIMessageAdapter._to_chat_completions_parts(message.parts),
+                    ),
+                )
             return ChatCompletionUserMessageParam(
                 role="user",
                 content=content,
@@ -227,6 +240,16 @@ class OpenAIMessageAdapter:
     ) -> list[ResponseInputItemParam]:
         content = strip_invisible(message.content or "")
         if message.role == MessageRole.USER:
+            if message.parts:
+                return [
+                    EasyInputMessageParam(
+                        role="user",
+                        content=cast(
+                            Any,
+                            OpenAIMessageAdapter._to_responses_parts(message.parts),
+                        ),
+                    )
+                ]
             return [EasyInputMessageParam(role="user", content=content)]
         if message.role == MessageRole.SYSTEM:
             return [EasyInputMessageParam(role="system", content=content)]
@@ -261,3 +284,93 @@ class OpenAIMessageAdapter:
         raise ValueError(
             f"Unsupported stored message role for responses: {message.role}"
         )
+
+    # Tools
+
+    @staticmethod
+    def to_chat_completions_tools(
+        tools: Sequence[Tool[Any]],
+    ) -> list[dict[str, Any]]:
+        """Tools as the Chat Completions API wants them: nested under `function`."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.json_schema,
+                },
+            }
+            for tool in tools
+        ]
+
+    @staticmethod
+    def to_responses_tools(tools: "Sequence[Tool[Any]]") -> list[dict[str, Any]]:
+        """The same tools, flattened the way the Responses API wants them."""
+        return [
+            {
+                "type": "function",
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.json_schema,
+            }
+            for tool in tools
+        ]
+
+    # Content parts
+
+    @staticmethod
+    def _to_chat_completions_parts(
+        parts: Sequence[ContentPart],
+    ) -> list[dict[str, Any]]:
+        """Parts as the Chat Completions API wants them."""
+        result: list[dict[str, Any]] = []
+        for part in parts:
+            if isinstance(part, TextPart):
+                result.append({"type": "text", "text": strip_invisible(part.text)})
+            elif isinstance(part, ImagePart):
+                url = part.url or f"data:{part.media_type};base64,{part.data}"
+                result.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": url, "detail": part.detail},
+                    }
+                )
+            else:
+                file_block: dict[str, Any] = (
+                    {"file_id": part.file_id}
+                    if part.file_id
+                    else {
+                        "filename": part.filename,
+                        "file_data": f"data:{part.media_type};base64,{part.data}",
+                    }
+                )
+                result.append({"type": "file", "file": file_block})
+        return result
+
+    @staticmethod
+    def _to_responses_parts(parts: Sequence[ContentPart]) -> list[dict[str, Any]]:
+        """The same parts, under the names the Responses API uses."""
+        result: list[dict[str, Any]] = []
+        for part in parts:
+            if isinstance(part, TextPart):
+                result.append(
+                    {"type": "input_text", "text": strip_invisible(part.text)}
+                )
+            elif isinstance(part, ImagePart):
+                url = part.url or f"data:{part.media_type};base64,{part.data}"
+                result.append(
+                    {"type": "input_image", "image_url": url, "detail": part.detail}
+                )
+            else:
+                block: dict[str, Any] = (
+                    {"type": "input_file", "file_id": part.file_id}
+                    if part.file_id
+                    else {
+                        "type": "input_file",
+                        "filename": part.filename,
+                        "file_data": f"data:{part.media_type};base64,{part.data}",
+                    }
+                )
+                result.append(block)
+        return result

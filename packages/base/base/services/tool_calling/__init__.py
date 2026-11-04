@@ -19,16 +19,21 @@ call is caught here rather than inside the handler.
             handler=get_weather,
         )
     )
+    from base.services.tool_calling.runner import ToolRunner
+
     outcome = await ToolRunner(toolbox).arun(messages)
+
+`ToolRunner` is imported from its own module rather than re-exported here.
+Declaring a tool sits below the LLM adapters, which render a `Tool` into
+whatever shape their provider wants; running a turn sits above them, because
+it needs a model to call. Re-exporting the runner would drag the upper layer
+into every import of the lower one, and the two would form a cycle.
 """
 
-from base.services.tool_calling.runner import ToolRunner, ToolRunResult
 from base.services.tool_calling.toolbox import Tool, Toolbox, ToolError
 
 __all__ = [
     "Tool",
     "ToolError",
-    "ToolRunResult",
-    "ToolRunner",
     "Toolbox",
 ]

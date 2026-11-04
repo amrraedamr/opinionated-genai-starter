@@ -5,6 +5,7 @@ from pydantic import Field, model_validator
 
 from base.models.definitions.message import MessageRole
 from base.models.view_models import BaseModel
+from base.models.view_models.content import ContentPart
 from base.models.view_models.models import OpenAIModels
 
 # Identifiers
@@ -68,7 +69,12 @@ class StoredMessage(BaseModel):
     are linked to their parent assistant message via tool_call_id."""
 
     content: str | None = None
-    """Null only for pure tool-call assistant messages."""
+    """Null only for pure tool-call assistant messages, or when `parts` carries
+    the content instead."""
+
+    parts: list[ContentPart] | None = None
+    """Non-text content on a user message: images, documents, interleaved text.
+    Adapters that cannot express a part reject it rather than dropping it."""
 
     tool_calls: list[StoredToolCall] | None = None
     """Assistant-role tool invocations. Null otherwise."""
@@ -93,8 +99,8 @@ class StoredMessage(BaseModel):
                 raise ValueError("Developer messages require content.")
 
         elif self.role == MessageRole.USER:
-            if self.content is None:
-                raise ValueError("User messages require content.")
+            if self.content is None and not self.parts:
+                raise ValueError("User messages require content or parts.")
 
         elif self.role == MessageRole.ASSISTANT:
             if self.content is None and not self.tool_calls:

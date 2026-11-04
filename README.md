@@ -166,13 +166,16 @@ Shared infrastructure, available to every service whether you run one or many:
 
 - **Auth** — RS256 access and refresh tokens, Argon2 hashing, OAuth providers,
   and an enterprise IdP mode that validates someone else's tokens via JWKS.
-- **LLM** — the OpenAI SDK directly, not LangChain. Chat completions and the
-  Responses API, streaming, structured output, and error handling that maps
-  provider failures to something your code can branch on.
+- **LLM** — provider SDKs directly, not LangChain. `AbstractLLMService` gives
+  one call shape; OpenAI (chat completions and the Responses API) and Anthropic
+  sit behind it, each in its own package under `base.services.llm`. Streaming,
+  structured output, tool calls and multimodal content work the same whoever
+  answers, and error handling maps provider failures to one hierarchy your code
+  can branch on.
 - **Tool calling** — a tool is a function plus the Pydantic model describing
   its arguments; that model generates the schema the LLM sees and validates
   what comes back. `ToolRunner` executes the calls and loops until the model
-  answers.
+  answers, against any provider behind the LLM seam.
 - **RAG** — chunk, embed, upsert, search, with the passage stored next to its
   vector. Re-ingesting replaces rather than accumulating stale chunks.
   Retrieval fuses vector and full-text hits by rank where the backend offers
