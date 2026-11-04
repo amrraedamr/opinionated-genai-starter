@@ -177,12 +177,21 @@ Shared infrastructure, available to every service whether you run one or many:
   vector. Re-ingesting replaces rather than accumulating stale chunks.
 - **Usage** — every model call recorded at the service boundary, totalled per
   request, priced in `Decimal`. `UsageTracker().totals` answers "what did that
-  cost".
+  cost". Prompt-cache reads and writes are counted separately from fresh input,
+  because providers discount the first and charge a premium for the second, so
+  a single input figure cannot be reconciled against an invoice.
+  `totals.cache_hit_rate` is also where a prefix-stability regression shows up
+  first: the rate collapses while the token counts stay the same.
 - **Stores** — `AbstractStore[T]` and `AbstractSequenceStore`, one shared SQL
   implementation, and a conformance suite so a new backend is verified rather
   than assumed.
 - **Infrastructure** — Redis or in-memory cache, Mongo, Cosmos, Azure Blob,
   Key Vault, Qdrant and Azure AI Search.
+- **Input hygiene** — stored conversation turns are stripped of Unicode tag
+  characters and other invisible text before they reach a model, closing one
+  narrow and deterministic class of prompt injection. Joiners, variation
+  selectors and bidirectional controls are deliberately left alone, because
+  they are load-bearing for emoji and for Arabic.
 
 ---
 
