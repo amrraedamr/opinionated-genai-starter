@@ -175,6 +175,9 @@ Shared infrastructure, available to every service whether you run one or many:
   answers.
 - **RAG** — chunk, embed, upsert, search, with the passage stored next to its
   vector. Re-ingesting replaces rather than accumulating stale chunks.
+  Retrieval fuses vector and full-text hits by rank where the backend offers
+  both, and will rerank through a cross-encoder when one is supplied. Both are
+  optional and off unless you pass them.
 - **Usage** — every model call recorded at the service boundary, totalled per
   request, priced in `Decimal`. `UsageTracker().totals` answers "what did that
   cost". Prompt-cache reads and writes are counted separately from fresh input,

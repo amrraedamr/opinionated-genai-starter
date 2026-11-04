@@ -23,6 +23,10 @@ from base.services.configuration.protocols.postgres import SupportsPostgresConfi
 from base.services.configuration.protocols.prompt import SupportsPromptConfig
 from base.services.configuration.protocols.qdrant import SupportsQdrantConfig
 from base.services.configuration.protocols.redis import SupportsRedisConfig
+from base.services.configuration.protocols.rerank import (
+    SupportsCohereConfig,
+    SupportsRerankConfig,
+)
 from base.services.configuration.protocols.server import SupportsServerConfig
 from base.services.configuration.protocols.sql import SupportsSQLConfig
 from base.services.configuration.protocols.token_issuing import (
@@ -33,6 +37,8 @@ from base.services.configuration.protocols.token_verification import (
 )
 
 __all__ = [
+    "SupportsCohereConfig",
+    "SupportsRerankConfig",
     "SupportsAzureSearchConfig",
     "SupportsBrokerConfig",
     "SupportsCredentialsConfig",

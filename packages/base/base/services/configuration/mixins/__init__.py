@@ -20,12 +20,18 @@ from base.services.configuration.mixins.postgres import PostgresSettingsMixin
 from base.services.configuration.mixins.prompt import PromptSettingsMixin
 from base.services.configuration.mixins.qdrant import QdrantSettingsMixin
 from base.services.configuration.mixins.redis import RedisSettingsMixin
+from base.services.configuration.mixins.rerank import (
+    CohereSettingsMixin,
+    RerankSettingsMixin,
+)
 from base.services.configuration.mixins.server import ServerSettingsMixin
 from base.services.configuration.mixins.sql import SQLSettingsMixin
 from base.services.configuration.mixins.token_issuing import TokenIssuingMixin
 from base.services.configuration.mixins.token_verification import TokenVerificationMixin
 
 __all__ = [
+    "CohereSettingsMixin",
+    "RerankSettingsMixin",
     "AzureSearchSettingsMixin",
     "BlobSettingsMixin",
     "BrokerSettingsMixin",
