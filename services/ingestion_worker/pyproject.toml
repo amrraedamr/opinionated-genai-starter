@@ -27,3 +27,12 @@ module-root = ""
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+# Slice metadata — see services/identity/pyproject.toml for the contract.
+# This slice has no HTTP surface; composing it adds a durable inbox consumer.
+[tool.starter.slice]
+summary = "Event ingestion — durable inbox consumer for domain events."
+mixins = []
+extras = []
+publishes_events = false
+http = false

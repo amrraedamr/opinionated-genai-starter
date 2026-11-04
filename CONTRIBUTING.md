@@ -70,18 +70,25 @@ an app factory, Alembic wiring, and an `.env.example`.
   ending in `_async`.
 - **Delete dead code** instead of commenting it out.
 
-## Porting from the single-app starter
+## Keeping services composable
 
-This repository tracks
-[opinionated-genai-starter](https://github.com/amrraedamr/opinionated-genai-starter).
-To bring a commit across:
+`tools/new_service.py --from <service>` composes a reference service's slice
+into a new one, so these services are both examples and the source the
+generator copies from. Two conventions keep that working.
 
-```bash
-uv run python tools/port_from_starter.py <sha> --check
-```
+**A composition root composes and nothing else.** `app.py` wires `create_app`;
+it does not define routes or lifespan hooks. A route belongs in `routers/`, a
+hook in `lifespans.py`. Anything declared inline in `app.py` is invisible to
+composition, because the generator rewrites that file.
 
-It rewrites paths into the shared package or the owning service and tells you
-which files need a human instead of guessing.
+**Declare what a slice needs in `[tool.starter.slice]`.** Settings mixins,
+`base` extras, capabilities and lifespan hooks. Paths are not listed: every
+module travels except the composition roots, so a new file joins the slice on
+its own. Capability and lifespan imports may use `{pkg}`, which expands to the
+generated package name.
+
+CI generates a composed service on every run, so a change that breaks
+composability fails there rather than the first time someone tries it.
 
 ## Reporting something
 

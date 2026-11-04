@@ -1,21 +1,28 @@
-# Opinionated GenAI Microservices Starter
+# Opinionated GenAI Starter
 
-[![CI](https://github.com/amrraedamr/opinionated-genai-microservices-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/amrraedamr/opinionated-genai-microservices-starter/actions/workflows/ci.yml)
+[![CI](https://github.com/amrraedamr/opinionated-genai-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/amrraedamr/opinionated-genai-starter/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Several FastAPI services for LLM products, sharing one foundation.** A uv
-workspace with a shared `base` package and independently deployable services,
-each owning its own database, settings, dependencies and release.
+**A FastAPI foundation for LLM products that runs as one service or several,
+from one codebase.** A uv workspace with a shared `base` package and whatever
+services you need — one to start, more when a part of the system earns its own
+database, scaling and release cycle.
 
-The hard part of microservices is not splitting the code; it is stopping the
-split from leaking. So the boundaries here are enforced by a lint that fails
-CI, not by a convention everyone agrees to in a meeting and forgets by the
-second sprint.
+You do not have to choose up front. The same slices — auth, conversations,
+event ingestion — compose into a single deployment or split across services:
 
-> Building one application rather than several? Start with the single-app
-> variant instead: [opinionated-genai-starter](https://github.com/amrraedamr/opinionated-genai-starter).
-> It is the same foundation in one deployable, and features port across.
+```bash
+# One service that issues tokens and serves chat
+uv run python tools/new_service.py --name app --from identity,chat_api
+
+# Or keep them apart; that is what the reference services already do
+uv run python tools/new_service.py --name billing --storage postgres --http
+```
+
+The hard part is not splitting the code; it is stopping the split from leaking.
+So the boundaries here are enforced by lints that fail CI, not by a convention
+everyone agrees to in a meeting and forgets by the second sprint.
 
 ---
 
@@ -34,8 +41,11 @@ deploy/          compose stacks
 docker/          one parameterised image for every service
 ```
 
-Three services ship as examples, not as the product. `tools/new_service.py`
-writes the fourth.
+Three services ship as reference implementations, not as the product. They
+are also the test matrix: a worker that serves no HTTP is what keeps HTTP
+concerns out of `base`, and an auth service is what keeps token issuance
+separable from verification. `tools/new_service.py` writes the fourth, either
+fresh or composed from the slices these three already prove.
 
 ---
 
@@ -122,11 +132,37 @@ what changed:
 uv run python tools/affected.py --base origin/main
 ```
 
+### Composing slices into one service
+
+A *slice* is a reference service's domain code — its routers, ORM models, view
+models and stores. `--from` copies those into a new service, rebinding them
+onto a single declarative root:
+
+```bash
+uv run python tools/new_service.py --name app --from identity,chat_api
+```
+
+That yields one deployment serving `/auth/login`, `/users/me` and
+`/conversations`, with one database, one outbox and one process. The settings
+class is the union of each slice's mixins, the extras are the union of their
+dependencies, and `create_app` receives every capability and lifespan hook the
+slices declared.
+
+Each service describes its own slice in `[tool.starter.slice]`, and membership
+is by exclusion: every module travels except the composition roots the
+generator rewrites, so a file you add to a reference service joins its slice
+automatically. Generation refuses to proceed on a colliding table or router
+module rather than emitting something that breaks at migration time.
+
+The reference services are the only copy of this code — there is no second
+template to drift. CI generates a composed service on every run and asserts it
+lints, builds, serves both slices' routes and merges to one outbox.
+
 ---
 
 ## What the shared base gives you
 
-Everything in the single-app starter, available to every service:
+Shared infrastructure, available to every service whether you run one or many:
 
 - **Auth** — RS256 access and refresh tokens, Argon2 hashing, OAuth providers,
   and an enterprise IdP mode that validates someone else's tokens via JWKS.
@@ -185,22 +221,6 @@ uv run python tools/boundary_lint.py
 ```
 
 `CONTRIBUTING.md` covers the rest.
-
----
-
-## Tracking the single-app starter
-
-This repository shares its foundation with
-[opinionated-genai-starter](https://github.com/amrraedamr/opinionated-genai-starter).
-A feature added there can be brought across without hand-porting:
-
-```bash
-uv run python tools/port_from_starter.py <sha> --check
-```
-
-It rewrites a commit's paths into the shared package or the owning service,
-drops what has no destination here, and says what needs a human — rather than
-silently putting a file in the wrong place.
 
 ---
 
