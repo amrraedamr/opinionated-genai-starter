@@ -85,16 +85,29 @@ class UsageTracker(metaclass=Stored):
         output_tokens: int,
         duration_ms: int = 0,
         error: str | None = None,
+        cached_input_tokens: int = 0,
+        cache_write_tokens: int = 0,
     ) -> UsageRecord:
-        """Record one call. Returns what was recorded, priced if a rate exists."""
+        """Record one call. Returns what was recorded, priced if a rate exists.
+
+        Both cache counts are shares of `input_tokens`, not additions to it.
+        """
         rate = self.rate_for(model)
         entry = UsageRecord(
             model=model,
             label=label,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cached_input_tokens=cached_input_tokens,
+            cache_write_tokens=cache_write_tokens,
             duration_ms=duration_ms,
-            cost_usd=rate.cost(input_tokens, output_tokens) if rate else None,
+            cost_usd=(
+                rate.cost(
+                    input_tokens, output_tokens, cached_input_tokens, cache_write_tokens
+                )
+                if rate
+                else None
+            ),
             error=error,
         )
         self._records.append(entry)
@@ -113,6 +126,8 @@ class UsageTracker(metaclass=Stored):
             totals.calls += 1
             totals.input_tokens += entry.input_tokens
             totals.output_tokens += entry.output_tokens
+            totals.cached_input_tokens += entry.cached_input_tokens
+            totals.cache_write_tokens += entry.cache_write_tokens
             totals.duration_ms += entry.duration_ms
             totals.by_model[entry.model] = (
                 totals.by_model.get(entry.model, 0) + entry.total_tokens

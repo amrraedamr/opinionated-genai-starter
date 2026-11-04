@@ -13,11 +13,11 @@ from base.services.logging.console import ConsoleLoggerService
 class TokenCounter(metaclass=KeyedSingleton):
     """Tiktoken-backed token counter, keyed per model.
 
-    Wraps tiktoken.encoding_for_model() with a fallback to cl100k_base for
-    unknown models. Instances are cached by KeyedSingleton keyed on the
-    model argument, so all callers requesting the same model share one
-    encoder — important because tiktoken lazily loads encoding data files
-    on first use.
+    Wraps tiktoken.encoding_for_model() with a fallback to o200k_base for
+    models tiktoken has no mapping for. Instances are cached by KeyedSingleton
+    keyed on the model argument, so all callers requesting the same model
+    share one encoder — important because tiktoken lazily loads encoding data
+    files on first use.
 
     Accepts OpenAIModels enum values for autocomplete and known-good models,
     or plain strings for snapshot versions (e.g. "gpt-5.4-2026-03-15"),
@@ -28,7 +28,10 @@ class TokenCounter(metaclass=KeyedSingleton):
     Token counting is sync because tiktoken is CPU-bound with no I/O.
     """
 
-    FALLBACK_ENCODING: str = "cl100k_base"
+    FALLBACK_ENCODING: str = "o200k_base"
+    """Encoding for models tiktoken has no mapping for — anything newer than
+    the installed tiktoken. Counts here are estimates; the response `usage`
+    object is what the provider bills against."""
 
     def __init__(self, model: OpenAIModels | str) -> None:
         self._model: str = model

@@ -873,6 +873,7 @@ class OpenAIService(metaclass=KeyedSingleton):
         we still log but skip the trace appendage.
         """
         input_tokens, output_tokens, total_tokens = self._extract_token_counts(usage)
+        cached_input_tokens, cache_write_tokens = self._extract_cache_tokens(usage)
         effective_label = label or "openai"
 
         UsageTracker().record(
@@ -880,6 +881,8 @@ class OpenAIService(metaclass=KeyedSingleton):
             label=effective_label,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cached_input_tokens=cached_input_tokens,
+            cache_write_tokens=cache_write_tokens,
             duration_ms=duration_ms,
             error=error,
         )
@@ -939,3 +942,21 @@ class OpenAIService(metaclass=KeyedSingleton):
             total_tokens = int(usage.total_tokens or input_tokens + output_tokens)
             return input_tokens, output_tokens, total_tokens
         return 0, 0, 0
+
+    @staticmethod
+    def _extract_cache_tokens(usage: LLMUsage) -> tuple[int, int]:
+        """`(cache reads, cache writes)` from either usage shape.
+
+        Both are subsets of the input count, and billed at their own rates.
+        """
+        if usage is None:
+            return 0, 0
+        details = getattr(usage, "input_tokens_details", None) or getattr(
+            usage, "prompt_tokens_details", None
+        )
+        if details is None:
+            return 0, 0
+        return (
+            int(getattr(details, "cached_tokens", 0) or 0),
+            int(getattr(details, "cache_write_tokens", 0) or 0),
+        )

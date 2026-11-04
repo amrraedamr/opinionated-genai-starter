@@ -32,6 +32,7 @@ from base.models.view_models.prompt import (
     RenderedPromptInstruction,
     RenderedPromptMessage,
 )
+from base.tools.sanitize import strip_invisible
 
 
 class OpenAIMessageAdapter:
@@ -106,25 +107,29 @@ class OpenAIMessageAdapter:
     def _to_chat_completions_stored_message(
         message: StoredMessage,
     ) -> ChatCompletionMessageParam:
+        # Stored turns carry text from outside the application.
+        content = strip_invisible(message.content or "")
         if message.role == MessageRole.SYSTEM:
             return ChatCompletionSystemMessageParam(
                 role="system",
-                content=message.content or "",
+                content=content,
             )
         if message.role == MessageRole.DEVELOPER:
             return ChatCompletionDeveloperMessageParam(
                 role="developer",
-                content=message.content or "",
+                content=content,
             )
         if message.role == MessageRole.USER:
             return ChatCompletionUserMessageParam(
                 role="user",
-                content=message.content or "",
+                content=content,
             )
         if message.role == MessageRole.ASSISTANT:
             param: ChatCompletionAssistantMessageParam = {
                 "role": "assistant",
-                "content": message.content,
+                "content": strip_invisible(message.content)
+                if message.content
+                else message.content,
             }
             if message.tool_calls:
                 param["tool_calls"] = [
@@ -144,7 +149,7 @@ class OpenAIMessageAdapter:
                 raise ValueError("Stored TOOL message is missing tool_call_id")
             return ChatCompletionToolMessageParam(
                 role="tool",
-                content=message.content or "",
+                content=content,
                 tool_call_id=message.tool_call_id,
             )
         raise ValueError(
@@ -220,7 +225,7 @@ class OpenAIMessageAdapter:
     def _to_responses_stored_items(
         message: StoredMessage,
     ) -> list[ResponseInputItemParam]:
-        content = message.content or ""
+        content = strip_invisible(message.content or "")
         if message.role == MessageRole.USER:
             return [EasyInputMessageParam(role="user", content=content)]
         if message.role == MessageRole.SYSTEM:
@@ -230,10 +235,8 @@ class OpenAIMessageAdapter:
         if message.role == MessageRole.ASSISTANT:
             items: list[ResponseInputItemParam] = []
             # Skip empty content — tool-only assistant turns shouldn't emit a text item
-            if message.content:
-                items.append(
-                    EasyInputMessageParam(role="assistant", content=message.content)
-                )
+            if content:
+                items.append(EasyInputMessageParam(role="assistant", content=content))
             if message.tool_calls:
                 for tool_call in message.tool_calls:
                     items.append(
