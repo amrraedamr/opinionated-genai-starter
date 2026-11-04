@@ -12,7 +12,10 @@ from base.services.configuration.mixins.credentials import CredentialsSettingsMi
 from base.services.configuration.mixins.embedding import EmbeddingSettingsMixin
 from base.services.configuration.mixins.idp import IdpResourceServerMixin
 from base.services.configuration.mixins.keyvault import KeyVaultSettingsMixin
-from base.services.configuration.mixins.llm import LLMSettingsMixin
+from base.services.configuration.mixins.llm import (
+    AnthropicSettingsMixin,
+    LLMSettingsMixin,
+)
 from base.services.configuration.mixins.mongo import MongoSettingsMixin
 from base.services.configuration.mixins.mysql import MySQLSettingsMixin
 from base.services.configuration.mixins.oauth import OAuthSettingsMixin
@@ -40,6 +43,7 @@ __all__ = [
     "EmbeddingSettingsMixin",
     "IdpResourceServerMixin",
     "KeyVaultSettingsMixin",
+    "AnthropicSettingsMixin",
     "LLMSettingsMixin",
     "MongoSettingsMixin",
     "MySQLSettingsMixin",

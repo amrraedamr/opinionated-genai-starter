@@ -2,16 +2,17 @@
 
 from typing import cast
 
-import httpx
 from fastapi import FastAPI
 
+from base.clients.credentials import OutboundAuth
 from base.models.definitions.health import ProbeStatus
 from base.models.definitions.model import ProviderType
 from base.models.view_models.health import ProbeResult
 from base.models.view_models.model import ModelConfigurations
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsCredentialsConfig
-from base.services.llm import OpenAIService
+from base.services.llm import AbstractLLMService
+from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
 from base.tools.hashing import hash_args
 
@@ -21,7 +22,7 @@ no stable serialization."""
 
 
 class AuthenticatedLLM:
-    """Installs an `OpenAIService` carrying `auth` where a bare one resolves.
+    """Installs an LLM service carrying `auth` where a bare one resolves.
 
     One consumer of :class:`~base.capabilities.credentials.OutboundCredentials`,
     for an LLM endpoint behind an expiring token rather than a static key.
@@ -29,6 +30,20 @@ class AuthenticatedLLM:
 
         credentials = OutboundCredentials()
         capabilities = [credentials, AuthenticatedLLM(credentials.auth)]
+
+    `service_type` selects the provider. It defaults to OpenAI; any
+    `AbstractLLMService` whose constructor takes `(config, auth, verify)` works::
+
+        AuthenticatedLLM(
+            Httpx2BearerTokenAuth(credentials.auth.provider),
+            provider_type=ProviderType.ANTHROPIC,
+            service_type=AnthropicService,
+        )
+
+    The auth object must come from the SDK's own HTTP library — `httpx` for
+    OpenAI, `httpx2` for Anthropic — because the two reject each other. Both
+    bindings live in `base.clients.credentials` and read one `TokenProvider`,
+    so the token is acquired once however many providers consume it.
 
     `verify` turns off TLS verification for an endpoint behind an inspecting
     proxy; it defaults to the `outbound_verify_tls` setting.
@@ -38,15 +53,17 @@ class AuthenticatedLLM:
 
     def __init__(
         self,
-        auth: httpx.Auth,
+        auth: OutboundAuth,
         model_config: ModelConfigurations | None = None,
         provider_type: ProviderType = ProviderType.AZURE_OPENAI,
         verify: bool | None = None,
+        service_type: type[AbstractLLMService] = OpenAIService,
     ) -> None:
         self._auth = auth
         self._model_config = model_config
         self._provider_type = provider_type
         self._verify = verify
+        self._service_type = service_type
         self._logger = ConsoleLoggerService()
 
     def _verify_tls(self) -> bool:
@@ -60,18 +77,21 @@ class AuthenticatedLLM:
             self._model_config
             or ModelConfigurations.get_default_for_provider(self._provider_type)
         )
-        configured = OpenAIService(
+        configured = self._service_type(
             model_config,
             auth=self._auth,
             verify=self._verify_tls(),
             _key=CONFIGURED_SERVICE_KEY,
         )
-        # Installed under the key a no-argument OpenAIService() resolves to, so
+        # Installed under the key a no-argument construction resolves to, so
         # agents need no configuration. Safe because capabilities start before
         # the first request and agents are built lazily inside routers — a
         # service constructing one at import time would lose the race.
-        OpenAIService.replace(hash_args(), configured)
-        self._logger.info("Authenticated LLM client installed as the default.")
+        self._service_type.replace(hash_args(), configured)
+        self._logger.info(
+            "Authenticated %s installed as the default LLM client.",
+            self._service_type.__name__,
+        )
 
     async def ashutdown(self, app: FastAPI) -> None:
         del app
@@ -79,9 +99,9 @@ class AuthenticatedLLM:
     async def aprobe(self) -> ProbeResult:
         # The credential it carries is probed by OutboundCredentials; calling
         # the model here would bill a token on every readiness check.
-        configured = OpenAIService.get(CONFIGURED_SERVICE_KEY)
+        configured = self._service_type.get(CONFIGURED_SERVICE_KEY)
         installed = (
-            configured is not None and OpenAIService.get(hash_args()) is configured
+            configured is not None and self._service_type.get(hash_args()) is configured
         )
         return ProbeResult(
             name=self.name,

@@ -18,3 +18,22 @@ class ReasoningEffort(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     XHIGH = "xhigh"
+
+
+class FinishReason(StrEnum):
+    """Why a model stopped generating, in terms every provider can express."""
+
+    STOP = "stop"
+    """Reached a natural end, or a stop sequence."""
+
+    TOOL_CALLS = "tool_calls"
+    """Wants a tool run before it can continue."""
+
+    LENGTH = "length"
+    """Hit the output token cap. The reply is truncated."""
+
+    CONTENT_FILTER = "content_filter"
+    """Blocked by the provider's safety layer."""
+
+    OTHER = "other"
+    """Something provider-specific the seam does not model."""

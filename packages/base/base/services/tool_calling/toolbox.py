@@ -29,26 +29,9 @@ class Tool[T: BaseModel]:
     handler: Callable[[T], Awaitable[Any]]
 
     @property
-    def schema(self) -> dict[str, Any]:
-        """The tool as the chat completions API wants to see it."""
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters.model_json_schema(),
-            },
-        }
-
-    @property
-    def responses_schema(self) -> dict[str, Any]:
-        """The same tool, flattened the way the Responses API wants it."""
-        return {
-            "type": "function",
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters.model_json_schema(),
-        }
+    def json_schema(self) -> dict[str, Any]:
+        """The argument model as JSON Schema. Adapters reshape it per provider."""
+        return self.parameters.model_json_schema()
 
     async def ainvoke(self, arguments: str) -> str:
         """Validate JSON `arguments`, run the handler, and render the result.
@@ -89,14 +72,9 @@ class Toolbox:
         return sorted(self._tools)
 
     @property
-    def schemas(self) -> list[dict[str, Any]]:
-        """Every tool, in the shape the chat completions API expects."""
-        return [tool.schema for tool in self._tools.values()]
-
-    @property
-    def responses_schemas(self) -> list[dict[str, Any]]:
-        """Every tool, in the shape the Responses API expects."""
-        return [tool.responses_schema for tool in self._tools.values()]
+    def tools(self) -> list[Tool[Any]]:
+        """Every tool, as declared. Shaping them for a provider is adapter work."""
+        return list(self._tools.values())
 
     async def ainvoke(self, call: StoredToolCall) -> str:
         """Run the tool a model asked for and return what it should see.
@@ -107,7 +85,9 @@ class Toolbox:
         """
         tool = self._tools.get(call.function.name)
         if tool is None:
-            return f"Error: no tool named {call.function.name!r}. Available: {self.names}."
+            return (
+                f"Error: no tool named {call.function.name!r}. Available: {self.names}."
+            )
 
         try:
             return await tool.ainvoke(call.function.arguments)

@@ -17,7 +17,10 @@ from base.services.configuration.protocols.credentials import (
 )
 from base.services.configuration.protocols.embedding import SupportsEmbeddingConfig
 from base.services.configuration.protocols.idp import SupportsIdpConfig
-from base.services.configuration.protocols.llm import SupportsLLMConfig
+from base.services.configuration.protocols.llm import (
+    SupportsAnthropicConfig,
+    SupportsLLMConfig,
+)
 from base.services.configuration.protocols.mysql import SupportsMySQLConfig
 from base.services.configuration.protocols.postgres import SupportsPostgresConfig
 from base.services.configuration.protocols.prompt import SupportsPromptConfig
@@ -44,6 +47,7 @@ __all__ = [
     "SupportsCredentialsConfig",
     "SupportsEmbeddingConfig",
     "SupportsIdpConfig",
+    "SupportsAnthropicConfig",
     "SupportsLLMConfig",
     "SupportsMySQLConfig",
     "SupportsPostgresConfig",

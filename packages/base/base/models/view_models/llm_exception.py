@@ -1,9 +1,4 @@
-from base.tools.errors import MissingExtraError
-
-try:
-    from openai import APIError, APIStatusError
-except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="LLM error models") from exc
+"""Domain errors every LLM adapter raises. No provider SDK is named here."""
 
 
 class LLMError(Exception):
@@ -23,21 +18,19 @@ class LLMError(Exception):
         self.provider_error = provider_error
 
     @classmethod
-    def from_openai(
+    def from_provider(
         cls,
         error: Exception,
         message: str | None = None,
+        *,
+        status_code: int | None = None,
+        request_id: str | None = None,
     ) -> "LLMError":
-        """Wrap an OpenAI SDK exception, preserving status code and request id."""
-        status_code: int | None = None
-        request_id: str | None = None
+        """Wrap a provider SDK exception.
 
-        if isinstance(error, APIStatusError):
-            status_code = error.status_code
-            request_id = error.response.headers.get("x-request-id")
-        elif isinstance(error, APIError):
-            request_id = getattr(error, "request_id", None)
-
+        Pulling `status_code` and `request_id` off the exception is the error
+        handler's job, because only it knows the SDK's shape.
+        """
         return cls(
             message or str(error),
             status_code=status_code,

@@ -1,34 +1,14 @@
 """The turn that runs a model to a final answer, calling tools on the way."""
 
-from typing import Any, Literal
+from typing import Any
 
 from base.models.definitions.message import MessageRole
-from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredMessage
-from base.models.view_models.llm_result import CompletionResult, ResponseResult
-from base.services.llm import OpenAIService
-from base.services.llm.openai_adapter import OpenAIMessageAdapter
+from base.models.view_models.llm_result import ToolRunResult
+from base.services.llm import AbstractLLMService
+from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
 from base.services.tool_calling.toolbox import Toolbox, ToolError
-
-LLMApi = Literal["completions", "responses"]
-
-
-class ToolRunResult(BaseModel):
-    """What a tool-calling turn produced."""
-
-    result: CompletionResult | ResponseResult
-    """The final assistant turn, the one with no further tool calls."""
-
-    messages: list[StoredMessage]
-    """Assistant and tool messages generated during the turn, in order.
-
-    Returned rather than persisted: whether a turn belongs in a conversation
-    is the caller's decision, not this runner's.
-    """
-
-    rounds: int
-    """How many times the model was called. One means it answered directly."""
 
 
 class ToolRunner:
@@ -38,27 +18,24 @@ class ToolRunner:
     model asked for, appends the results, and asks again. `max_rounds` is the
     stop: a model that keeps calling tools would otherwise bill forever.
 
-    Both OpenAI surfaces are supported, because the two differ only in how
-    the request is shaped — the loop around them is the same.
+    The loop is provider-agnostic: it asks `AbstractLLMService` for a turn and
+    reads tool calls off the neutral result.
     """
 
     def __init__(
         self,
         toolbox: Toolbox,
         max_rounds: int = 5,
-        api: LLMApi = "completions",
+        llm_service: AbstractLLMService | None = None,
     ) -> None:
         if max_rounds < 1:
             raise ToolError("max_rounds must be at least 1")
         self._toolbox = toolbox
         self._max_rounds = max_rounds
-        self._api: LLMApi = api
-        self._llm_service: OpenAIService = OpenAIService()
+        self._llm_service: AbstractLLMService = llm_service or OpenAIService()
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
 
-    async def arun(
-        self, messages: list[StoredMessage], **kwargs: Any
-    ) -> ToolRunResult:
+    async def arun(self, messages: list[StoredMessage], **kwargs: Any) -> ToolRunResult:
         """Run the turn to a final answer.
 
         `messages` is left untouched; everything the turn adds comes back in
@@ -74,7 +51,9 @@ class ToolRunner:
         sequence = max(message.sequence for message in messages)
 
         for round_number in range(1, self._max_rounds + 1):
-            result = await self._acall(conversation, **kwargs)
+            result = await self._llm_service.acomplete(
+                messages=conversation, tools=self._toolbox.tools, **kwargs
+            )
 
             tool_calls = result.tool_calls
             if not tool_calls:
@@ -109,19 +88,4 @@ class ToolRunner:
         raise ToolError(
             f"Still calling tools after {self._max_rounds} rounds; "
             "raise max_rounds or narrow the toolbox."
-        )
-
-    async def _acall(
-        self, conversation: list[StoredMessage], **kwargs: Any
-    ) -> CompletionResult | ResponseResult:
-        if self._api == "responses":
-            return await self._llm_service.aresponses(
-                OpenAIMessageAdapter.to_responses_input(messages=conversation),
-                tools=self._toolbox.responses_schemas,
-                **kwargs,
-            )
-        return await self._llm_service.acompletions(
-            OpenAIMessageAdapter.to_chat_completions_messages(messages=conversation),
-            tools=self._toolbox.schemas,
-            **kwargs,
         )

@@ -11,6 +11,9 @@ class ModelConfigurations(BaseModel):
     api_type: ProviderType | None = None
     api_retries: int | None = None
     wait_time: float | None = None
+    supports_responses_api: bool = True
+    """False for OpenAI-compatible gateways that only serve chat completions,
+    such as vLLM, Ollama, LiteLLM and Groq."""
 
     @staticmethod
     def get_default_for_provider(provider: ProviderType) -> "ModelConfigurations":
@@ -30,6 +33,15 @@ class ModelConfigurations(BaseModel):
                 model_name=get_settings().azure_openai_llm_deployment_name or None,
                 api_type=ProviderType.AZURE_OPENAI,
                 api_version=get_settings().azure_openai_api_version or None,
+                api_retries=2,
+                wait_time=1.0,
+            )
+        elif provider == ProviderType.ANTHROPIC:
+            return ModelConfigurations(
+                api_host=get_settings().anthropic_llm_endpoint or None,
+                api_key=get_settings().anthropic_api_key or None,
+                model_name=get_settings().anthropic_llm_model or None,
+                api_type=ProviderType.ANTHROPIC,
                 api_retries=2,
                 wait_time=1.0,
             )

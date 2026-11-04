@@ -1,5 +1,6 @@
 import time
-from typing import cast
+from collections.abc import Sequence
+from typing import Any, cast
 
 import httpx
 
@@ -36,13 +37,16 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("llm", "openai", feature="OpenAIService") from exc
 
-from base.models.definitions.model import ProviderType
+from base.models.definitions.model import (
+    FinishReason,
+    ProviderType,
+    ReasoningEffort,
+)
 from base.models.view_models import BaseModel
+from base.models.view_models.chat_history import StoredMessage, StoredToolCall
 from base.models.view_models.debug_trace import (
     DebugCall,
-    LLMPrompt,
     LLMResponseContent,
-    LLMUsage,
 )
 from base.models.view_models.llm_exception import (
     LLMConfigError,
@@ -52,30 +56,49 @@ from base.models.view_models.llm_exception import (
     LLMStreamError,
 )
 from base.models.view_models.llm_result import (
+    LLMResult,
+    LLMUsageCounts,
+    ParsedResult,
+)
+from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.openai_results import (
     CompletionResult,
+    LLMPrompt,
+    LLMUsage,
     ParsedCompletionResult,
     ParsedResponseResult,
     ResponseResult,
 )
-from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.prompt import RenderedPrompt
 from base.models.view_models.streams import (
     StreamEnd,
     StreamError,
     StreamMessage,
     StreamStart,
 )
-from base.services.common.meta import KeyedSingleton
+from base.services.common.meta import KeyedSingletonABC
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsLLMConfig
 from base.services.execution_context import ExecutionContext
-from base.services.llm.error_handler import OpenAIErrorHandler
+from base.services.llm import AbstractLLMService
+from base.services.llm.openai.adapter import OpenAIMessageAdapter
+from base.services.llm.openai.error_handler import OpenAIErrorHandler
 from base.services.logging.console import ConsoleLoggerService
+from base.services.tool_calling import Tool
 from base.services.usage import UsageTracker
 from base.tools import openai_clients
 from base.tools.stream import StreamIterator
 
+_FINISH_REASON_MAP: dict[str, FinishReason] = {
+    "stop": FinishReason.STOP,
+    "tool_calls": FinishReason.TOOL_CALLS,
+    "function_call": FinishReason.TOOL_CALLS,
+    "length": FinishReason.LENGTH,
+    "content_filter": FinishReason.CONTENT_FILTER,
+}
 
-class OpenAIService(metaclass=KeyedSingleton):
+
+class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     """
     OpenAI-compatible LLM service.
 
@@ -118,6 +141,7 @@ class OpenAIService(metaclass=KeyedSingleton):
 
         self._config: ModelConfigurations = config
         self._model: str = config.model_name
+        self._supports_responses_api: bool = config.supports_responses_api
         self._auth: httpx.Auth | None = auth
         self._verify: bool = verify
 
@@ -245,6 +269,7 @@ class OpenAIService(metaclass=KeyedSingleton):
             result = CompletionResult(
                 message=response.choices[0].message,
                 usage=response.usage,
+                finish_reason=response.choices[0].finish_reason,
             )
             return result
         except LLMError as exc:
@@ -296,6 +321,7 @@ class OpenAIService(metaclass=KeyedSingleton):
             result = CompletionResult(
                 message=response.choices[0].message,
                 usage=response.usage,
+                finish_reason=response.choices[0].finish_reason,
             )
             return result
         except LLMError as exc:
@@ -332,6 +358,8 @@ class OpenAIService(metaclass=KeyedSingleton):
                     if choice.delta and choice.delta.content:
                         parts.append(choice.delta.content)
                         stream_iterator.send(StreamMessage(data=choice.delta.content))
+                    if choice.finish_reason:
+                        result.finish_reason = choice.finish_reason
 
                 if chunk.usage:
                     result.usage = chunk.usage
@@ -373,6 +401,8 @@ class OpenAIService(metaclass=KeyedSingleton):
                         await stream_iterator.asend(
                             StreamMessage(data=choice.delta.content)
                         )
+                    if choice.finish_reason:
+                        result.finish_reason = choice.finish_reason
 
                 if chunk.usage:
                     result.usage = chunk.usage
@@ -959,4 +989,222 @@ class OpenAIService(metaclass=KeyedSingleton):
         return (
             int(getattr(details, "cached_tokens", 0) or 0),
             int(getattr(details, "cache_write_tokens", 0) or 0),
+        )
+
+    # Provider-neutral seam
+
+    def get_service_name(self) -> str:
+        return "openai"
+
+    def _apply_generation_knobs(
+        self,
+        kwargs: dict[str, Any],
+        max_output_tokens: int | None,
+        reasoning_effort: ReasoningEffort | None,
+    ) -> None:
+        """Spell the neutral knobs the way the chosen surface wants them."""
+        if max_output_tokens is not None:
+            key = (
+                "max_output_tokens"
+                if self._supports_responses_api
+                else "max_completion_tokens"
+            )
+            kwargs.setdefault(key, max_output_tokens)
+        if reasoning_effort is not None:
+            if self._supports_responses_api:
+                kwargs.setdefault("reasoning", {"effort": reasoning_effort})
+            else:
+                kwargs.setdefault("reasoning_effort", reasoning_effort)
+
+    def _to_llm_result(self, result: ResponseResult | CompletionResult) -> LLMResult:
+        """Flatten either wire result into the neutral one."""
+        tool_calls = result.tool_calls
+        return LLMResult(
+            content=result.content,
+            tool_calls=tool_calls,
+            usage=self._to_usage_counts(result.usage),
+            reasoning=(
+                result.reasoning if isinstance(result, ResponseResult) else None
+            ),
+            finish_reason=self._to_finish_reason(result, tool_calls),
+        )
+
+    @staticmethod
+    def _to_finish_reason(
+        result: ResponseResult | CompletionResult,
+        tool_calls: list[StoredToolCall] | None,
+    ) -> FinishReason:
+        """Normalise why generation stopped.
+
+        The Responses API reports a status rather than a reason, and a reply cut
+        short has already been raised by `_raise_if_incomplete`, so what reaches
+        here either asked for tools or finished on its own.
+        """
+        if isinstance(result, ResponseResult) or result.finish_reason is None:
+            return FinishReason.TOOL_CALLS if tool_calls else FinishReason.STOP
+        return _FINISH_REASON_MAP.get(result.finish_reason, FinishReason.OTHER)
+
+    def _to_usage_counts(self, usage: LLMUsage) -> LLMUsageCounts | None:
+        """Fold either OpenAI usage shape into the neutral counts."""
+        if usage is None:
+            return None
+        input_tokens, output_tokens, _ = self._extract_token_counts(usage)
+        cached_input_tokens, cache_write_tokens = self._extract_cache_tokens(usage)
+        details = getattr(usage, "output_tokens_details", None) or getattr(
+            usage, "completion_tokens_details", None
+        )
+        return LLMUsageCounts(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_input_tokens=cached_input_tokens,
+            cache_write_tokens=cache_write_tokens,
+            reasoning_tokens=int(getattr(details, "reasoning_tokens", 0) or 0),
+        )
+
+    def _complete(
+        self,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None,
+        tools: Sequence[Tool[Any]] | None,
+        stream_iterator: StreamIterator | None,
+        max_output_tokens: int | None,
+        reasoning_effort: ReasoningEffort | None,
+        label: str | None,
+        **kwargs,
+    ) -> LLMResult:
+        self._reject_sync_call()
+        stored = list(messages) if messages else None
+        self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+
+        if self._supports_responses_api:
+            if tools:
+                kwargs["tools"] = OpenAIMessageAdapter.to_responses_tools(tools)
+            result: ResponseResult | CompletionResult = self.responses(
+                OpenAIMessageAdapter.to_responses_input(messages=stored, prompt=prompt),
+                stream_iterator=stream_iterator,
+                label=label,
+                **kwargs,
+            )
+        else:
+            if tools:
+                kwargs["tools"] = OpenAIMessageAdapter.to_chat_completions_tools(tools)
+            result = self.completions(
+                OpenAIMessageAdapter.to_chat_completions_messages(
+                    messages=stored, prompt=prompt
+                ),
+                stream_iterator=stream_iterator,
+                label=label,
+                **kwargs,
+            )
+
+        return self._to_llm_result(result)
+
+    async def _acomplete(
+        self,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None,
+        tools: Sequence[Tool[Any]] | None,
+        stream_iterator: StreamIterator | None,
+        max_output_tokens: int | None,
+        reasoning_effort: ReasoningEffort | None,
+        label: str | None,
+        **kwargs,
+    ) -> LLMResult:
+        stored = list(messages) if messages else None
+        self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+
+        if self._supports_responses_api:
+            if tools:
+                kwargs["tools"] = OpenAIMessageAdapter.to_responses_tools(tools)
+            result: ResponseResult | CompletionResult = await self.aresponses(
+                OpenAIMessageAdapter.to_responses_input(messages=stored, prompt=prompt),
+                stream_iterator=stream_iterator,
+                label=label,
+                **kwargs,
+            )
+        else:
+            if tools:
+                kwargs["tools"] = OpenAIMessageAdapter.to_chat_completions_tools(tools)
+            result = await self.acompletions(
+                OpenAIMessageAdapter.to_chat_completions_messages(
+                    messages=stored, prompt=prompt
+                ),
+                stream_iterator=stream_iterator,
+                label=label,
+                **kwargs,
+            )
+
+        return self._to_llm_result(result)
+
+    def _parse[T: BaseModel](
+        self,
+        schema: type[T],
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None,
+        max_output_tokens: int | None,
+        reasoning_effort: ReasoningEffort | None,
+        label: str | None,
+        **kwargs,
+    ) -> ParsedResult[T]:
+        self._reject_sync_call()
+        stored = list(messages) if messages else None
+        self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+
+        parsed: ParsedResponseResult[T] | ParsedCompletionResult[T]
+        if self._supports_responses_api:
+            parsed = self.parse_responses(
+                OpenAIMessageAdapter.to_responses_input(messages=stored, prompt=prompt),
+                schema,
+                label=label,
+                **kwargs,
+            )
+        else:
+            parsed = self.parse_completions(
+                OpenAIMessageAdapter.to_chat_completions_messages(
+                    messages=stored, prompt=prompt
+                ),
+                schema,
+                label=label,
+                **kwargs,
+            )
+
+        return ParsedResult[T](
+            parsed=parsed.parsed,
+            usage=self._to_usage_counts(parsed.usage),
+        )
+
+    async def _aparse[T: BaseModel](
+        self,
+        schema: type[T],
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None,
+        max_output_tokens: int | None,
+        reasoning_effort: ReasoningEffort | None,
+        label: str | None,
+        **kwargs,
+    ) -> ParsedResult[T]:
+        stored = list(messages) if messages else None
+        self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+
+        parsed: ParsedResponseResult[T] | ParsedCompletionResult[T]
+        if self._supports_responses_api:
+            parsed = await self.aparse_responses(
+                OpenAIMessageAdapter.to_responses_input(messages=stored, prompt=prompt),
+                schema,
+                label=label,
+                **kwargs,
+            )
+        else:
+            parsed = await self.aparse_completions(
+                OpenAIMessageAdapter.to_chat_completions_messages(
+                    messages=stored, prompt=prompt
+                ),
+                schema,
+                label=label,
+                **kwargs,
+            )
+
+        return ParsedResult[T](
+            parsed=parsed.parsed,
+            usage=self._to_usage_counts(parsed.usage),
         )

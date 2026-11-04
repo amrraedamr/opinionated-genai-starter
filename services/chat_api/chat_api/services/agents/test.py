@@ -1,7 +1,6 @@
 from typing import ClassVar
 
 from base.services.agents import AbstractAgent
-from base.services.llm import OpenAIMessageAdapter
 from base.services.store.chat_history import ChatHistoryStore
 from chat_api.stores.chat_history.sql import SqlChatHistoryStore
 
@@ -21,9 +20,7 @@ class TestAgent(AbstractAgent):
             history=await self._aget_history(),
             user_query=self._execution_context.flow_variables.user_query,
         )
-        result = await self._aresponses(
-            OpenAIMessageAdapter.to_responses_input(prompt=rendered_prompt),
-        )
+        result = await self._acomplete(prompt=rendered_prompt)
         self._execution_context.flow_variables.final_answer = (
             result.content or ""
         ).strip()

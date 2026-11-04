@@ -1,13 +1,6 @@
 from abc import abstractmethod
+from collections.abc import Sequence
 from typing import Any, ClassVar
-
-from base.tools.errors import MissingExtraError
-
-try:
-    from openai.types.chat import ChatCompletionMessageParam
-    from openai.types.responses import ResponseInputParam
-except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="AbstractAgent") from exc
 
 from base.models.definitions.canned_messages import CannedMessages
 from base.models.definitions.message import MessageRole
@@ -16,21 +9,20 @@ from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import ChatHistoryConfig, StoredMessage
 from base.models.view_models.flow import FlowAbortError
 from base.models.view_models.llm_exception import LLMError
-from base.models.view_models.llm_result import (
-    CompletionResult,
-    ParsedCompletionResult,
-    ParsedResponseResult,
-    ResponseResult,
-)
+from base.models.view_models.llm_result import LLMResult, ParsedResult
+from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.prompt import RenderedPrompt
 from base.models.view_models.streams import StreamEnd, StreamMessage
 from base.services.chat_history import ChatHistoryService
 from base.services.common.meta import SingletonABC
 from base.services.execution_context import ExecutionContext
-from base.services.llm import OpenAIService
+from base.services.llm import AbstractLLMService
+from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
 from base.services.prompt.service import PromptService
 from base.services.store.chat_history import ChatHistoryStore
 from base.services.store.chat_history.memory import InMemoryChatHistoryStore
+from base.services.tool_calling import Tool
 
 
 class AbstractAgent(metaclass=SingletonABC):
@@ -44,9 +36,8 @@ class AbstractAgent(metaclass=SingletonABC):
     streaming), and raises :class:`FlowAbortError` for the pipeline to
     catch.
 
-    Per-call debug capture lives inside :class:`OpenAIService` itself (a
-    try/finally around every completions / responses call, parsed or not).
-    Concrete agents pass ``label=...`` to the LLM service so the
+    Per-call debug capture lives inside the LLM adapter, around every call it
+    makes. Concrete agents pass ``label=...`` to the LLM service so the
     captured :class:`DebugCall` carries a meaningful identifier — by
     convention ``label=type(self).__name__`` for single-shot agents and
     ``label=f"{type(self).__name__}:{item_id}"`` when fanout calls need
@@ -67,13 +58,41 @@ class AbstractAgent(metaclass=SingletonABC):
     `ChatHistoryService` instances and see different history.
     """
 
+    LLM_SERVICE: ClassVar[type[AbstractLLMService]] = OpenAIService
+    """Which provider answers for this agent.
+
+    Per agent rather than per application, so a cheap router and an expensive
+    answerer can sit on different providers in one deployment.
+    """
+
+    MODEL_CONFIGURATIONS: ClassVar[ModelConfigurations | None] = None
+    """Which model, when this agent wants one its provider's default is not.
+
+    Left `None`, the agent resolves the provider's default instance — the same
+    one `AuthenticatedLLM` installs a credentialled client over. Setting this
+    opts out of that, because a configured service is keyed by its arguments.
+    """
+
     def __init__(self) -> None:
-        self._llm_service: OpenAIService = OpenAIService()
+        self._llm_service: AbstractLLMService = self._build_llm_service()
         self._prompt_service: PromptService = PromptService()
         self._chat_history_service: ChatHistoryService = ChatHistoryService(
             ChatHistoryConfig(), self.CHAT_HISTORY_STORE
         )
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
+
+    @classmethod
+    def _build_llm_service(cls) -> AbstractLLMService:
+        """Resolve this agent's provider.
+
+        The no-argument call is deliberate when no configuration is set: a
+        `KeyedSingleton` derives its key from its arguments, so passing an
+        explicit `None` would resolve a different instance than the one
+        `AuthenticatedLLM` installs, and the credential would be skipped.
+        """
+        if cls.MODEL_CONFIGURATIONS is None:
+            return cls.LLM_SERVICE()
+        return cls.LLM_SERVICE(cls.MODEL_CONFIGURATIONS)
 
     @property
     def _execution_context(self) -> ExecutionContext:
@@ -152,98 +171,53 @@ class AbstractAgent(metaclass=SingletonABC):
             return all_messages[:-1]
         return all_messages
 
-    async def _aresponses(
+    async def _acomplete(
         self,
-        input_: ResponseInputParam,
         *,
+        prompt: RenderedPrompt | None = None,
+        messages: Sequence[StoredMessage] | None = None,
+        tools: Sequence[Tool[Any]] | None = None,
         label: str | None = None,
         **kwargs: Any,
-    ) -> ResponseResult:
-        """Call :meth:`OpenAIService.aresponses` with agent ClassVar defaults.
+    ) -> LLMResult:
+        """Call the model with this agent's ClassVar defaults applied.
 
-        Applies ``MAX_OUTPUT_TOKENS``, ``REASONING_EFFORT``, and the
-        request's stream iterator unless the caller overrides them.
         Explicit kwargs always win.
         """
-        self._apply_responses_defaults(kwargs)
         self._apply_stream_iterator(kwargs)
 
-        return await self._llm_service.aresponses(
-            input_,
+        return await self._llm_service.acomplete(
+            prompt=prompt,
+            messages=messages,
+            tools=tools,
+            max_output_tokens=self.MAX_OUTPUT_TOKENS,
+            reasoning_effort=self.REASONING_EFFORT,
             label=label or type(self).__name__,
             **kwargs,
         )
 
-    async def _acompletions(
+    async def _aparse[T: BaseModel](
         self,
-        messages: list[ChatCompletionMessageParam],
+        schema: type[T],
         *,
+        prompt: RenderedPrompt | None = None,
+        messages: Sequence[StoredMessage] | None = None,
         label: str | None = None,
         **kwargs: Any,
-    ) -> CompletionResult:
-        """Call :meth:`OpenAIService.acompletions` with agent ClassVar defaults.
+    ) -> ParsedResult[T]:
+        """Same, for a call whose reply must fit `schema`.
 
-        The Chat Completions surface, for a gateway exposing only that.
+        No stream iterator: a parsed call returns one object.
         """
-        self._apply_completions_defaults(kwargs)
-        self._apply_stream_iterator(kwargs)
-
-        return await self._llm_service.acompletions(
-            messages,
+        return await self._llm_service.aparse(
+            schema,
+            prompt=prompt,
+            messages=messages,
+            max_output_tokens=self.MAX_OUTPUT_TOKENS,
+            reasoning_effort=self.REASONING_EFFORT,
             label=label or type(self).__name__,
             **kwargs,
         )
-
-    async def _aparse_completions[T: BaseModel](
-        self,
-        messages: list[ChatCompletionMessageParam],
-        response_format: type[T],
-        *,
-        label: str | None = None,
-        **kwargs: Any,
-    ) -> ParsedCompletionResult[T]:
-        """Call :meth:`OpenAIService.aparse_completions` with agent ClassVar
-        defaults. No stream iterator: a parsed call returns one object.
-        """
-        self._apply_completions_defaults(kwargs)
-
-        return await self._llm_service.aparse_completions(
-            messages,
-            response_format,
-            label=label or type(self).__name__,
-            **kwargs,
-        )
-
-    async def _aparse_responses[T: BaseModel](
-        self,
-        input_: ResponseInputParam,
-        response_format: type[T],
-        *,
-        label: str | None = None,
-        **kwargs: Any,
-    ) -> ParsedResponseResult[T]:
-        """Call :meth:`OpenAIService.aparse_responses` with agent ClassVar
-        defaults. No stream iterator: a parsed call returns one object.
-        """
-        self._apply_responses_defaults(kwargs)
-
-        return await self._llm_service.aparse_responses(
-            input_,
-            response_format,
-            label=label or type(self).__name__,
-            **kwargs,
-        )
-
-    def _apply_responses_defaults(self, kwargs: dict[str, Any]) -> None:
-        kwargs.setdefault("max_output_tokens", self.MAX_OUTPUT_TOKENS)
-        if self.REASONING_EFFORT is not None:
-            kwargs.setdefault("reasoning", {"effort": self.REASONING_EFFORT})
-
-    def _apply_completions_defaults(self, kwargs: dict[str, Any]) -> None:
-        # Same two knobs, under the names Chat Completions takes.
-        kwargs.setdefault("max_completion_tokens", self.MAX_OUTPUT_TOKENS)
-        if self.REASONING_EFFORT is not None:
-            kwargs.setdefault("reasoning_effort", self.REASONING_EFFORT)
 
     def _apply_stream_iterator(self, kwargs: dict[str, Any]) -> None:
         ctx = self._execution_context

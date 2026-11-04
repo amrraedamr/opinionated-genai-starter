@@ -513,11 +513,66 @@ and only one of today's consumers happens to be an LLM.
 
 ### Agent LLM surfaces
 
-`AbstractAgent` exposed only `_aresponses`, while `OpenAIService` offers completions,
-responses, and parsed variants of both. An agent needing structured output — or Chat
-Completions, the only surface some OpenAI-compatible gateways expose — had to reach past its
-base class. `_acompletions`, `_aparse_completions` and `_aparse_responses` now sit beside
-`_aresponses` with the same `MAX_OUTPUT_TOKENS` / `REASONING_EFFORT` defaults and the same
-`label` convention. The Chat Completions pair maps those ClassVars onto the names that
-surface takes (`max_completion_tokens`, a flat `reasoning_effort`); the parsed variants take
-no stream iterator, because a parsed call returns one complete object rather than deltas.
+Which provider answers is a per-agent decision, not a per-application one:
+`LLM_SERVICE` is a ClassVar like `CHAT_HISTORY_STORE`, so a cheap router and an
+expensive answerer can sit on different providers in the same deployment.
+`MODEL_CONFIGURATIONS` pins a specific model when the provider's default is not
+the one that agent wants.
+
+Leaving `MODEL_CONFIGURATIONS` at `None` matters more than it looks. An LLM
+service is a `KeyedSingleton` whose key is derived from its constructor
+arguments, so `Service()` and `Service(None)` resolve *different* instances. An
+agent that passed an explicit `None` would miss the client `AuthenticatedLLM`
+installs and would silently call the endpoint unauthenticated. The agent
+therefore calls with no arguments unless a configuration is actually set.
+
+`AbstractAgent` exposes `_acomplete` and `_aparse`, both of which go through
+`AbstractLLMService`. An agent passes a `RenderedPrompt` or `StoredMessage` list and gets an
+`LLMResult` back; which provider answered, and which of its API surfaces was used, is the
+adapter's business. Both apply the agent's `MAX_OUTPUT_TOKENS` / `REASONING_EFFORT` defaults
+and the same `label` convention, and `_aparse` takes no stream iterator because a parsed call
+returns one complete object rather than deltas.
+
+`LLMResult.finish_reason` is normalised to a `FinishReason` rather than passed
+through. The providers disagree on vocabulary and even on meaning — the Responses
+API reports a *status* (`completed`), Chat Completions a reason (`length`), Anthropic
+a third set (`end_turn`, `tool_use`) — so a caller branching on the raw string would
+work against one provider and silently never fire against another. `LENGTH` in
+particular means the reply is truncated, which is worth branching on.
+
+`max_output_tokens` and `reasoning_effort` are neutral parameters on the seam. Each adapter
+spells them the way its provider wants: the Responses API takes `max_output_tokens` and a
+nested `reasoning` block, Chat Completions takes `max_completion_tokens` and a flat
+`reasoning_effort`, and Anthropic takes `max_tokens` with a thinking budget in tokens.
+`ModelConfigurations.supports_responses_api` picks the OpenAI surface, so a gateway that only
+serves Chat Completions needs no change at the call site.
+
+### Where the LLM code lives
+
+`AuthenticatedLLM` installs whichever service `service_type` names, defaulting to
+OpenAI; it reads `AbstractLLMService` and the `KeyedSingleton` protocol, never a
+provider's SDK. The credential it carries is typed by `OutboundAuth`, a structural
+protocol, because the OpenAI SDK ships on `httpx` and the Anthropic SDK on `httpx2`
+— two unrelated `Auth` hierarchies that reject each other at runtime. `base.clients.credentials`
+therefore ships a binding per library — `BearerTokenAuth` on `httpx` in the package
+itself, `Httpx2BearerTokenAuth` in `credentials/httpx2.py` because `httpx2` arrives
+only with the `anthropic` extra — both over the shared `TokenProvider`, so one
+acquired token serves either.
+
+`base.services.llm` holds only what every provider shares: `AbstractLLMService` and
+`AbstractErrorHandler`. Each provider gets a package — `llm/openai/`, `llm/anthropic/` —
+holding its service in `__init__.py` beside its message adapter and its error handler. Adding
+a provider adds a directory rather than widening a shared module, and importing the seam
+pulls in no SDK.
+
+Retry policy, backoff and logging live once, in `AbstractErrorHandler`. An implementation
+supplies only what is provider-shaped: the SDK's base exception, the map from its error types
+to the domain hierarchy, where it hides the status code and request id, and whether it sent a
+retry hint. The domain errors themselves name no SDK, so a deployment carrying only the
+`anthropic` extra can still raise and catch every one of them.
+
+Declaring a tool sits below the adapters, which render a `Tool` into their provider's shape;
+running a turn sits above them, because it needs a model to call. That is why
+`base.services.tool_calling` exports `Tool` and `Toolbox` while `ToolRunner` is imported from
+`base.services.tool_calling.runner` — re-exporting it would pull the upper layer into every
+import of the lower one and close a cycle.
