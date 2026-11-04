@@ -31,9 +31,9 @@ jobs:
           uv run ruff check services/composed
           uv run python tools/boundary_lint.py
           uv run python tools/deps_lint.py
-          UV_PROJECT_ENVIRONMENT=.venvs/composed uv sync --locked --package composed
-          cd services/composed && SQL_BACKEND=postgresql BROKER=memory \
-            ../../.venvs/composed/bin/python -c "
+          UV_PROJECT_ENVIRONMENT="$PWD/.venvs/composed" uv sync --locked --package composed
+          ( cd services/composed && SQL_BACKEND=postgresql BROKER=memory \
+            "$GITHUB_WORKSPACE/.venvs/composed/bin/python" -c "
           from composed.app import app
           paths = {r.path for r in app.routes}
           assert any(p.endswith('/auth/login') for p in paths), 'auth slice missing'
@@ -45,8 +45,9 @@ jobs:
           assert 'user' in tables and 'conversation' in tables, tables
           assert sum(t == 'outbox_event' for t in tables) == 1, 'outbox not merged'
           print(f'composed service OK: {len(paths)} routes, {len(tables)} tables')
-          "
-          git checkout -- uv.lock && rm -rf services/composed .venvs/composed
+          " )
+          git checkout -- uv.lock
+          rm -rf services/composed .venvs/composed
 
   detect:
     name: Affected services
