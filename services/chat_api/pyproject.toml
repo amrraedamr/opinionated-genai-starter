@@ -25,3 +25,28 @@ module-root = ""
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+# Slice metadata — see services/identity/pyproject.toml for the contract.
+[tool.starter.slice]
+summary = "Conversations — chat, agents, prompts, chat history and log streaming."
+mixins = ["LLMSettingsMixin", "PromptSettingsMixin"]
+extras = ["llm", "sse"]
+publishes_events = true
+
+[[tool.starter.slice.capabilities]]
+imports = [
+    "from base.capabilities.terminal_capture import TerminalCapture",
+]
+expr = "TerminalCapture(settings.service_name)"
+
+[[tool.starter.slice.capabilities]]
+imports = [
+    "from base.capabilities.prompts import Prompts",
+    "from {pkg}.prompts import templates",
+    "from {pkg}.stores.prompt import PromptStore",
+]
+expr = "Prompts(templates=[templates], store=PromptStore())"
+
+[[tool.starter.slice.lifespans]]
+import = "from {pkg}.lifespans import background_tasks_lifespan"
+expr = "background_tasks_lifespan"

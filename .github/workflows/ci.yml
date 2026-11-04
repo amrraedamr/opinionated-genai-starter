@@ -21,6 +21,33 @@ jobs:
         run: uv run python tools/boundary_lint.py
       - name: Dependency isolation
         run: uv run python tools/deps_lint.py
+      - name: Composed single service
+        # Slices must stay composable into one deployment, not just runnable
+        # as separate services. Generated fresh rather than committed, so the
+        # reference services remain the only copy of this code.
+        run: |
+          uv run python tools/new_service.py --name composed --from identity,chat_api
+          uv lock
+          uv run ruff check services/composed
+          uv run python tools/boundary_lint.py
+          uv run python tools/deps_lint.py
+          UV_PROJECT_ENVIRONMENT="$PWD/.venvs/composed" uv sync --locked --package composed
+          ( cd services/composed && SQL_BACKEND=postgresql BROKER=memory \
+            "$GITHUB_WORKSPACE/.venvs/composed/bin/python" -c "
+          from composed.app import app
+          paths = {r.path for r in app.routes}
+          assert any(p.endswith('/auth/login') for p in paths), 'auth slice missing'
+          assert any('conversations' in p for p in paths), 'chat slice missing'
+          from composed.models.orm import ComposedBase
+          for m in ('user', 'conversation', 'outbox'):
+              __import__(f'composed.models.orm.{m}')
+          tables = {str(t) for t in ComposedBase.metadata.tables}
+          assert 'user' in tables and 'conversation' in tables, tables
+          assert sum(t == 'outbox_event' for t in tables) == 1, 'outbox not merged'
+          print(f'composed service OK: {len(paths)} routes, {len(tables)} tables')
+          " )
+          git checkout -- uv.lock
+          rm -rf services/composed .venvs/composed
 
   detect:
     name: Affected services

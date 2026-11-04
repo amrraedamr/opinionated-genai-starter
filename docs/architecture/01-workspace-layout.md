@@ -67,7 +67,10 @@ opinionated-genai-starter/
 │   └── ingestion-worker/          # no HTTP server; broker consumer
 │
 └── tools/
-    ├── new_service.py             # scaffolds a service from a template
+    ├── new_service.py             # scaffolds a service, or composes existing slices
+    ├── slices.py                  # composition rules: membership, clashes, rewriting
+    ├── boundary_lint.py           # architectural boundaries
+    ├── deps_lint.py               # per-service dependency isolation
     └── affected.py                # which services changed (for CI)
 ```
 

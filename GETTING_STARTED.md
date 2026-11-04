@@ -185,8 +185,9 @@ so if you try.
   boundary, data ownership, configuration composition, service contracts.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — the conventions a review will ask
   about, and the boundaries CI enforces.
-- `tools/port_from_starter.py` — bringing a feature across from the single-app
-  [opinionated-genai-starter](https://github.com/amrraedamr/opinionated-genai-starter).
+- `tools/new_service.py` — scaffolding a service. `--from identity,chat_api`
+  composes existing slices into one deployment; without it you get a fresh
+  skeleton. `tools/slices.py` holds the composition rules.
 
 ## Reliability and production
 

@@ -25,3 +25,14 @@ module-root = ""
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
 build-backend = "uv_build"
+
+# Slice metadata. `tools/new_service.py --from identity` composes this service's
+# routers, models and stores into a new service. Paths are not listed: every
+# module in the package travels except the composition roots the generator
+# rewrites (app.py, settings.py, messaging.py, declarative root), so a file
+# added here is part of the slice automatically.
+[tool.starter.slice]
+summary = "Authentication — signup, login, OAuth, token issuance and user records."
+mixins = ["TokenIssuingMixin", "OAuthSettingsMixin", "IdpResourceServerMixin"]
+extras = ["auth"]
+publishes_events = true
