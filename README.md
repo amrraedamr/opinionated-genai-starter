@@ -186,7 +186,9 @@ Shared infrastructure, available to every service whether you run one or many:
   implementation, and a conformance suite so a new backend is verified rather
   than assumed.
 - **Infrastructure** — Redis or in-memory cache, Mongo, Cosmos, Azure Blob,
-  Key Vault, Qdrant and Azure AI Search.
+  Key Vault, and vector search over pgvector, Qdrant or Azure AI Search.
+  pgvector needs no extra dependency: it runs on the Postgres a SQL service
+  already has, so `base[sql,postgres]` is enough.
 - **Input hygiene** — stored conversation turns are stripped of Unicode tag
   characters and other invisible text before they reach a model, closing one
   narrow and deterministic class of prompt injection. Joiners, variation

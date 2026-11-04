@@ -33,7 +33,7 @@ from base.services.configuration import get_settings
 from base.services.vector_search import AbstractVectorSearchService
 from base.tools.errors import ServiceHealthCheckError
 
-_METRIC_MAP: dict[str, VectorSearchAlgorithmMetric] = {
+_DISTANCE_MAP: dict[str, VectorSearchAlgorithmMetric] = {
     DistanceMetric.COSINE: VectorSearchAlgorithmMetric.COSINE,
     DistanceMetric.DOT: VectorSearchAlgorithmMetric.DOT_PRODUCT,
     DistanceMetric.EUCLIDEAN: VectorSearchAlgorithmMetric.EUCLIDEAN,
@@ -331,7 +331,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
         **kwargs: Any,
     ) -> SearchIndex:
         """Build a ``SearchIndex`` definition with id, vector, and metadata fields."""
-        metric: VectorSearchAlgorithmMetric = _METRIC_MAP.get(
+        metric: VectorSearchAlgorithmMetric = _DISTANCE_MAP.get(
             distance, VectorSearchAlgorithmMetric.COSINE
         )
         algorithm_name: str = "hnsw-algorithm"
