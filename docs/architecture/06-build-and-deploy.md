@@ -304,7 +304,11 @@ The boundary lint is the one worth writing by hand — it is the mechanical enfo
 [doc 02](02-library-boundary.md) and [doc 03](03-data-ownership.md), and without it the
 architecture erodes one convenient import at a time.
 
-`tools/deps_lint.py` does the same job for the dependency graph. `uv sync --package` keeps
+`tools/deps_lint.py` does the same job for the dependency graph. `tools/import_lint.py`
+covers what neither can: both of those reason about declarations, while it runs the
+import statements with every extra installed. A module behind an extra that no shipped
+service declares is never loaded by the per-service jobs, so a stale import inside it
+would otherwise reach main unnoticed. `uv sync --package` keeps
 images separate only while each service declares the extras it actually uses, so the lint
 checks three things: a service declares no extra `base` does not define; a service's
 `--no-dev` closure contains nothing belonging solely to an extra it did not declare; and
