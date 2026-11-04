@@ -21,6 +21,13 @@ jobs:
         run: uv run python tools/boundary_lint.py
       - name: Dependency isolation
         run: uv run python tools/deps_lint.py
+      - name: Imports
+        # Every extra installed on purpose: a module behind an extra no shipped
+        # service declares is never loaded by the per-service jobs, so a stale
+        # import inside it would otherwise reach main unnoticed.
+        run: |
+          uv sync --all-extras --all-packages
+          uv run --no-sync python tools/import_lint.py
       - name: Composed single service
         # Slices must stay composable into one deployment, not just runnable
         # as separate services. Generated fresh rather than committed, so the

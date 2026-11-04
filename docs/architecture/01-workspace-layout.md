@@ -71,6 +71,7 @@ opinionated-genai-starter/
     ├── slices.py                  # composition rules: membership, clashes, rewriting
     ├── boundary_lint.py           # architectural boundaries
     ├── deps_lint.py               # per-service dependency isolation
+    ├── import_lint.py             # every module in base imports, all extras on
     └── affected.py                # which services changed (for CI)
 ```
 

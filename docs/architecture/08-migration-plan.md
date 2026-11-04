@@ -225,6 +225,7 @@ docker compose -f deploy/docker-compose.yml up --build
 | Services a change affects | `uv run python tools/affected.py --format table` |
 | A new service | `uv run python tools/new_service.py --name billing --storage postgres --http` |
 | Dependency isolation | `uv run python tools/deps_lint.py` |
+| Every module imports | `uv sync --all-extras && uv run python tools/import_lint.py` |
 
 One process serves one service: settings and the SQL engine are process-global,
 so anything that drives more than one service must give each its own process.
