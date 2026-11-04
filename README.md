@@ -70,7 +70,8 @@ service opts into:
 
 ```python
 class Settings(CoreSettings, SQLSettingsMixin, PostgresSettingsMixin,
-                TokenVerificationMixin, LLMSettingsMixin):
+                TokenVerificationMixin, LLMSettingsMixin,
+                AzureOpenAILLMSettingsMixin):
     ...
 ```
 

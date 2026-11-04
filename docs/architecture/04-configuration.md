@@ -132,10 +132,23 @@ class TokenIssuingMixin(TokenVerificationMixin):
 
 The full set, each lifting one group from today's file **verbatim**:
 `SQLSettingsMixin`, `PostgresSettingsMixin`, `MySQLSettingsMixin`, `RedisSettingsMixin`,
-`LLMSettingsMixin`, `EmbeddingSettingsMixin`, `TokenVerificationMixin`,
+`LLMSettingsMixin`, `RerankSettingsMixin`, `TokenVerificationMixin`,
 `TokenIssuingMixin`, `OAuthSettingsMixin`, `IdpResourceServerMixin`,
 `MongoSettingsMixin`, `CosmosSettingsMixin`, `BlobSettingsMixin`,
 `KeyVaultSettingsMixin`, `QdrantSettingsMixin`, `AzureSearchSettingsMixin`,
+
+A capability mixin carries only what holds whatever provider is behind it, and the
+provider it is configured for comes as a second mixin — the way `SQLSettingsMixin`
+pairs with `PostgresSettingsMixin`. So generation is `LLMSettingsMixin` plus one of
+`AzureOpenAILLMSettingsMixin` / `OpenAILLMSettingsMixin` / `AnthropicSettingsMixin`,
+and embeddings are `AzureOpenAIEmbeddingSettingsMixin` / `OpenAIEmbeddingSettingsMixin`.
+A service then declares exactly the provider it configures, and a chat service that
+never embeds carries no embedding settings.
+
+Both Azure mixins inherit `AzureOpenAISettingsMixin`, which holds `azure_openai_api_version`
+alone. It used to be declared separately in the generation and embedding mixins, and a
+service composing both got two declarations whose winner was decided silently by MRO
+order — harmless while the defaults agreed, a trap the moment they drifted.
 
 `CredentialsSettingsMixin` is the one addition rather than a lift. It describes the
 **outbound** OAuth2 client credential a service presents to a protected dependency —
@@ -166,6 +179,7 @@ from pydantic_settings import SettingsConfigDict
 
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
+    AzureOpenAILLMSettingsMixin,
     IdpResourceServerMixin,
     LLMSettingsMixin,
     OAuthSettingsMixin,
@@ -184,6 +198,7 @@ class ChatApiSettings(
     PostgresSettingsMixin,
     RedisSettingsMixin,
     LLMSettingsMixin,
+    AzureOpenAILLMSettingsMixin,
     # chat_api still issues tokens and owns users. Phase 5 moves that to the
     # identity service, at which point this drops to TokenVerificationMixin.
     TokenIssuingMixin,
@@ -319,7 +334,8 @@ class SQLService:
 
 Shipped under `configuration/protocols/`, mirroring the mixin files one-for-one:
 `SupportsSQLConfig` / `SupportsPostgresConfig` / `SupportsMySQLConfig`,
-`SupportsLLMConfig` / `SupportsEmbeddingConfig`, `SupportsRedisConfig`,
+`SupportsLLMConfig` / `SupportsOpenAILLMConfig` / `SupportsAzureOpenAILLMConfig`,
+`SupportsRedisConfig`,
 `SupportsQdrantConfig` / `SupportsAzureSearchConfig`, `SupportsTokenVerificationConfig` /
 `SupportsTokenIssuingConfig` / `SupportsIdpConfig`, `SupportsCredentialsConfig`, and
 `SupportsServerConfig`. They are
