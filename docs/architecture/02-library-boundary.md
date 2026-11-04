@@ -559,17 +559,35 @@ itself, `Httpx2BearerTokenAuth` in `credentials/httpx2.py` because `httpx2` arri
 only with the `anthropic` extra — both over the shared `TokenProvider`, so one
 acquired token serves either.
 
-`base.services.llm` holds only what every provider shares: `AbstractLLMService` and
-`AbstractErrorHandler`. Each provider gets a package — `llm/openai/`, `llm/anthropic/` —
+`base.services.llm` holds only what every provider shares: `AbstractLLMService`. Each provider gets a package — `llm/openai/`, `llm/anthropic/` —
 holding its service in `__init__.py` beside its message adapter and its error handler. Adding
 a provider adds a directory rather than widening a shared module, and importing the seam
 pulls in no SDK.
 
-Retry policy, backoff and logging live once, in `AbstractErrorHandler`. An implementation
-supplies only what is provider-shaped: the SDK's base exception, the map from its error types
-to the domain hierarchy, where it hides the status code and request id, and whether it sent a
-retry hint. The domain errors themselves name no SDK, so a deployment carrying only the
-`anthropic` extra can still raise and catch every one of them.
+`AbstractTextEmbeddingService` is the same arrangement for embeddings, with
+`text_embedding/openai/` beside it. Batching belongs to the abstraction rather than
+to each adapter: splitting a list to fit a provider's per-request ceiling is the same
+work whoever answers, and an adapter reimplementing it could silently return vectors
+out of order. An adapter implements one batch and nothing else.
+
+Retrying a call that leaves this process is not an LLM concern, so it is not in the LLM
+package. `base.services.error_handling` owns the loop, the jittered backoff and the
+logging, and names no domain at all. The base never constructs a domain error itself —
+`wrap`, `wrap_exhausted` and `wrap_unexpected` belong to the implementation — so a store
+handler raises store errors and a model handler raises model errors over one retry policy.
+
+Depth is how specific a module is. The package root is domain-free: the abstraction, plus
+`FailureKind`, the vocabulary an SDK classifies into. `openai.py` beside it reads the
+OpenAI SDK but decides nothing about what callers see. The subfolders bind a domain:
+`llm/openai.py` and `llm/anthropic.py` raise the LLM family, `embedding/openai.py` raises
+the embedding family. Because the kind an exception represents is a property of the SDK
+rather than of the caller, it is stated once and two domains reuse it.
+
+Those domains are deliberately separate families. `EmbeddingRateLimitError` is not an
+`LLMError`, so a service that both embeds and generates can catch a failure of one
+without catching the other. Both derive from `ProviderError`, which carries the shape —
+status code, request id, the originating exception, and the attempt count when retries
+ran out — so a caller that genuinely wants either can still catch one thing.
 
 Declaring a tool sits below the adapters, which render a `Tool` into their provider's shape;
 running a turn sits above them, because it needs a model to call. That is why

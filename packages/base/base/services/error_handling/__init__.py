@@ -1,9 +1,14 @@
-"""Retry policy and domain mapping, shared by every provider.
+"""Retrying a call that talks to something outside this process.
 
-The loop, the backoff and the logging are the same whoever is behind the call.
-What differs is which exception type the SDK raises, how it classifies, and
-where it hides the status code and the retry hint — so those are the only
-things an implementation supplies.
+A model provider, an object store, a vector database, an identity provider —
+anything whose failures split into "try again" and "this will never work".
+The loop, the backoff and the logging are the same whatever is at the other
+end. What differs is which exception the client raises, how it classifies, and
+where it hides the status code and the retry hint.
+
+Nothing here names a domain. An implementation decides which exceptions callers
+see, so a store handler raises store errors and a model handler raises model
+errors, both over one retry policy.
 """
 
 import asyncio
@@ -11,20 +16,47 @@ import random
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from enum import StrEnum
 from typing import final
 
-from base.models.view_models.llm_exception import (
-    LLMError,
-    LLMRetryExhausted,
-    LLMUnexpectedError,
-)
 from base.services.logging.console import ConsoleLoggerService
 
 
-class AbstractErrorHandler[E: Exception](ABC):
-    """Runs a provider call, retrying what is worth retrying.
+class FailureKind(StrEnum):
+    """What went wrong, in terms no client or domain owns.
 
-    Callers get a result or an `LLMError`; a raw SDK exception never escapes.
+    An SDK handler decides which kind an exception is; a domain decides which
+    error class a kind becomes. Stating it once is what lets one SDK serve
+    several domains without repeating the classification.
+    """
+
+    RATE_LIMIT = "rate_limit"
+    SERVER = "server"
+    TIMEOUT = "timeout"
+    CONNECTION = "connection"
+    BAD_REQUEST = "bad_request"
+    AUTH = "auth"
+    NOT_FOUND = "not_found"
+    CONFLICT = "conflict"
+    UNKNOWN = "unknown"
+
+
+RETRYABLE_FAILURES: frozenset[FailureKind] = frozenset(
+    {
+        FailureKind.RATE_LIMIT,
+        FailureKind.SERVER,
+        FailureKind.TIMEOUT,
+        FailureKind.CONNECTION,
+    }
+)
+"""Kinds worth trying again. A kind is retryable whoever raised it."""
+
+
+class AbstractErrorHandler[E: Exception](ABC):
+    """Runs a call, retrying what is worth retrying.
+
+    Callers get a result or the domain error this handler wraps failures in; a
+    raw client exception never escapes.
     """
 
     DEFAULT_RETRIES: int = 3
@@ -49,27 +81,32 @@ class AbstractErrorHandler[E: Exception](ABC):
     @property
     @abstractmethod
     def provider_error_type(self) -> type[E]:
-        """The SDK's base exception. Anything else is unexpected."""
+        """The client's base exception. Anything else is unexpected."""
 
     @abstractmethod
-    def classify(self, error: E) -> tuple[type[LLMError], bool]:
-        """Resolve an SDK error to `(domain class, is retryable)`."""
+    def classify(self, error: E) -> tuple[type[Exception], bool]:
+        """Resolve a client error to `(domain class, is retryable)`."""
 
     @abstractmethod
-    def identify(self, error: E) -> tuple[int | None, str | None]:
-        """Pull `(status code, request id)` out of an SDK error."""
+    def wrap(self, error: E, domain_cls: type[Exception]) -> Exception:
+        """Build the domain error for a failure that will not be retried."""
+
+    @abstractmethod
+    def wrap_exhausted(self, error: E, attempts: int) -> Exception:
+        """Build the domain error for a retryable failure that ran out of tries."""
+
+    @abstractmethod
+    def wrap_unexpected(self, error: Exception) -> Exception:
+        """Build the domain error for something the client never promised."""
 
     def retry_after(self, error: E) -> float | None:
-        """Seconds the provider asked us to wait, when it said so."""
+        """Seconds the other end asked us to wait, when it said so.
+
+        Most clients say nothing, so the default is nothing and the handler
+        falls back to backoff.
+        """
         del error
         return None
-
-    def wrap(self, error: E, domain_cls: type[LLMError]) -> LLMError:
-        """Build the domain error for a non-retryable failure."""
-        status_code, request_id = self.identify(error)
-        return domain_cls.from_provider(
-            error, status_code=status_code, request_id=request_id
-        )
 
     @final
     def run[T](
@@ -100,11 +137,11 @@ class AbstractErrorHandler[E: Exception](ABC):
                     break
                 raise self.wrap(exc, domain_cls) from exc
             except Exception as exc:
-                # Intentional boundary: map unknown failures to our domain error.
-                raise LLMUnexpectedError.from_provider(exc) from exc
+                # Intentional boundary: nothing raw escapes this call.
+                raise self.wrap_unexpected(exc) from exc
 
         assert last_error is not None
-        raise self._wrap_exhausted(last_error, attempts=max_attempts) from last_error
+        raise self.wrap_exhausted(last_error, max_attempts) from last_error
 
     @final
     async def arun[T](
@@ -135,29 +172,14 @@ class AbstractErrorHandler[E: Exception](ABC):
                     break
                 raise self.wrap(exc, domain_cls) from exc
             except Exception as exc:
-                # Intentional boundary: map unknown failures to our domain error.
-                raise LLMUnexpectedError.from_provider(exc) from exc
+                # Intentional boundary: nothing raw escapes this call.
+                raise self.wrap_unexpected(exc) from exc
 
         assert last_error is not None
-        raise self._wrap_exhausted(last_error, attempts=max_attempts) from last_error
-
-    def _wrap_exhausted(self, error: E, attempts: int) -> LLMRetryExhausted:
-        domain_cls, _ = self.classify(error)
-        assert issubclass(domain_cls, LLMRetryExhausted), (
-            f"Retryable error {type(error).__name__} mapped to non-retry-exhausted "
-            f"domain class {domain_cls.__name__}"
-        )
-        status_code, request_id = self.identify(error)
-        return domain_cls(
-            f"{domain_cls.__name__} after {attempts} attempts: {error}",
-            attempts=attempts,
-            status_code=status_code,
-            request_id=request_id,
-            provider_error=error,
-        )
+        raise self.wrap_exhausted(last_error, max_attempts) from last_error
 
     def _compute_wait(self, error: E, attempt: int) -> float:
-        """Respect the provider's own hint, else jittered exponential backoff."""
+        """Respect the other end's own hint, else jittered exponential backoff."""
         hinted = self.retry_after(error)
         return hinted if hinted is not None else self._backoff(attempt)
 

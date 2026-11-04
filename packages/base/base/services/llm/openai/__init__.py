@@ -79,10 +79,10 @@ from base.models.view_models.streams import (
 from base.services.common.meta import KeyedSingletonABC
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsLLMConfig
+from base.services.error_handling.llm.openai import OpenAIErrorHandler
 from base.services.execution_context import ExecutionContext
 from base.services.llm import AbstractLLMService
 from base.services.llm.openai.adapter import OpenAIMessageAdapter
-from base.services.llm.openai.error_handler import OpenAIErrorHandler
 from base.services.logging.console import ConsoleLoggerService
 from base.services.tool_calling import Tool
 from base.services.usage import UsageTracker
