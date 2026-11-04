@@ -10,6 +10,11 @@ One build definition, N images. Per-service deployability without per-service bu
 workspace lock, installs only the selected service's dependency closure, and
 removes the other service sources before producing the runtime image.
 
+It syncs with `--no-dev`, so a service's `dev` dependency group stays out of the
+image. The three services here run PostgreSQL in production and reach for SQLite
+only as a local default, so that is where their SQLite driver lives. A service
+that genuinely runs SQLite in production declares `base[sql,sqlite]` and ships it.
+
 ---
 
 ## One parameterised Dockerfile
@@ -100,6 +105,8 @@ Today's `run.sh` generalises with no loss of behaviour:
 #!/bin/sh
 set -e
 
+python -m base.preflight
+
 if [ -n "$RUN_MIGRATIONS" ] && [ -f alembic.ini ]; then
     echo "Running migrations for ${SERVICE_NAME}..."
     alembic upgrade head
@@ -115,6 +122,63 @@ exec serve
 `serve` is each service's own `[project.scripts]` entry ([doc 01](01-workspace-layout.md)),
 so one entrypoint serves API services and workers alike. The `-f alembic.ini` guard means
 NoSQL and stateless services need no special case.
+
+### Startup preflight
+
+A subsystem's capability is fixed at build time by the extras its service declares.
+Which implementation it uses is chosen later, by environment variables. Nothing
+reconciles the two, so configuration can name something the image cannot honour.
+
+`python -m base.preflight` closes that. `run.sh` runs it before migrations and before
+`serve`, for every service:
+
+```
+Preflight failed: SQL_BACKEND='sqlite' needs aiosqlite, which this build does not
+install. This build supports: postgresql. Either set SQL_BACKEND to one of those, or
+deploy an image built with "base[sqlite]" (installs aiosqlite).
+```
+
+It names both remedies, because both audiences hit this: a developer adds the extra, an
+operator reverts the configuration. Running it before `serve` also makes the failure
+deterministic — `SQLClient._require_driver` already raised, but *when* depended on whether
+a service built its stores eagerly at import or lazily on first use, so one
+misconfiguration could be a boot crash in one service and a 500 on first request in
+another.
+
+Two checks today:
+
+| Check | Scope | Unknown value |
+| --- | --- | --- |
+| `SQL_BACKEND` | builds carrying the `sql` extra | fatal |
+| `BROKER` | every service | fatal |
+
+The `sql` extra, not `alembic.ini`, is what scopes the SQL check. `alembic.ini` marks
+migrations, so gating on it would skip a service that owns SQL tables whose schema is
+managed outside the repository — and the two are independent, since a MySQL service may
+well carry migrations too. A build with no `sql` extra cannot speak SQL at all, so
+`SQL_BACKEND` is inert there and the check is skipped.
+
+**An unknown `BROKER` is fatal on purpose.** `base.services.broker.factory.build_broker`
+dispatches exhaustively, but before it was centralised each service carried its own copy
+that treated anything other than an exact `redis` match as in-process. `BROKER=Redis` — or
+a trailing space out of a secret store — started cleanly, passed its readiness probe
+(`InMemoryBroker` is "reachable whenever the object exists") and then delivered nothing
+between containers. A silent, green-health-check message loss is worse than a crash, so
+the value is validated rather than defaulted, in three places: `BrokerBackend` is a
+`StrEnum` so settings loading rejects it, the preflight rejects it before `serve`, and the
+factory raises on a transport it has no case for.
+
+`BROKER=memory` outside `ENVIRONMENT=local` warns rather than fails, because a deliberate
+single-process deployment is legitimate.
+
+Ask an image what it supports without starting it:
+
+```
+docker run --rm --entrypoint python registry/chat_api:<sha> -m base.preflight
+```
+
+CI asserts both directions per service: the image accepts the configuration it was built
+for, and rejects configuration it cannot honour.
 
 > **Migrations in production:** `RUN_MIGRATIONS` on container start is convenient but races
 > when a service scales to N replicas. Prefer a pre-deploy job or init container that runs
@@ -233,11 +297,21 @@ Repository-wide gates that run regardless:
 | `uv lock --check` | Lockfile matches manifests |
 | `ruff check .` | One config at the root, uniform across packages |
 | **Boundary lint** | No service imports another service; `base` imports no service |
+| **Dependency isolation lint** | No service image carries another service's dependencies |
 | Image secret scan | No `.env` or key material in any built image |
 
 The boundary lint is the one worth writing by hand — it is the mechanical enforcement of
 [doc 02](02-library-boundary.md) and [doc 03](03-data-ownership.md), and without it the
 architecture erodes one convenient import at a time.
+
+`tools/deps_lint.py` does the same job for the dependency graph. `uv sync --package` keeps
+images separate only while each service declares the extras it actually uses, so the lint
+checks three things: a service declares no extra `base` does not define; a service's
+`--no-dev` closure contains nothing belonging solely to an extra it did not declare; and
+`base`'s core dependency set still matches a pinned list. The first two derive their deny
+list from `base`'s own manifest, so a new extra is covered the day it is added. The third
+is pinned on purpose — a core dependency lands in every image ever built, so growing that
+set should be a decision someone reviews rather than a side effect of one import.
 
 ---
 

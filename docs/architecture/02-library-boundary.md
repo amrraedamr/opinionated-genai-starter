@@ -269,7 +269,6 @@ are already leaf-level — so splitting into extras requires no import refactor.
 # packages/base/pyproject.toml
 [project]
 dependencies = [
-    "fastapi>=0.133.1,<0.134",
     "pydantic[email]>=2.12.5,<3",
     "pydantic-settings>=2.13.1,<3",
     "httpx[http2]>=0.28.1,<0.29",
@@ -279,7 +278,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server   = ["uvicorn[standard]>=0.41.0,<0.42", "gunicorn>=25.1.0,<26"]
+server   = ["fastapi>=0.133.1,<0.134", "uvicorn[standard]>=0.41.0,<0.42",
+            "gunicorn>=25.1.0,<26"]
 sql      = ["sqlalchemy>=2.0.47,<3", "alembic>=1.18.4,<2",
             "sqlalchemy-utils>=0.42.1,<0.43", "greenlet>=3.3.2,<4"]
 sqlite   = ["aiosqlite>=0.22.1,<0.23"]
@@ -298,6 +298,10 @@ azure    = ["azure-identity>=1.25.2,<2", "azure-keyvault-secrets>=4.10.0,<5",
 
 Notes from doing it:
 
+- **`fastapi` is an extra, not core.** A queue worker serves no HTTP, so it has no reason
+  to install FastAPI and Starlette. It sits in `server` with the ASGI runners, and the
+  HTTP layer — `base.app`, `base.capabilities`, `base.middleware`, `base.tools.routers`,
+  `base.tools.exception_handlers`, `base.services.auth.bearer` — guards behind it.
 - **`sse-starlette` is an extra, not core.** Once `main.py` moved out, nothing in `base`
   imported it; only the service's SSE endpoints do.
 - **`requests` stays in core** — `HttpRequestService` uses it alongside `httpx`.
@@ -308,10 +312,19 @@ Notes from doing it:
 Services then declare intent legibly:
 
 ```toml
-# chat_api          → base[server,sql,sqlite,postgres,auth,llm,redis,sse]
+# chat_api          → base[server,sql,postgres,auth,llm,redis,sse]
 # identity          → base[server,sql,postgres,auth,redis]
-# ingestion-worker  → base[sql,postgres,llm,vectors,mongo]   # no server extra
+# ingestion_worker  → base[sql,postgres,redis]   # no server extra
 ```
+
+`sqlite` is absent from all three, because all three run PostgreSQL in production and use
+SQLite only as the local default (`SQL_BACKEND=sqlite`). For them it is a `dev` dependency
+group: images build with `uv sync --no-dev`, so the driver stays out.
+
+That is a per-service decision, not a rule. SQLite is a legitimate production backend —
+single-replica services, read-heavy workloads, edge deployments — and a service that runs
+it declares `base[sql,sqlite]` in `dependencies` like any other backend, and ships the
+driver. The invariant is *declare what you ship*, not *never ship SQLite*.
 
 Measured, not assumed: with `chat_api` installed into its own environment, its
 `site-packages` contains `asyncpg, gunicorn, httpx, openai, redis, sqlalchemy, tiktoken,
@@ -339,13 +352,19 @@ Two refinements the implementation needed:
 
 - **`base/tools/serializers.py` degrades instead of raising.** It is reachable from
   `hash_args` → `KeyedSingleton`, so it is effectively core. Raising there would make
-  `sqlalchemy` a hard dependency of everything. Instead the `DeclarativeBase` encoder is
-  registered only when the `sql` extra is present; a service with no SQLAlchemy has no
-  declarative models to encode anyway.
+  `sqlalchemy` and `fastapi` hard dependencies of everything. Instead the `DeclarativeBase`
+  and `UploadFile` encoders are registered only when the `sql` and `server` extras are
+  present; a service with neither has no declarative models and receives no uploads.
+- **`base/models/definitions/errors.py` uses `http.HTTPStatus`**, not `fastapi.status`.
+  The error enums are shared with non-HTTP code, and the stdlib constants are the same
+  integers.
 - **SQL drivers are loaded by URL, not by import**, so a missing `postgres`/`mysql`/`sqlite`
   extra would surface as a SQLAlchemy driver error rather than a `MissingExtraError`.
-  `SQLClient` therefore probes for the selected backend's drivers up front and raises the
-  named error itself.
+  `SQLClient` therefore probes for the selected backend's drivers up front and raises
+  `UnsupportedBackendError`, which names the backends this build *does* support as well as
+  the extra to add — the backend is chosen at runtime, so the remedy may be to change
+  configuration rather than the manifest. `python -m base.preflight` runs the same
+  check at container start ([doc 06](06-build-and-deploy.md)).
 
 ---
 

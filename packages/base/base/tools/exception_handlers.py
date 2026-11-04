@@ -1,9 +1,16 @@
 import traceback as tb
 
-from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from base.tools.errors import MissingExtraError
+
+try:
+    from fastapi import FastAPI, Request
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError(
+        "server", "fastapi", feature="AppExceptionHandler"
+    ) from exc
 
 from base.models.definitions.exceptions import ExceptionCategory
 from base.models.view_models import DebugContext, ErrorResponse

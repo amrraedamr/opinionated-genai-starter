@@ -1,5 +1,12 @@
-from fastapi import Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from base.tools.errors import MissingExtraError
+
+try:
+    from fastapi import Depends
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError(
+        "server", "fastapi", feature="Bearer authentication dependencies"
+    ) from exc
 
 from base.services.auth.models import Principal
 from base.services.auth.tokens import TokenVerifier

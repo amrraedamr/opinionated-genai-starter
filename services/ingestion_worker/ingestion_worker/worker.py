@@ -12,6 +12,7 @@ from ingestion_worker.settings import settings
 configure(settings)
 
 from base.services.broker import AbstractBroker  # noqa: E402
+from base.services.broker.factory import build_broker  # noqa: E402
 from base.services.logging.console import ConsoleLoggerService  # noqa: E402
 from base.services.messaging import InboxProcessor  # noqa: E402
 from base.services.sql.service import SQLService  # noqa: E402
@@ -22,19 +23,9 @@ from ingestion_worker.models.inbox import InboxEventDTO  # noqa: E402
 logger = ConsoleLoggerService()
 
 
-def build_broker() -> AbstractBroker:
-    if settings.broker == "redis":
-        from base.services.broker.redis_streams import RedisStreamsBroker
-
-        return RedisStreamsBroker()
-    from base.services.broker.memory import InMemoryBroker
-
-    return InMemoryBroker()
-
-
 async def arun(broker: AbstractBroker | None = None) -> AbstractBroker:
     """Subscribe every handler and begin consuming."""
-    broker = broker or build_broker()
+    broker = broker or build_broker(settings)
     group = settings.consumer_group
     inbox = InboxProcessor(
         InboxEventDTO,

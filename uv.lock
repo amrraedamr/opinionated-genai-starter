@@ -274,7 +274,6 @@ source = { editable = "packages/base" }
 dependencies = [
     { name = "colorlog" },
     { name = "contracts" },
-    { name = "fastapi" },
     { name = "httpx", extra = ["http2"] },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
@@ -314,6 +313,7 @@ redis = [
     { name = "redis" },
 ]
 server = [
+    { name = "fastapi" },
     { name = "gunicorn" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -348,7 +348,7 @@ requires-dist = [
     { name = "colorlog", specifier = ">=6.10.1,<7" },
     { name = "contracts", editable = "packages/contracts" },
     { name = "cryptography", marker = "extra == 'auth'", specifier = ">=46.0.5,<47" },
-    { name = "fastapi", specifier = ">=0.133.1,<0.134" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.133.1,<0.134" },
     { name = "greenlet", marker = "extra == 'sql'", specifier = ">=3.3.2,<4" },
     { name = "gunicorn", marker = "extra == 'server'", specifier = ">=25.1.0,<26" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.28.1,<0.29" },
@@ -554,11 +554,19 @@ name = "chat-api"
 version = "0.1.0"
 source = { editable = "services/chat_api" }
 dependencies = [
-    { name = "base", extra = ["auth", "llm", "postgres", "redis", "server", "sql", "sqlite", "sse"] },
+    { name = "base", extra = ["auth", "llm", "postgres", "redis", "server", "sql", "sse"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "base", extra = ["sqlite"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "base", extras = ["server", "sql", "sqlite", "postgres", "auth", "llm", "redis", "sse"], editable = "packages/base" }]
+requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "auth", "llm", "redis", "sse"], editable = "packages/base" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "base", extras = ["sqlite"], editable = "packages/base" }]
 
 [[package]]
 name = "click"
@@ -945,11 +953,19 @@ name = "identity"
 version = "0.1.0"
 source = { editable = "services/identity" }
 dependencies = [
-    { name = "base", extra = ["auth", "postgres", "redis", "server", "sql", "sqlite"] },
+    { name = "base", extra = ["auth", "postgres", "redis", "server", "sql"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "base", extra = ["sqlite"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "sqlite", "auth", "redis"], editable = "packages/base" }]
+requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "auth", "redis"], editable = "packages/base" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "base", extras = ["sqlite"], editable = "packages/base" }]
 
 [[package]]
 name = "idna"
@@ -965,15 +981,23 @@ name = "ingestion-worker"
 version = "0.1.0"
 source = { editable = "services/ingestion_worker" }
 dependencies = [
-    { name = "base", extra = ["postgres", "redis", "sql", "sqlite"] },
+    { name = "base", extra = ["postgres", "redis", "sql"] },
     { name = "contracts" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "base", extra = ["sqlite"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "base", extras = ["redis", "sql", "sqlite", "postgres"], editable = "packages/base" },
+    { name = "base", extras = ["redis", "sql", "postgres"], editable = "packages/base" },
     { name = "contracts", editable = "packages/contracts" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "base", extras = ["sqlite"], editable = "packages/base" }]
 
 [[package]]
 name = "isodate"

@@ -1,11 +1,10 @@
-import importlib.util
 import ssl
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any, cast
 from urllib.parse import quote_plus
 
-from base.tools.errors import MissingExtraError
+from base.tools.errors import MissingExtraError, UnsupportedBackendError
 
 try:
     from sqlalchemy import QueuePool, create_engine
@@ -21,16 +20,10 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="SQLClient") from exc
 
-from base.models.definitions.database import SQLBackend
+from base.models.definitions.database import SQLBackend, installed_backends
 from base.services.common.meta import KeyedSingleton
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsSQLConfig
-
-_BACKEND_EXTRAS: dict[SQLBackend, tuple[str, str]] = {
-    SQLBackend.SQLITE: ("sqlite", "aiosqlite"),
-    SQLBackend.MYSQL: ("mysql", "aiomysql / pymysql"),
-    SQLBackend.POSTGRESQL: ("postgres", "asyncpg / psycopg2-binary"),
-}
 
 
 class SQLClient(metaclass=KeyedSingleton):
@@ -49,16 +42,17 @@ class SQLClient(metaclass=KeyedSingleton):
         self._async_session_maker: async_sessionmaker[AsyncSession] | None = None
 
     def _require_driver(self) -> None:
-        """Fail with the extra to install, not with SQLAlchemy's driver error."""
-        extra, distribution = _BACKEND_EXTRAS[self._backend]
-        for driver in (self._backend.sync_driver, self._backend.async_driver):
-            module = {"pysqlite": "sqlite3"}.get(driver, driver)
-            if importlib.util.find_spec(module) is None:
-                raise MissingExtraError(
-                    extra,
-                    distribution,
-                    feature=f"SQL backend {self._backend.value!r}",
-                )
+        """Fail naming the backends this build runs, not with a driver error."""
+        missing = self._backend.missing_imports
+        if not missing:
+            return
+        raise UnsupportedBackendError(
+            backend=self._backend.value,
+            extra=self._backend.extra,
+            distribution=self._backend.distribution,
+            missing=missing,
+            available=[backend.value for backend in installed_backends()],
+        )
 
     def _get_database_url(self, driver: str) -> str:
         match self._backend:

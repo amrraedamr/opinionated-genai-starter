@@ -3,7 +3,12 @@ import logging
 import pkgutil
 from types import ModuleType
 
-from fastapi import FastAPI
+from base.tools.errors import MissingExtraError
+
+try:
+    from fastapi import FastAPI
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("server", "fastapi", feature="init_routers") from exc
 
 
 def init_routers(

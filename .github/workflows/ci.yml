@@ -19,6 +19,8 @@ jobs:
       - run: uv run ruff check .
       - name: Architectural boundaries
         run: uv run python tools/boundary_lint.py
+      - name: Dependency isolation
+        run: uv run python tools/deps_lint.py
 
   detect:
     name: Affected services
@@ -61,12 +63,33 @@ jobs:
             --build-arg SERVICE=${{ matrix.service }} \
             -t ${{ matrix.service }}:${{ github.sha }} .
       - name: Entrypoint imports inside the image
+        # Images ship without the dev-only SQLite driver, so probe the backend
+        # the image is actually built for.
         run: |
           docker run --rm \
             --workdir /app/services/${{ matrix.service }} \
+            --env SQL_BACKEND=postgresql \
             --entrypoint python \
             ${{ matrix.service }}:${{ github.sha }} \
             -c "from importlib.metadata import entry_points; eps = list(entry_points(group='console_scripts', name='serve')); assert eps, 'service declares no serve entry point'; [ep.load() for ep in eps]; print('entrypoint imports cleanly')"
+      - name: Preflight inside the image
+        run: |
+          docker run --rm \
+            --workdir /app/services/${{ matrix.service }} \
+            --env SQL_BACKEND=postgresql --env BROKER=redis \
+            --entrypoint python \
+            ${{ matrix.service }}:${{ github.sha }} -m base.preflight
+      - name: Image rejects configuration it cannot honour
+        run: |
+          for bad in "SQL_BACKEND=mysql" "BROKER=Redis"; do
+            if docker run --rm \
+              --workdir /app/services/${{ matrix.service }} \
+              --env SQL_BACKEND=postgresql --env BROKER=redis --env "$bad" \
+              --entrypoint python \
+              ${{ matrix.service }}:${{ github.sha }} -m base.preflight; then
+              echo "preflight accepted $bad, which this image cannot honour"; exit 1
+            fi
+          done
       - name: No secrets in image
         run: |
           LEAKED=$(docker run --rm --entrypoint sh ${{ matrix.service }}:${{ github.sha }} -c \
