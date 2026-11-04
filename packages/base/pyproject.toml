@@ -17,8 +17,10 @@ classifiers = [
 # is an extra, so a worker that needs Redis and an LLM does not also install
 # Qdrant, Cosmos, Azure Search, MySQL and Postgres. Each optional import site
 # is guarded and raises MissingExtraError naming the extra to add.
+#
+# FastAPI is not core: a queue worker serves no HTTP. It belongs to `server`
+# alongside the ASGI runners, which keeps Starlette out of worker images too.
 dependencies = [
-    "fastapi>=0.133.1,<0.134",
     "pydantic[email]>=2.12.5,<3",
     "pydantic-settings>=2.13.1,<3",
     "httpx[http2]>=0.28.1,<0.29",
@@ -30,6 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 server = [
+    "fastapi>=0.133.1,<0.134",
     "uvicorn[standard]>=0.41.0,<0.42",
     "gunicorn>=25.1.0,<26",
 ]

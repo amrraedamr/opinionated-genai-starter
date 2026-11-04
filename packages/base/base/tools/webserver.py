@@ -3,13 +3,12 @@ import logging
 import multiprocessing
 from typing import Any, cast
 
-from starlette.types import ASGIApp
-
 from base.tools.errors import MissingExtraError
 
 try:
     import uvicorn
     from gunicorn.app.base import BaseApplication
+    from starlette.types import ASGIApp
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError(
         "server", "uvicorn / gunicorn", feature="run_webserver"

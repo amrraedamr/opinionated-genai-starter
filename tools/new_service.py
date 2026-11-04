@@ -73,8 +73,7 @@ def build(name: str, storage: str, http: bool, capabilities: list[str]) -> None:
 
     print(f"Creating services/{name}")
 
-    write(
-        directory / "pyproject.toml",
+    manifest = textwrap.dedent(
         f"""
         [project]
         name = "{name}"
@@ -97,8 +96,22 @@ def build(name: str, storage: str, http: bool, capabilities: list[str]) -> None:
         [build-system]
         requires = ["uv_build>=0.12.19,<0.13.0"]
         build-backend = "uv_build"
-        """,
-    )
+        """
+    ).lstrip()
+
+    # A SQL service whose backend is not SQLite still defaults to SQL_BACKEND=sqlite
+    # locally, so it gets SQLite as a dev dependency. When storage *is* sqlite the
+    # extra is already in `dependencies` and ships with the image.
+    if uses_sql and storage != "sqlite":
+        manifest += (
+            "\n# This service runs its own backend in production and SQLite only\n"
+            "# locally, so SQLite is a dev dependency. A service that runs SQLite\n"
+            "# in production declares base[sqlite] above instead.\n"
+            "[dependency-groups]\n"
+            'dev = ["base[sqlite]"]\n'
+        )
+
+    write_raw(directory / "pyproject.toml", manifest)
 
     write(directory / pkg / "__init__.py", "")
 

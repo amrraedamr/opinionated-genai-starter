@@ -4,11 +4,17 @@ version = "0.1.0"
 description = "Chat API service — conversations, messages, users and auth"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "base[server,sql,sqlite,postgres,auth,llm,redis,sse]",
+    "base[server,sql,postgres,auth,llm,redis,sse]",
 ]
 
 [project.scripts]
 serve = "chat_api.app:start"
+
+# This service runs PostgreSQL in production and SQLite only locally, so
+# SQLite is a dev dependency. A service that runs SQLite in production
+# declares base[sqlite] above instead.
+[dependency-groups]
+dev = ["base[sqlite]"]
 
 [tool.uv.sources]
 base = { workspace = true }

@@ -7,8 +7,12 @@ from json import JSONEncoder
 from typing import Any, ClassVar
 from uuid import UUID
 
-from fastapi import UploadFile
 from pydantic import BaseModel
+
+try:  # `server` extra. Optional on purpose — this module is core.
+    from fastapi import UploadFile
+except ModuleNotFoundError:  # pragma: no cover
+    UploadFile = None  # type: ignore[assignment, misc]
 
 try:  # `sql` extra. Optional on purpose — this module is core.
     from sqlalchemy.orm import DeclarativeBase
@@ -49,7 +53,8 @@ def encode_type(obj: type) -> dict[str, Any]:
     }
 
 
-def encode_upload_file(obj: UploadFile) -> dict[str, Any]:
+def encode_upload_file(obj: Any) -> dict[str, Any]:
+    """Encode a `fastapi.UploadFile`, registered only when `server` is installed."""
     return {
         "_type": "UploadFile",
         "filename": obj.filename,
@@ -63,8 +68,12 @@ class ExpansiveEncoder(JSONEncoder):
         BaseModel: encode_base_model,
         UUID: encode_uuid,
         type: encode_type,
-        UploadFile: encode_upload_file,
     }
+
+    # Only registered when the `server` extra is installed; a service with no
+    # HTTP layer never receives an upload.
+    if UploadFile is not None:
+        encoders[UploadFile] = encode_upload_file
 
     # Only registered when the `sql` extra is installed; a service with no
     # SQLAlchemy has no declarative models to encode.

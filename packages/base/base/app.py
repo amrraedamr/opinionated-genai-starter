@@ -3,10 +3,15 @@ from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from types import ModuleType
 
-from fastapi import FastAPI, Response
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from base.tools.errors import MissingExtraError
+
+try:
+    from fastapi import FastAPI, Response
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.middleware.trustedhost import TrustedHostMiddleware
+    from fastapi.responses import JSONResponse
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("server", "fastapi", feature="create_app") from exc
 
 from base.capabilities import Capability
 from base.middleware import (

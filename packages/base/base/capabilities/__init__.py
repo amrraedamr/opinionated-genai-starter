@@ -1,6 +1,11 @@
 from typing import Protocol, runtime_checkable
 
-from fastapi import FastAPI
+from base.tools.errors import MissingExtraError
+
+try:
+    from fastapi import FastAPI
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("server", "fastapi", feature="Capabilities") from exc
 
 from base.models.definitions.health import ProbeStatus
 from base.models.view_models.health import ProbeResult
