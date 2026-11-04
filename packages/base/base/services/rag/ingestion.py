@@ -7,7 +7,8 @@ from base.models.view_models.rag import Chunk, Document, IngestionResult
 from base.models.view_models.vector_search import VectorRecord
 from base.services.logging.console import ConsoleLoggerService
 from base.services.rag.chunking import ChunkingConfig, TextChunker
-from base.services.text_embedding.openai_embedding import OpenAITextEmbeddingService
+from base.services.text_embedding import AbstractTextEmbeddingService
+from base.services.text_embedding.openai import OpenAIEmbeddingService
 from base.services.vector_search import AbstractVectorSearchService
 
 DOCUMENT_ID_FIELD = "document_id"
@@ -40,12 +41,16 @@ class RagIngestionService:
         self,
         vector_service: AbstractVectorSearchService,
         config: IngestionConfig,
+        embedding_service: AbstractTextEmbeddingService | None = None,
     ) -> None:
         self._vector_service = vector_service
         self._config = config
         self._chunker: TextChunker = TextChunker(config.chunking)
-        self._embedding_service: OpenAITextEmbeddingService = (
-            OpenAITextEmbeddingService()
+        # No-argument default on purpose: an embedding service is a
+        # KeyedSingleton keyed on its arguments, so passing an explicit
+        # None would resolve a different instance than a bare one.
+        self._embedding_service: AbstractTextEmbeddingService = (
+            embedding_service or OpenAIEmbeddingService()
         )
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
 
@@ -73,9 +78,7 @@ class RagIngestionService:
         position = 0
         for document, chunks in chunked:
             for chunk in chunks:
-                records.append(
-                    self._record(document, chunk, vectors[position])
-                )
+                records.append(self._record(document, chunk, vectors[position]))
                 position += 1
             await self._adrop_stale_chunks(document.id, len(chunks))
 

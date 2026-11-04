@@ -47,10 +47,10 @@ from base.models.view_models.streams import (
 from base.services.common.meta import KeyedSingletonABC
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsLLMConfig
+from base.services.error_handling.llm.anthropic import AnthropicErrorHandler
 from base.services.execution_context import ExecutionContext
 from base.services.llm import AbstractLLMService
 from base.services.llm.anthropic.adapter import AnthropicMessageAdapter
-from base.services.llm.anthropic.error_handler import AnthropicErrorHandler
 from base.services.logging.console import ConsoleLoggerService
 from base.services.tool_calling import Tool
 from base.services.usage import UsageTracker

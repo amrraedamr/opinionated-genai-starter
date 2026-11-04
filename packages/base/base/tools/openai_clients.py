@@ -3,7 +3,7 @@
 from httpx import Auth, Timeout
 
 from base.models.definitions.model import ProviderType
-from base.models.view_models.llm_exception import LLMConfigError
+from base.models.view_models.provider_exception import ProviderConfigError
 from base.tools.errors import MissingExtraError
 
 try:
@@ -29,7 +29,7 @@ def resolve_base_url(api_host: str | None, api_type: ProviderType) -> str | None
         return base_url
 
     if not base_url:
-        raise LLMConfigError("api_host is required for Azure OpenAI")
+        raise ProviderConfigError("api_host is required for Azure OpenAI")
 
     base_url = base_url.rstrip("/")
     if not base_url.endswith("/openai/v1"):

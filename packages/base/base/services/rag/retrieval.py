@@ -11,7 +11,8 @@ from base.services.rag.ingestion import (
     TEXT_FIELD,
 )
 from base.services.reranking import AbstractRerankService
-from base.services.text_embedding.openai_embedding import OpenAITextEmbeddingService
+from base.services.text_embedding import AbstractTextEmbeddingService
+from base.services.text_embedding.openai import OpenAIEmbeddingService
 from base.services.vector_search import (
     AbstractVectorSearchService,
     SupportsLexicalSearch,
@@ -33,13 +34,17 @@ class RagRetrievalService:
         collection: str,
         reranker: AbstractRerankService | None = None,
         overfetch: int | None = None,
+        embedding_service: AbstractTextEmbeddingService | None = None,
     ) -> None:
         self._vector_service = vector_service
         self._collection = collection
         self._reranker = reranker
         self._overfetch = max(overfetch or self._configured_overfetch(), 1)
-        self._embedding_service: OpenAITextEmbeddingService = (
-            OpenAITextEmbeddingService()
+        # No-argument default on purpose: an embedding service is a
+        # KeyedSingleton keyed on its arguments, so passing an explicit
+        # None would resolve a different instance than a bare one.
+        self._embedding_service: AbstractTextEmbeddingService = (
+            embedding_service or OpenAIEmbeddingService()
         )
 
     @staticmethod
