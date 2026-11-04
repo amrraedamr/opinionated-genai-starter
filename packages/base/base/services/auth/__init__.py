@@ -11,6 +11,7 @@ from base.services.auth.models import (
     Principal,
     RefreshToken,
     TokenPair,
+    TokenResponse,
 )
 from base.services.auth.tokens import TokenIssuer, TokenVerifier
 from base.services.configuration.protocols import (
@@ -28,6 +29,7 @@ __all__ = [
     "SupportsTokenVerificationConfig",
     "TokenIssuer",
     "TokenPair",
+    "TokenResponse",
     "TokenVerifier",
     "current_principal",
     "http_bearer",

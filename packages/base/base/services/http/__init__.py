@@ -67,6 +67,22 @@ class HttpRequestService(metaclass=Singleton):
         except (ValueError, RuntimeError):
             return response.text
 
+    @staticmethod
+    def _sync_auth(
+        auth: tuple[str, str] | httpx.Auth | None,
+    ) -> tuple[str, str] | None:
+        """Narrow `auth` to what `requests` understands.
+
+        Rejecting beats sending the request unauthenticated and reading a 401.
+        """
+        if auth is None or isinstance(auth, tuple):
+            return auth
+        raise TypeError(
+            "call_endpoint accepts only a (username, password) pair. An "
+            "httpx.Auth hook, such as BearerTokenAuth, works on the async "
+            "path: use acall_endpoint."
+        )
+
     @overload
     def call_endpoint(
         self,
@@ -75,7 +91,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -92,7 +108,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -109,7 +125,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -125,7 +141,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -133,6 +149,7 @@ class HttpRequestService(metaclass=Singleton):
         raw: bool = False,
     ) -> HttpResponse | bytes:
         last_error: Exception | None = None
+        basic_auth = self._sync_auth(auth)
 
         for attempt in range(retry_count + 1):
             try:
@@ -143,7 +160,7 @@ class HttpRequestService(metaclass=Singleton):
                     params=query_params,
                     json=body,
                     timeout=timeout or self._default_api_timeout,
-                    auth=auth,
+                    auth=basic_auth,
                     data=data,
                     files=files,
                 )
@@ -206,7 +223,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -223,7 +240,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -240,7 +257,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,
@@ -256,7 +273,7 @@ class HttpRequestService(metaclass=Singleton):
         query_params: dict[str, Any] | None = None,
         body: dict[str, Any] | None = None,
         headers: dict[str, Any] | None = None,
-        auth: tuple[str, str] | None = None,
+        auth: tuple[str, str] | httpx.Auth | None = None,
         data: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
         timeout: float | None = None,

@@ -44,6 +44,10 @@ class AuthErrors(Enum):
         "message": "OAuth provider did not return a usable identity.",
         "status_code": status.HTTP_400_BAD_REQUEST,
     }
+    OUTBOUND_TOKEN_FAILED = {
+        "message": "Could not acquire credentials for an upstream dependency.",
+        "status_code": status.HTTP_502_BAD_GATEWAY,
+    }
     OAUTH_CODE_INVALID = {
         "message": "Invalid or expired OAuth exchange code.",
         "status_code": status.HTTP_400_BAD_REQUEST,

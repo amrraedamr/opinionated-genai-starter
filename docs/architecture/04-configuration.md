@@ -137,6 +137,16 @@ The full set, each lifting one group from today's file **verbatim**:
 `MongoSettingsMixin`, `CosmosSettingsMixin`, `BlobSettingsMixin`,
 `KeyVaultSettingsMixin`, `QdrantSettingsMixin`, `AzureSearchSettingsMixin`,
 
+`CredentialsSettingsMixin` is the one addition rather than a lift. It describes the
+**outbound** OAuth2 client credential a service presents to a protected dependency —
+`OUTBOUND_TOKEN_URL`, `OUTBOUND_CLIENT_ID`, `OUTBOUND_CLIENT_SECRET`, `OUTBOUND_SCOPE`,
+`OUTBOUND_CREDENTIAL_PLACEMENT`, `OUTBOUND_TOKEN_REFRESH_SKEW_SECONDS` and
+`OUTBOUND_VERIFY_TLS`, which defaults to on. The `outbound_` prefix keeps it visibly
+distinct from `TokenVerificationMixin` and `OAuthSettingsMixin`, which describe tokens this
+service verifies or obtains on a *user's* behalf; [doc 02](02-library-boundary.md) explains
+why the two halves stay separate. Nothing here is defaulted to a vendor's value: one mixin
+covers every authorization server, and empty is the default.
+
 
 > **Field names are unchanged, deliberately.** Earlier drafts of this document sketched
 > generic names (`db_host`, `db_name`, `openai_api_key`, `default_model`). Renaming would
@@ -311,7 +321,8 @@ Shipped under `configuration/protocols/`, mirroring the mixin files one-for-one:
 `SupportsSQLConfig` / `SupportsPostgresConfig` / `SupportsMySQLConfig`,
 `SupportsLLMConfig` / `SupportsEmbeddingConfig`, `SupportsRedisConfig`,
 `SupportsQdrantConfig` / `SupportsAzureSearchConfig`, `SupportsTokenVerificationConfig` /
-`SupportsTokenIssuingConfig` / `SupportsIdpConfig`, and `SupportsServerConfig`. They are
+`SupportsTokenIssuingConfig` / `SupportsIdpConfig`, `SupportsCredentialsConfig`, and
+`SupportsServerConfig`. They are
 `runtime_checkable`, so conformance is assertable at runtime — `ChatApiSettings`
 satisfies the SQL, Postgres, LLM, Redis and server protocols and does **not** satisfy the
 Qdrant one.

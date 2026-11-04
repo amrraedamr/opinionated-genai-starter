@@ -60,6 +60,13 @@ jobs:
           docker build -f docker/service.Dockerfile \
             --build-arg SERVICE=${{ matrix.service }} \
             -t ${{ matrix.service }}:${{ github.sha }} .
+      - name: Entrypoint imports inside the image
+        run: |
+          docker run --rm \
+            --workdir /app/services/${{ matrix.service }} \
+            --entrypoint python \
+            ${{ matrix.service }}:${{ github.sha }} \
+            -c "from importlib.metadata import entry_points; eps = list(entry_points(group='console_scripts', name='serve')); assert eps, 'service declares no serve entry point'; [ep.load() for ep in eps]; print('entrypoint imports cleanly')"
       - name: No secrets in image
         run: |
           LEAKED=$(docker run --rm --entrypoint sh ${{ matrix.service }}:${{ github.sha }} -c \
