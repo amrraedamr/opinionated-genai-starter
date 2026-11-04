@@ -9,6 +9,7 @@ try:
     )
     from qdrant_client.models import (
         Condition,
+        Distance,
         ExtendedPointId,
         FieldCondition,
         Filter,
@@ -25,7 +26,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.clients.vectors.qdrant import QdrantClient
 from base.models.definitions.vector_search import (
-    DISTANCE_MAP,
     VECTOR_UPSERT_BATCH_SIZE,
     DistanceMetric,
 )
@@ -33,6 +33,14 @@ from base.models.view_models.vector_search import VectorRecord, VectorSearchResu
 from base.services.common.meta import SingletonABC
 from base.services.vector_search import AbstractVectorSearchService
 from base.tools.errors import ServiceHealthCheckError
+
+# Qdrant's own mapping. In core it made every vector backend import
+# qdrant-client.
+_DISTANCE_MAP: dict[str, Distance] = {
+    DistanceMetric.COSINE: Distance.COSINE,
+    DistanceMetric.DOT: Distance.DOT,
+    DistanceMetric.EUCLIDEAN: Distance.EUCLID,
+}
 
 
 class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC):
@@ -55,8 +63,8 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             collection_name=collection,
             vectors_config=VectorParams(
                 size=vector_size,
-                distance=DISTANCE_MAP.get(
-                    distance, DISTANCE_MAP[DistanceMetric.COSINE]
+                distance=_DISTANCE_MAP.get(
+                    distance, _DISTANCE_MAP[DistanceMetric.COSINE]
                 ),
             ),
             **kwargs,
@@ -73,8 +81,8 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             collection_name=collection,
             vectors_config=VectorParams(
                 size=vector_size,
-                distance=DISTANCE_MAP.get(
-                    distance, DISTANCE_MAP[DistanceMetric.COSINE]
+                distance=_DISTANCE_MAP.get(
+                    distance, _DISTANCE_MAP[DistanceMetric.COSINE]
                 ),
             ),
             **kwargs,
