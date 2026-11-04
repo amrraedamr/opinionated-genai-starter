@@ -13,11 +13,11 @@ from base.services.logging.console import ConsoleLoggerService
 class TokenCounter(metaclass=KeyedSingleton):
     """Tiktoken-backed token counter, keyed per model.
 
-    Wraps tiktoken.encoding_for_model() with a fallback to cl100k_base for
-    unknown models. Instances are cached by KeyedSingleton keyed on the
-    model argument, so all callers requesting the same model share one
-    encoder — important because tiktoken lazily loads encoding data files
-    on first use.
+    Wraps tiktoken.encoding_for_model() with a fallback to o200k_base for
+    models tiktoken has no mapping for. Instances are cached by KeyedSingleton
+    keyed on the model argument, so all callers requesting the same model
+    share one encoder — important because tiktoken lazily loads encoding data
+    files on first use.
 
     Accepts OpenAIModels enum values for autocomplete and known-good models,
     or plain strings for snapshot versions (e.g. "gpt-5.4-2026-03-15"),
@@ -28,7 +28,20 @@ class TokenCounter(metaclass=KeyedSingleton):
     Token counting is sync because tiktoken is CPU-bound with no I/O.
     """
 
-    FALLBACK_ENCODING: str = "cl100k_base"
+    FALLBACK_ENCODING: str = "o200k_base"
+    """Used when tiktoken has no mapping for a model.
+
+    `tiktoken` only knows models that existed when it was released, so a
+    current model raises `KeyError` here rather than being unknown in any
+    meaningful sense. `o200k_base` is the encoding of the GPT-4o generation
+    onwards, which makes it the right guess for anything newer than the
+    installed tiktoken; `cl100k_base` would quietly count a modern model with
+    a two-generation-old tokenizer.
+
+    Treat every count from this class as an estimate. The `usage` object on a
+    response is what the provider bills against, and `UsageTracker` records
+    that; use this for pre-flight sizing, not for reconciliation.
+    """
 
     def __init__(self, model: OpenAIModels | str) -> None:
         self._model: str = model
