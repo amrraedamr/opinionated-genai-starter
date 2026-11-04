@@ -4,6 +4,7 @@ from pydantic_settings import SettingsConfigDict
 
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
+    AzureOpenAILLMSettingsMixin,
     BrokerSettingsMixin,
     LLMSettingsMixin,
     PostgresSettingsMixin,
@@ -23,6 +24,7 @@ class ChatApiSettings(
     RedisSettingsMixin,
     BrokerSettingsMixin,
     LLMSettingsMixin,
+    AzureOpenAILLMSettingsMixin,
     TokenVerificationMixin,
     PromptSettingsMixin,
 ):

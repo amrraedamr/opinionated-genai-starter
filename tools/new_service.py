@@ -201,12 +201,22 @@ def compose(
     return orm_modules
 
 
+MIXINS_FOR_LLM_PROVIDER: dict[str, str] = {
+    "azure-openai": "AzureOpenAILLMSettingsMixin",
+    "openai": "OpenAILLMSettingsMixin",
+    "anthropic": "AnthropicSettingsMixin",
+}
+"""Which provider settings a generated service declares alongside the neutral
+`LLMSettingsMixin`, the way `--storage` picks a backend mixin."""
+
+
 def build(
     name: str,
     storage: str,
     http: bool,
     capabilities: list[str],
     slices: list[Slice] | None = None,
+    llm_provider: str = "azure-openai",
 ) -> None:
     pkg = name
     directory = SERVICES / name
@@ -243,6 +253,7 @@ def build(
         mixins.append("RedisSettingsMixin")
     if "llm" in capabilities:
         mixins.append("LLMSettingsMixin")
+        mixins.append(MIXINS_FOR_LLM_PROVIDER[llm_provider])
     if publishes_events:
         mixins.append("BrokerSettingsMixin")
     if slices:
@@ -518,6 +529,12 @@ def main() -> int:
         help="comma-separated base extras, e.g. redis,llm",
     )
     parser.add_argument(
+        "--llm-provider",
+        choices=sorted(MIXINS_FOR_LLM_PROVIDER),
+        default="azure-openai",
+        help="which provider the llm capability is configured for",
+    )
+    parser.add_argument(
         "--from",
         dest="slices",
         default="",
@@ -543,7 +560,14 @@ def main() -> int:
         if args.storage == "none" and any(s.uses_sql for s in slices):
             args.storage = "postgres"
 
-    build(args.name, args.storage, args.http, capabilities, slices)
+    build(
+        args.name,
+        args.storage,
+        args.http,
+        capabilities,
+        slices,
+        args.llm_provider,
+    )
     return 0
 
 
