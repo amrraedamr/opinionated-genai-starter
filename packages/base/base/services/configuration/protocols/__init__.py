@@ -12,6 +12,9 @@ from base.services.configuration.protocols.azure_search import (
     SupportsAzureSearchConfig,
 )
 from base.services.configuration.protocols.broker import SupportsBrokerConfig
+from base.services.configuration.protocols.credentials import (
+    SupportsCredentialsConfig,
+)
 from base.services.configuration.protocols.embedding import SupportsEmbeddingConfig
 from base.services.configuration.protocols.idp import SupportsIdpConfig
 from base.services.configuration.protocols.llm import SupportsLLMConfig
@@ -32,6 +35,7 @@ from base.services.configuration.protocols.token_verification import (
 __all__ = [
     "SupportsAzureSearchConfig",
     "SupportsBrokerConfig",
+    "SupportsCredentialsConfig",
     "SupportsEmbeddingConfig",
     "SupportsIdpConfig",
     "SupportsLLMConfig",

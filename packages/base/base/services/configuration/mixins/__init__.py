@@ -8,6 +8,7 @@ from base.services.configuration.mixins.azure_search import AzureSearchSettingsM
 from base.services.configuration.mixins.blob import BlobSettingsMixin
 from base.services.configuration.mixins.broker import BrokerSettingsMixin
 from base.services.configuration.mixins.cosmos import CosmosSettingsMixin
+from base.services.configuration.mixins.credentials import CredentialsSettingsMixin
 from base.services.configuration.mixins.embedding import EmbeddingSettingsMixin
 from base.services.configuration.mixins.idp import IdpResourceServerMixin
 from base.services.configuration.mixins.keyvault import KeyVaultSettingsMixin
@@ -29,6 +30,7 @@ __all__ = [
     "BlobSettingsMixin",
     "BrokerSettingsMixin",
     "CosmosSettingsMixin",
+    "CredentialsSettingsMixin",
     "EmbeddingSettingsMixin",
     "IdpResourceServerMixin",
     "KeyVaultSettingsMixin",

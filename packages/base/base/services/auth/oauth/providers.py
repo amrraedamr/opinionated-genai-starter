@@ -6,8 +6,10 @@ from typing import Any, cast
 from urllib.parse import urlencode
 
 from jwt import encode
+from pydantic import ValidationError
 
 from base.models.definitions.errors import AuthErrors
+from base.services.auth.models import TokenResponse
 from base.services.configuration import get_settings
 from base.services.configuration.mixins import OAuthSettingsMixin
 from base.services.http import HttpRequestService
@@ -258,7 +260,7 @@ class OAuthProviderRegistry:
         code: str,
         code_verifier: str,
         token_url: str,
-    ) -> dict[str, Any]:
+    ) -> TokenResponse:
         data = {
             "grant_type": "authorization_code",
             "code": code,
@@ -276,13 +278,16 @@ class OAuthProviderRegistry:
         )
         if resp.failed or not isinstance(resp.data, dict):
             raise_error(AuthErrors.OAUTH_EXCHANGE_FAILED)
-        return resp.data
+        try:
+            return TokenResponse.model_validate(resp.data)
+        except ValidationError:
+            raise_error(AuthErrors.OAUTH_EXCHANGE_FAILED)
 
     async def afetch_profile(
         self,
         cfg: OAuthProviderConfig,
         *,
-        token_payload: dict[str, Any],
+        token_payload: TokenResponse,
         userinfo_url: str,
         apple_user_json: str | None = None,
     ) -> OAuthProfile:
@@ -298,11 +303,11 @@ class OAuthProviderRegistry:
 
     def _fetch_apple_profile(
         self,
-        token_payload: dict[str, Any],
+        token_payload: TokenResponse,
         apple_user_json: str | None,
     ) -> OAuthProfile:
-        id_token = token_payload.get("id_token")
-        if not isinstance(id_token, str) or not id_token:
+        id_token = token_payload.id_token
+        if not id_token:
             raise_error(AuthErrors.OAUTH_PROFILE_INCOMPLETE)
 
         from jwt import decode
@@ -343,10 +348,10 @@ class OAuthProviderRegistry:
         )
 
     async def _afetch_oidc_profile(
-        self, token_payload: dict[str, Any], userinfo_url: str
+        self, token_payload: TokenResponse, userinfo_url: str
     ) -> OAuthProfile:
-        id_token = token_payload.get("id_token")
-        if isinstance(id_token, str) and id_token:
+        id_token = token_payload.id_token
+        if id_token:
             from jwt import decode
 
             claims = decode(id_token, options={"verify_signature": False})
@@ -361,8 +366,8 @@ class OAuthProviderRegistry:
                     last_name=claims.get("family_name"),
                 )
 
-        access_token = token_payload.get("access_token")
-        if not userinfo_url or not isinstance(access_token, str):
+        access_token = token_payload.access_token
+        if not userinfo_url:
             raise_error(AuthErrors.OAUTH_PROFILE_INCOMPLETE)
 
         resp = await self._http.acall_endpoint(
@@ -386,10 +391,10 @@ class OAuthProviderRegistry:
         )
 
     async def _afetch_facebook_profile(
-        self, cfg: OAuthProviderConfig, token_payload: dict[str, Any]
+        self, cfg: OAuthProviderConfig, token_payload: TokenResponse
     ) -> OAuthProfile:
-        access_token = token_payload.get("access_token")
-        if not isinstance(access_token, str) or not cfg.userinfo_url:
+        access_token = token_payload.access_token
+        if not cfg.userinfo_url:
             raise_error(AuthErrors.OAUTH_PROFILE_INCOMPLETE)
         separator = "&" if "?" in cfg.userinfo_url else "?"
         url = (
@@ -412,10 +417,10 @@ class OAuthProviderRegistry:
         )
 
     async def _afetch_github_profile(
-        self, cfg: OAuthProviderConfig, token_payload: dict[str, Any]
+        self, cfg: OAuthProviderConfig, token_payload: TokenResponse
     ) -> OAuthProfile:
-        access_token = token_payload.get("access_token")
-        if not isinstance(access_token, str) or not cfg.userinfo_url:
+        access_token = token_payload.access_token
+        if not cfg.userinfo_url:
             raise_error(AuthErrors.OAUTH_PROFILE_INCOMPLETE)
         headers = {
             "Authorization": f"Bearer {access_token}",

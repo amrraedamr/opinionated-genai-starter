@@ -346,3 +346,159 @@ Two refinements the implementation needed:
   extra would surface as a SQLAlchemy driver error rather than a `MissingExtraError`.
   `SQLClient` therefore probes for the selected backend's drivers up front and raises the
   named error itself.
+
+---
+
+## Outbound credentials
+
+`base` could already authenticate a **caller**. It could not authenticate **itself**. Every
+service calling an OAuth2-protected dependency therefore hand-rolled token acquisition,
+caching and refresh — and then the next service rebuilt it.
+
+Applying the rule at the top of this document: would a service knowing nothing about the
+consuming project still want this? Yes, in the same way it wants a SQL client. So
+`base/clients/credentials/` ships alongside `clients/blob`, `clients/nosql` and
+`clients/vectors` — it is named under `clients/` because this is how a service talks *out*.
+
+```
+base/clients/credentials/
+  __init__.py   TokenProvider, StaticTokenProvider, BearerTokenAuth
+  oauth2.py     OAuth2ClientCredentials
+```
+
+`TokenProvider` is the entire contract: one coroutine, `aget_token() -> AccessToken`. Any
+credential source satisfies it — a pasted development token, a client-credentials grant, a
+platform-injected managed identity.
+
+`BearerTokenAuth` is an `httpx.Auth` that asks the provider per request. The provider serves
+from its cache and refreshes when stale, so expiry becomes invisible at the call site: no
+403 to catch, no retry-once, no mutating a shared client. It is async-only and its sync flow
+raises, because sending the request unauthenticated would be the worse failure.
+
+`OAuth2ClientCredentials` is plain RFC 6749, parameterised by `token_url`, `scope`,
+`client_id`, `client_secret`, `credential_placement` (Basic header or form body — providers
+genuinely differ), `extra_form_fields` and `refresh_skew_seconds`. It caches on the
+`expires_in` the authorization server reports rather than a TTL this library invents, and
+guards concurrent refresh so a burst mints one token, not N.
+
+> **No presets module.** Those parameters are the entire difference between Azure AD, Okta,
+> Auth0, Keycloak and Cognito. A named constructor for a specific provider is two lines in
+> the consuming service; vendor knowledge in `base` buys nothing and dates badly. If one
+> provider later proves repetitive across several services *here*, promoting a constructor
+> then is easy and evidence-backed.
+
+### Why this is not `base/services/auth/`
+
+The names are close and the overlap is smaller than it looks. `services/auth/` is the
+**inbound** half, and the two never merge because their lifecycles differ:
+
+| | Inbound — `services/auth/` | Outbound — `clients/credentials/` |
+| --- | --- | --- |
+| What it does | *Verifies* a token minted elsewhere | *Mints* and caches a token |
+| On whose behalf | The user who called us | The service itself |
+| Lifetime | One request | Shared until it expires |
+| Failure | 401 to the caller | 502 — a dependency we cannot reach |
+
+One abstraction over both would serve neither: a verifier has no refresh, and a provider has
+no principal. Concretely, `bearer.py` resolves a FastAPI caller, `tokens.py` signs RS256 and
+verifies against JWKS — none of which an outbound credential does or wants.
+
+Exactly two things are shared rather than duplicated, and both live in
+`base/models/view_models/tokens.py` rather than in either half:
+
+- **`AccessToken`**, the `NewType`. It is the same thing in both directions and is not
+  redefined. It sits outside `services/auth/` deliberately: importing anything from that
+  package initialises it, and it guards on `pyjwt` via the `auth` extra. A service that
+  only authenticates *itself* signs and verifies nothing and must not need a JWT library
+  to say so — a coupling that is invisible locally, where everything is installed, and
+  surfaces as a `MissingExtraError` on import inside a per-service image.
+- **`TokenResponse`** — the RFC 6749 §5.1 envelope. The inbound authorization-code
+  exchange and the outbound client-credentials grant both post a form to a token URL and
+  read the same reply, so both parse into this model instead of indexing into two private
+  dicts. `aexchange_code` previously returned a raw dict; it now returns `TokenResponse`,
+  which also means a provider answering `200` with an error body fails at the exchange
+  rather than further down in profile fetching.
+
+`services/auth/models.py` re-exports both, so `from base.services.auth import AccessToken`
+keeps working for the inbound half. `Principal` stays there: it is the verified *caller*,
+which only inbound has.
+
+The token-endpoint POST itself is **not** shared. The two requests differ in grant type,
+credential placement and error mapping, and a helper spanning `services/auth/` and
+`clients/credentials/` would couple the inbound half to the outbound one for three lines of
+`httpx` call. Each keeps its own.
+
+### Reaching every outbound call
+
+Two transport seams carry the hook, and both were narrower than they needed to be:
+
+- `HttpRequestService.call_endpoint` / `acall_endpoint` typed `auth` as a `tuple[str, str]`
+  basic-auth pair. Both now accept `tuple[str, str] | httpx.Auth`. The tuple path is
+  unchanged; the sync path rejects an `httpx.Auth` with a message naming `acall_endpoint`,
+  because `requests` cannot honour one and silently dropping it would surface as a 401.
+- `openai_clients.create_clients` accepts `auth` and `verify`, applied to the httpx client
+  underneath the OpenAI SDK. `OpenAIService` forwards both.
+
+> **No credential setter on `OpenAIService`.** One was considered and rejected: it leaves
+> every caller responsible for noticing expiry and retrying. The auth hook deletes that
+> work rather than relocating it.
+
+### The capability, and why `replace` is the right lever
+
+`base/capabilities/credentials.py` keeps one credential valid and probes it. It owns the
+credential and nothing else — `OutboundCredentials.auth` is a plain `httpx.Auth`, so it
+works anywhere httpx does:
+
+```python
+credentials = OutboundCredentials()
+app = create_app(capabilities=[credentials, ...])
+
+await HttpRequestService().acall_endpoint(url, auth=credentials.auth)
+```
+
+`aprobe` acquires a token. A wrong client secret therefore fails `/readyz` at startup
+instead of surfacing inside the first user request as an upstream 401.
+
+An LLM endpoint behind an expiring token is one *consumer* of that credential, and lives
+separately in `base/capabilities/llm.py`:
+
+```python
+capabilities = [credentials, AuthenticatedLLM(credentials.auth)]
+```
+
+`AuthenticatedLLM` constructs an `OpenAIService` carrying the hook and installs it under the
+key a no-argument `OpenAIService()` resolves to:
+
+```python
+OpenAIService.replace(hash_args(), configured_service)
+```
+
+`AbstractAgent.__init__` calls `OpenAIService()` with no arguments, which `KeyedSingleton`
+resolves through `hash_args()` over empty args — deterministic and stable. So every agent
+picks up the configured service with no agent-side configuration, no constructor override,
+and no change to `AbstractAgent`. `KeyedSingleton.replace(key, instance)` already existed
+for exactly this and had no caller until now.
+
+Two ordering facts make the swap safe, and both are commented at the call site: capabilities
+start in the order listed, before the first request is served, and agents are `SingletonABC`
+instances built lazily inside routers. A service that constructed an agent at *import* time
+would lose the race and keep the unauthenticated client.
+
+`ModelConfigurations` is hashed to form the `KeyedSingleton` key, so a live `httpx.Auth`
+cannot ride along on it — the configured service is constructed with an explicit
+`_key` instead.
+
+Splitting the two is what keeps `base` honest. A credential that refreshes is useful to any
+protected dependency — a REST API, an object store, a vendor SDK taking a prepared client —
+and only one of today's consumers happens to be an LLM.
+
+### Agent LLM surfaces
+
+`AbstractAgent` exposed only `_aresponses`, while `OpenAIService` offers completions,
+responses, and parsed variants of both. An agent needing structured output — or Chat
+Completions, the only surface some OpenAI-compatible gateways expose — had to reach past its
+base class. `_acompletions`, `_aparse_completions` and `_aparse_responses` now sit beside
+`_aresponses` with the same `MAX_OUTPUT_TOKENS` / `REASONING_EFFORT` defaults and the same
+`label` convention. The Chat Completions pair maps those ClassVars onto the names that
+surface takes (`max_completion_tokens`, a flat `reasoning_effort`); the parsed variants take
+no stream iterator, because a parsed call returns one complete object rather than deltas.

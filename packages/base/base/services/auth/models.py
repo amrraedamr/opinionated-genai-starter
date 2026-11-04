@@ -1,19 +1,20 @@
-"""Token and identity types."""
+"""Token and identity types.
 
-from typing import NewType
+The token types live in `base.models.view_models.tokens` and are re-exported
+here, so `base.clients.credentials` can reach them without initialising this
+package — which guards on the `auth` extra.
+"""
+
 from uuid import UUID
 
 from pydantic import BaseModel as PydanticBaseModel
 
-from base.models.view_models import BaseModel
-
-AccessToken = NewType("AccessToken", str)
-RefreshToken = NewType("RefreshToken", str)
-
-
-class TokenPair(BaseModel):
-    access_token: AccessToken
-    refresh_token: RefreshToken
+from base.models.view_models.tokens import (
+    AccessToken,
+    RefreshToken,
+    TokenPair,
+    TokenResponse,
+)
 
 
 class Principal(PydanticBaseModel):
@@ -27,3 +28,12 @@ class Principal(PydanticBaseModel):
     issuer: str | None = None
     token_type: str | None = None
     claims: dict = {}
+
+
+__all__ = [
+    "AccessToken",
+    "Principal",
+    "RefreshToken",
+    "TokenPair",
+    "TokenResponse",
+]

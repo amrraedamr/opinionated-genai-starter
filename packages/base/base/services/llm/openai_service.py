@@ -1,6 +1,8 @@
 import time
 from typing import cast
 
+import httpx
+
 from base.tools.errors import MissingExtraError
 
 try:
@@ -83,6 +85,12 @@ class OpenAIService(metaclass=KeyedSingleton):
     Error handling is delegated to OpenAIErrorHandler. All errors raised from
     public methods are LLMError subclasses — callers should never see raw
     OpenAI SDK exceptions.
+
+    `auth` carries credentials the static `api_key` cannot express; see
+    `base.clients.credentials`. It is not serializable, so a caller passing
+    one must also pass an explicit `_key`. Such a credential is acquired in a
+    coroutine, so an instance holding one is async-only and its sync methods
+    refuse rather than letting the SDK reclassify the failure as retryable.
     """
 
     DEFAULT_TIMEOUT_TOTAL: float = 60.0
@@ -94,7 +102,12 @@ class OpenAIService(metaclass=KeyedSingleton):
     while still allowing the answer agents some freedom to phrase
     naturally. Per-call overrides via ``temperature=`` kwarg still win."""
 
-    def __init__(self, config: ModelConfigurations | None = None) -> None:
+    def __init__(
+        self,
+        config: ModelConfigurations | None = None,
+        auth: httpx.Auth | None = None,
+        verify: bool = True,
+    ) -> None:
         if not config:
             config = ModelConfigurations.get_default_for_provider(
                 ProviderType.AZURE_OPENAI
@@ -105,6 +118,8 @@ class OpenAIService(metaclass=KeyedSingleton):
 
         self._config: ModelConfigurations = config
         self._model: str = config.model_name
+        self._auth: httpx.Auth | None = auth
+        self._verify: bool = verify
 
         self._logger = ConsoleLoggerService()
 
@@ -143,6 +158,20 @@ class OpenAIService(metaclass=KeyedSingleton):
         """
         kwargs.setdefault("temperature", self.DEFAULT_TEMPERATURE)
 
+    def _reject_sync_call(self) -> None:
+        """Refuse a sync call when credentials are acquired asynchronously.
+
+        Letting it reach the SDK surfaces as `APIConnectionError`, which the
+        retry policy treats as transient — so a permanent misconfiguration
+        would be retried and then reported as a connection failure.
+        """
+        if self._auth is not None:
+            raise LLMConfigError(
+                "This OpenAIService authenticates with an asynchronous "
+                "credential and has no synchronous surface. Use the "
+                "`a`-prefixed methods."
+            )
+
     def _initialize_clients(self) -> tuple[OpenAI, AsyncOpenAI]:
         return openai_clients.create_clients(
             api_key=self._config.api_key,
@@ -150,6 +179,8 @@ class OpenAIService(metaclass=KeyedSingleton):
             api_type=self._config.api_type,
             timeout_total=self.DEFAULT_TIMEOUT_TOTAL,
             timeout_connect=self.DEFAULT_TIMEOUT_CONNECT,
+            auth=self._auth,
+            verify=self._verify,
         )
 
     # Stream error helper
@@ -183,6 +214,7 @@ class OpenAIService(metaclass=KeyedSingleton):
         stream_iterator: StreamIterator | None = None,
         **kwargs,
     ) -> CompletionResult:
+        self._reject_sync_call()
         streaming: bool = bool(stream_iterator)
         label: str | None = kwargs.pop("label", None)
         self._apply_kwarg_defaults(kwargs)
@@ -367,6 +399,7 @@ class OpenAIService(metaclass=KeyedSingleton):
         stream_iterator: StreamIterator | None = None,
         **kwargs,
     ) -> ResponseResult:
+        self._reject_sync_call()
         streaming: bool = bool(stream_iterator)
         label: str | None = kwargs.pop("label", None)
         self._apply_kwarg_defaults(kwargs)
@@ -619,6 +652,7 @@ class OpenAIService(metaclass=KeyedSingleton):
         response_format: type[T],
         **kwargs,
     ) -> ParsedCompletionResult[T]:
+        self._reject_sync_call()
         label: str | None = kwargs.pop("label", None)
         self._apply_kwarg_defaults(kwargs)
 
@@ -723,6 +757,7 @@ class OpenAIService(metaclass=KeyedSingleton):
         response_format: type[T],
         **kwargs,
     ) -> ParsedResponseResult[T]:
+        self._reject_sync_call()
         label: str | None = kwargs.pop("label", None)
         self._apply_kwarg_defaults(kwargs)
 
