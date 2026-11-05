@@ -1,5 +1,6 @@
 """OpenAI SDK errors, as the embedding family."""
 
+from base.models.definitions.error_handling import FailureKind
 from base.models.view_models.exceptions.embedding import (
     EmbeddingAuthError,
     EmbeddingBadRequestError,
@@ -12,7 +13,6 @@ from base.models.view_models.exceptions.embedding import (
     EmbeddingUnexpectedError,
 )
 from base.models.view_models.exceptions.provider import ProviderError
-from base.services.error_handling import FailureKind
 from base.services.error_handling.openai import OpenAISDKErrorHandler
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {

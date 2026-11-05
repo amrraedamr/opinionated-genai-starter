@@ -1,5 +1,6 @@
 """Azure SDK errors, as the blob family."""
 
+from base.models.definitions.error_handling import FailureKind
 from base.models.view_models.exceptions.blob import (
     BlobAuthError,
     BlobBadRequestError,
@@ -12,7 +13,6 @@ from base.models.view_models.exceptions.blob import (
     BlobUnexpectedError,
 )
 from base.models.view_models.exceptions.provider import ProviderError
-from base.services.error_handling import FailureKind
 from base.services.error_handling.azure import AzureSDKErrorHandler
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {

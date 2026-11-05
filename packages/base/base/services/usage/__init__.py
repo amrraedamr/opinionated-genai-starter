@@ -17,7 +17,7 @@ from uuid import UUID, uuid4
 
 from base.models.view_models.usage import ModelRate, UsageRecord, UsageTotals
 from base.services.common.meta import Stored
-from base.services.error_handling import take_attempt_trail
+from base.tools.attempt_trail import take_attempt_trail
 
 _DEFAULT_RATES: dict[str, ModelRate] = {
     "gpt-5.4": ModelRate(

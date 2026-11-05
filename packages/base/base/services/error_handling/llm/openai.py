@@ -7,6 +7,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("llm", "openai", feature="OpenAIErrorHandler") from exc
 
+from base.models.definitions.error_handling import FailureKind
 from base.models.view_models.exceptions.llm import (
     LLMAuthError,
     LLMBadRequestError,
@@ -20,7 +21,6 @@ from base.models.view_models.exceptions.llm import (
     LLMUnexpectedError,
 )
 from base.models.view_models.exceptions.provider import ProviderError
-from base.services.error_handling import FailureKind
 from base.services.error_handling.openai import OpenAISDKErrorHandler
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {

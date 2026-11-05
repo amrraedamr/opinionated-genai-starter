@@ -28,6 +28,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "anthropic", "anthropic", feature="AnthropicErrorHandler"
     ) from exc
 
+from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.llm import (
     LLMAuthError,
     LLMBadRequestError,
@@ -43,11 +44,7 @@ from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )
-from base.services.error_handling import (
-    RETRYABLE_FAILURES,
-    AbstractErrorHandler,
-    FailureKind,
-)
+from base.services.error_handling import AbstractErrorHandler
 
 _FAILURE_MAP: dict[type[AnthropicError], FailureKind] = {
     RateLimitError: FailureKind.RATE_LIMIT,

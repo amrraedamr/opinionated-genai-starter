@@ -16,6 +16,8 @@ from base.clients.nosql.mongodb import MongoDBClient
 from base.models.view_models.database import PaginatedResult, PaginationParams
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.nosql.mongodb import MongoErrorHandler
 from base.services.nosql import AbstractNoSQLService
 from base.tools import pagination
 from base.tools.errors import ServiceHealthCheckError
@@ -32,6 +34,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         self._client: MongoDBClient = MongoDBClient()
         self._database_name: str = get_settings().mongodb_database
         self._vector_size: int = get_settings().azure_openai_embedding_dimensions
+        self._error_handler: MongoErrorHandler = MongoErrorHandler()
 
     def _get_database(self) -> Database[dict[str, Any]]:
         return self._client.get_database(self._database_name)
@@ -50,6 +53,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Find
 
+    @retrying
     def find_one(
         self,
         collection: str,
@@ -58,6 +62,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> dict[str, Any] | None:
         return self._get_database()[collection].find_one(filter, projection=projection)
 
+    @aretrying
     async def afind_one(
         self,
         collection: str,
@@ -68,6 +73,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             filter, projection=projection
         )
 
+    @retrying
     def find_many(
         self,
         collection: str,
@@ -86,6 +92,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             cursor = cursor.limit(limit)
         return list(cursor)
 
+    @aretrying
     async def afind_many(
         self,
         collection: str,
@@ -106,6 +113,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Insert
 
+    @retrying
     def insert_one(
         self,
         collection: str,
@@ -114,6 +122,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = self._get_database()[collection].insert_one(document)
         return str(result.inserted_id)
 
+    @aretrying
     async def ainsert_one(
         self,
         collection: str,
@@ -122,6 +131,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = await self._aget_database()[collection].insert_one(document)
         return str(result.inserted_id)
 
+    @retrying
     def insert_many(
         self,
         collection: str,
@@ -133,6 +143,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return [str(id) for id in result.inserted_ids]
 
+    @aretrying
     async def ainsert_many(
         self,
         collection: str,
@@ -146,6 +157,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Update
 
+    @retrying
     def update_one(
         self,
         collection: str,
@@ -158,6 +170,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
+    @aretrying
     async def aupdate_one(
         self,
         collection: str,
@@ -170,6 +183,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
+    @retrying
     def update_many(
         self,
         collection: str,
@@ -182,6 +196,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
+    @aretrying
     async def aupdate_many(
         self,
         collection: str,
@@ -196,6 +211,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Replace
 
+    @retrying
     def replace_one(
         self,
         collection: str,
@@ -208,6 +224,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
+    @aretrying
     async def areplace_one(
         self,
         collection: str,
@@ -222,6 +239,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Delete
 
+    @retrying
     def delete_one(
         self,
         collection: str,
@@ -230,6 +248,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = self._get_database()[collection].delete_one(filter)
         return result.deleted_count
 
+    @aretrying
     async def adelete_one(
         self,
         collection: str,
@@ -238,6 +257,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = await self._aget_database()[collection].delete_one(filter)
         return result.deleted_count
 
+    @retrying
     def delete_many(
         self,
         collection: str,
@@ -246,6 +266,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = self._get_database()[collection].delete_many(filter)
         return result.deleted_count
 
+    @aretrying
     async def adelete_many(
         self,
         collection: str,
@@ -256,6 +277,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Count & Distinct
 
+    @retrying
     def count(
         self,
         collection: str,
@@ -263,6 +285,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> int:
         return self._get_database()[collection].count_documents(filter or {})
 
+    @aretrying
     async def acount(
         self,
         collection: str,
@@ -270,6 +293,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> int:
         return await self._aget_database()[collection].count_documents(filter or {})
 
+    @retrying
     def distinct(
         self,
         collection: str,
@@ -278,6 +302,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> list[Any]:
         return self._get_database()[collection].distinct(key, filter=filter or {})
 
+    @aretrying
     async def adistinct(
         self,
         collection: str,
@@ -290,6 +315,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Aggregation
 
+    @retrying
     def aggregate(
         self,
         collection: str,
@@ -297,6 +323,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> list[dict[str, Any]]:
         return list(self._get_database()[collection].aggregate(pipeline))
 
+    @aretrying
     async def aaggregate(
         self,
         collection: str,
@@ -307,6 +334,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Pagination
 
+    @retrying
     def paginate(
         self,
         collection: str,
@@ -328,6 +356,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             ),
         )
 
+    @aretrying
     async def apaginate(
         self,
         collection: str,
@@ -349,6 +378,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             ),
         )
 
+    @retrying
     def create_collection_vector_index(
         self,
         collection: str,
@@ -401,6 +431,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             )
         )
 
+    @aretrying
     async def acreate_collection_vector_index(
         self,
         collection: str,

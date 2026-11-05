@@ -16,6 +16,8 @@ from typing_extensions import Self
 
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.keyvault.azure import AzureKeyVaultErrorHandler
 from base.tools import resources
 
 
@@ -43,9 +45,11 @@ class AzureKeyVaultService(metaclass=Singleton):
         self._credential: DefaultAzureCredential | None = None
         self._async_credential: AsyncDefaultAzureCredential | None = None
 
-    # Client lifecycle
+        # Client lifecycle
+        self._error_handler: AzureKeyVaultErrorHandler = AzureKeyVaultErrorHandler()
 
     @property
+    @retrying
     def client(self) -> SecretClient:
         if self._client is None:
             self._credential = DefaultAzureCredential()
@@ -56,6 +60,7 @@ class AzureKeyVaultService(metaclass=Singleton):
         return self._client
 
     @property
+    @retrying
     def async_client(self) -> AsyncSecretClient:
         if self._async_client is None:
             self._async_credential = AsyncDefaultAzureCredential()
@@ -89,18 +94,22 @@ class AzureKeyVaultService(metaclass=Singleton):
 
     # Secret operations
 
+    @retrying
     def get_secret(self, secret_name: str) -> str | None:
         formatted: str = self.format_secret_name(secret_name)
         return self.client.get_secret(formatted).value
 
+    @aretrying
     async def aget_secret(self, secret_name: str) -> str | None:
         formatted: str = self.format_secret_name(secret_name)
         secret = await self.async_client.get_secret(formatted)
         return secret.value
 
+    @retrying
     def get_secrets(self, secret_names: list[str]) -> dict[str, str | None]:
         return {name: self.get_secret(name) for name in secret_names}
 
+    @aretrying
     async def aget_secrets(
         self, secret_names: list[str], concurrent: bool = True
     ) -> dict[str, str | None]:
@@ -112,6 +121,7 @@ class AzureKeyVaultService(metaclass=Singleton):
         )
         return dict(zip(secret_names, results, strict=True))
 
+    @retrying
     def upsert_secret(
         self, secret_key: str, secret_value: str, format_name: bool = True
     ) -> str:
@@ -123,6 +133,7 @@ class AzureKeyVaultService(metaclass=Singleton):
         )
         return secret.properties.version
 
+    @aretrying
     async def aupsert_secret(
         self, secret_key: str, secret_value: str, format_name: bool = True
     ) -> str:
@@ -134,22 +145,27 @@ class AzureKeyVaultService(metaclass=Singleton):
         )
         return secret.properties.version
 
+    @retrying
     def remove_secret(self, secret_name: str) -> None:
         formatted: str = self.format_secret_name(secret_name)
         self.client.begin_delete_secret(formatted)
 
+    @aretrying
     async def aremove_secret(self, secret_name: str) -> None:
         formatted: str = self.format_secret_name(secret_name)
         await self.async_client.delete_secret(formatted)
 
+    @retrying
     def list_secrets(self) -> Iterator[SecretProperties]:
         return self.client.list_properties_of_secrets()
 
+    @retrying
     def alist_secrets(self) -> AsyncIterator[SecretProperties]:
         return self.async_client.list_properties_of_secrets()
 
     # Naming
 
+    @retrying
     def format_secret_name(
         self, secret_name: str, allowed_prefix: str | None = None
     ) -> str:

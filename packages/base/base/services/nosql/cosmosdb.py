@@ -12,6 +12,8 @@ from base.clients.nosql.cosmosdb import CosmosDBClient
 from base.models.view_models.database import PaginatedResult, PaginationParams
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.nosql.cosmos import CosmosErrorHandler
 from base.services.logging.console import ConsoleLoggerService
 from base.services.nosql import AbstractNoSQLService
 from base.tools import pagination
@@ -25,6 +27,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         self._client: CosmosDBClient = CosmosDBClient()
         self._database_name: str = get_settings().azure_cosmos_database_name
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
+        self._error_handler: CosmosErrorHandler = CosmosErrorHandler()
 
     def _get_container(self, collection: str) -> ContainerProxy:
         return self._client.get_container(self._database_name, collection)
@@ -92,6 +95,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Find
 
+    @retrying
     def find_one(
         self,
         collection: str,
@@ -124,6 +128,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return items[0] if items else None
 
+    @aretrying
     async def afind_one(
         self,
         collection: str,
@@ -157,6 +162,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
         return items[0] if items else None
 
+    @retrying
     def find_many(
         self,
         collection: str,
@@ -191,6 +197,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             )
         )
 
+    @aretrying
     async def afind_many(
         self,
         collection: str,
@@ -229,6 +236,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Insert
 
+    @retrying
     def insert_one(
         self,
         collection: str,
@@ -238,6 +246,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = container.upsert_item(body=document)
         return str(result["id"])
 
+    @aretrying
     async def ainsert_one(
         self,
         collection: str,
@@ -247,6 +256,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         result = await container.upsert_item(body=document)
         return str(result["id"])
 
+    @retrying
     def insert_many(
         self,
         collection: str,
@@ -269,6 +279,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
                 )
         return ids
 
+    @aretrying
     async def ainsert_many(
         self,
         collection: str,
@@ -293,6 +304,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Update
 
+    @retrying
     def update_one(
         self,
         collection: str,
@@ -313,6 +325,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         container.upsert_item(body=document)
         return 1
 
+    @aretrying
     async def aupdate_one(
         self,
         collection: str,
@@ -333,6 +346,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         await container.upsert_item(body=document)
         return 1
 
+    @retrying
     def update_many(
         self,
         collection: str,
@@ -356,6 +370,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             count += 1
         return count
 
+    @aretrying
     async def aupdate_many(
         self,
         collection: str,
@@ -381,6 +396,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Replace
 
+    @retrying
     def replace_one(
         self,
         collection: str,
@@ -398,6 +414,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         container.upsert_item(body=replacement)
         return 1
 
+    @aretrying
     async def areplace_one(
         self,
         collection: str,
@@ -417,6 +434,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Delete
 
+    @retrying
     def delete_one(
         self,
         collection: str,
@@ -430,6 +448,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         container.delete_item(item=document["id"], partition_key=document["id"])
         return 1
 
+    @aretrying
     async def adelete_one(
         self,
         collection: str,
@@ -443,6 +462,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         await container.delete_item(item=document["id"], partition_key=document["id"])
         return 1
 
+    @retrying
     def delete_many(
         self,
         collection: str,
@@ -459,6 +479,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             count += 1
         return count
 
+    @aretrying
     async def adelete_many(
         self,
         collection: str,
@@ -477,6 +498,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Count & Distinct
 
+    @retrying
     def count(
         self,
         collection: str,
@@ -497,6 +519,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return int(results[0]) if results else 0
 
+    @aretrying
     async def acount(
         self,
         collection: str,
@@ -518,6 +541,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
         return int(results[0]) if results else 0
 
+    @retrying
     def distinct(
         self,
         collection: str,
@@ -538,6 +562,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             )
         )
 
+    @aretrying
     async def adistinct(
         self,
         collection: str,
@@ -562,6 +587,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Aggregation
 
+    @retrying
     def aggregate(
         self,
         collection: str,
@@ -591,6 +617,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             results.extend(items)
         return results
 
+    @aretrying
     async def aaggregate(
         self,
         collection: str,
@@ -616,6 +643,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Pagination
 
+    @retrying
     def paginate(
         self,
         collection: str,
@@ -637,6 +665,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             ),
         )
 
+    @aretrying
     async def apaginate(
         self,
         collection: str,

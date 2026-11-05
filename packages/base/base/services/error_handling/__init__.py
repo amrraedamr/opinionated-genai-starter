@@ -17,65 +17,14 @@ import random
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from contextvars import ContextVar
-from enum import StrEnum
-from typing import Any, NamedTuple, final
+from typing import Any, final
 
 from base.services.logging.console import ConsoleLoggerService
-
-
-class AttemptTrail(NamedTuple):
-    """How many tries one call took, and what went wrong on the way."""
-
-    attempts: int = 0
-    errors: tuple[str, ...] = ()
-    """One entry per attempt that failed, in order. A call that succeeded
-    first time has none; a call that recovered shows what it recovered from."""
-
-
-_TRAIL: ContextVar[AttemptTrail] = ContextVar("provider_call_trail")
-"""Set per call by the handler. A ContextVar rather than instance state because
-one handler serves many concurrent calls, and each task needs its own."""
-
-
-def take_attempt_trail() -> AttemptTrail:
-    """Read what the call that just finished went through, and forget it.
-
-    Reading clears it so a later record cannot inherit an earlier call's trail.
-    """
-    trail = _TRAIL.get(AttemptTrail())
-    _TRAIL.set(AttemptTrail())
-    return trail
-
-
-class FailureKind(StrEnum):
-    """What went wrong, in terms no client or domain owns.
-
-    An SDK handler decides which kind an exception is; a domain decides which
-    error class a kind becomes. Stating it once is what lets one SDK serve
-    several domains without repeating the classification.
-    """
-
-    RATE_LIMIT = "rate_limit"
-    SERVER = "server"
-    TIMEOUT = "timeout"
-    CONNECTION = "connection"
-    BAD_REQUEST = "bad_request"
-    AUTH = "auth"
-    NOT_FOUND = "not_found"
-    CONFLICT = "conflict"
-    UNKNOWN = "unknown"
-
-
-RETRYABLE_FAILURES: frozenset[FailureKind] = frozenset(
-    {
-        FailureKind.RATE_LIMIT,
-        FailureKind.SERVER,
-        FailureKind.TIMEOUT,
-        FailureKind.CONNECTION,
-    }
+from base.tools.attempt_trail import (
+    mark_attempt,
+    mark_attempt_failure,
+    start_attempt_trail,
 )
-"""Kinds worth trying again. A kind is retryable whoever raised it."""
 
 
 class AbstractErrorHandler[E: Exception](ABC):
@@ -145,14 +94,14 @@ class AbstractErrorHandler[E: Exception](ABC):
         """Run `func`, retrying transient failures."""
         max_attempts = (self._retries + 1) if retry else 1
         last_error: E | None = None
-        _TRAIL.set(AttemptTrail())
+        start_attempt_trail()
 
         for attempt in range(max_attempts):
-            self._mark_attempt()
+            mark_attempt()
             try:
                 return func(*args, **kwargs)
             except self.provider_error_type as exc:
-                self._mark_failure(exc)
+                mark_attempt_failure(exc)
                 domain_cls, retryable = self.classify(exc)
                 if retryable and attempt + 1 < max_attempts:
                     last_error = exc
@@ -167,7 +116,7 @@ class AbstractErrorHandler[E: Exception](ABC):
                 raise self.wrap(exc, domain_cls) from exc
             except Exception as exc:
                 # Intentional boundary: nothing raw escapes this call.
-                self._mark_failure(exc)
+                mark_attempt_failure(exc)
                 raise self.wrap_unexpected(exc) from exc
 
         assert last_error is not None
@@ -184,14 +133,14 @@ class AbstractErrorHandler[E: Exception](ABC):
         """Await `func`, retrying transient failures."""
         max_attempts = (self._retries + 1) if retry else 1
         last_error: E | None = None
-        _TRAIL.set(AttemptTrail())
+        start_attempt_trail()
 
         for attempt in range(max_attempts):
-            self._mark_attempt()
+            mark_attempt()
             try:
                 return await func(*args, **kwargs)
             except self.provider_error_type as exc:
-                self._mark_failure(exc)
+                mark_attempt_failure(exc)
                 domain_cls, retryable = self.classify(exc)
                 if retryable and attempt + 1 < max_attempts:
                     last_error = exc
@@ -206,23 +155,11 @@ class AbstractErrorHandler[E: Exception](ABC):
                 raise self.wrap(exc, domain_cls) from exc
             except Exception as exc:
                 # Intentional boundary: nothing raw escapes this call.
-                self._mark_failure(exc)
+                mark_attempt_failure(exc)
                 raise self.wrap_unexpected(exc) from exc
 
         assert last_error is not None
         raise self.wrap_exhausted(last_error, max_attempts) from last_error
-
-    @staticmethod
-    def _mark_attempt() -> None:
-        trail = _TRAIL.get(AttemptTrail())
-        _TRAIL.set(trail._replace(attempts=trail.attempts + 1))
-
-    @staticmethod
-    def _mark_failure(error: Exception) -> None:
-        trail = _TRAIL.get(AttemptTrail())
-        _TRAIL.set(
-            trail._replace(errors=(*trail.errors, f"{type(error).__name__}: {error}"))
-        )
 
     def _compute_wait(self, error: E, attempt: int) -> float:
         """Respect the other end's own hint, else jittered exponential backoff."""
