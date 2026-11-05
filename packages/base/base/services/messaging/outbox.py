@@ -8,8 +8,13 @@ instead would lose the event whenever the broker is unavailable.
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from base.tools.errors import MissingExtraError
+
+try:
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("sql", "sqlalchemy", feature="Outbox") from exc
 
 from base.services.broker import AbstractBroker
 from base.services.logging.console import ConsoleLoggerService

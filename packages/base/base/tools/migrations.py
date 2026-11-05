@@ -10,12 +10,18 @@ import asyncio
 from logging.config import fileConfig
 from typing import Any
 
-from sqlalchemy import MetaData, pool
-from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy_utils.types.uuid import UUIDType
+from base.tools.errors import MissingExtraError
 
-from alembic import context
+try:
+    from sqlalchemy import MetaData, pool
+    from sqlalchemy.engine import Connection
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy_utils.types.uuid import UUIDType
+
+    from alembic import context
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("sql", "alembic", feature="Migrations") from exc
+
 from base.clients.sql.client import SQLClient
 from base.models.definitions.database import SQLBackend
 from base.services.configuration import CoreSettings, configure

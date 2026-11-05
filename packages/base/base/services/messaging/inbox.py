@@ -10,7 +10,12 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
-from sqlalchemy import select
+from base.tools.errors import MissingExtraError
+
+try:
+    from sqlalchemy import select
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("sql", "sqlalchemy", feature="Inbox") from exc
 
 from base.services.messaging.protocol import InboxRow
 from base.services.sql.service import SQLService
