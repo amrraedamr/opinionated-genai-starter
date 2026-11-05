@@ -3,7 +3,7 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class SupportsIdpConfig(Protocol):
-    """Satisfied by `IdpResourceServerMixin`."""
+    """Satisfied by `IdpSettingsMixin`."""
 
     idp_resource_server_enabled: bool
     idp_issuer: str

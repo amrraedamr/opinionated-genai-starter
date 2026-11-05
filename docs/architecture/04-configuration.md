@@ -118,12 +118,12 @@ class PostgresSettingsMixin(BaseModel):
     )
 
 
-class TokenVerificationMixin(BaseModel):
+class TokenVerificationSettingsMixin(BaseModel):
     """Verify tokens. Does NOT issue them — see doc 05."""
     auth_public_key_path: str = "keys/public.pem"
 
 
-class TokenIssuingMixin(TokenVerificationMixin):
+class TokenIssuingSettingsMixin(TokenVerificationSettingsMixin):
     """Only a service that issues tokens should include this."""
     auth_private_key_path: str = "keys/private.pem"
     access_token_expiry_seconds: int = 900
@@ -132,8 +132,8 @@ class TokenIssuingMixin(TokenVerificationMixin):
 
 The full set, each lifting one group from today's file **verbatim**:
 `SQLSettingsMixin`, `PostgresSettingsMixin`, `MySQLSettingsMixin`, `RedisSettingsMixin`,
-`LLMSettingsMixin`, `RerankSettingsMixin`, `TokenVerificationMixin`,
-`TokenIssuingMixin`, `OAuthSettingsMixin`, `IdpResourceServerMixin`,
+`LLMSettingsMixin`, `RerankSettingsMixin`, `TokenVerificationSettingsMixin`,
+`TokenIssuingSettingsMixin`, `OAuthSettingsMixin`, `IdpSettingsMixin`,
 `MongoSettingsMixin`, `CosmosSettingsMixin`, `AzureBlobSettingsMixin`,
 `KeyVaultSettingsMixin`, `QdrantSettingsMixin`, `AzureSearchSettingsMixin`,
 
@@ -171,7 +171,7 @@ order — harmless while the defaults agreed, a trap the moment they drifted.
 `OUTBOUND_TOKEN_URL`, `OUTBOUND_CLIENT_ID`, `OUTBOUND_CLIENT_SECRET`, `OUTBOUND_SCOPE`,
 `OUTBOUND_CREDENTIAL_PLACEMENT`, `OUTBOUND_TOKEN_REFRESH_SKEW_SECONDS` and
 `OUTBOUND_VERIFY_TLS`, which defaults to on. The `outbound_` prefix keeps it visibly
-distinct from `TokenVerificationMixin` and `OAuthSettingsMixin`, which describe tokens this
+distinct from `TokenVerificationSettingsMixin` and `OAuthSettingsMixin`, which describe tokens this
 service verifies or obtains on a *user's* behalf; [doc 02](02-library-boundary.md) explains
 why the two halves stay separate. Nothing here is defaulted to a vendor's value: one mixin
 covers every authorization server, and empty is the default.
@@ -196,14 +196,14 @@ from pydantic_settings import SettingsConfigDict
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
     AzureOpenAILLMSettingsMixin,
-    IdpResourceServerMixin,
+    IdpSettingsMixin,
     LLMSettingsMixin,
     OAuthSettingsMixin,
     PostgresSettingsMixin,
     RedisSettingsMixin,
     SQLSettingsMixin,
     ServerSettingsMixin,
-    TokenIssuingMixin,
+    TokenIssuingSettingsMixin,
 )
 
 
@@ -216,10 +216,10 @@ class ChatApiSettings(
     LLMSettingsMixin,
     AzureOpenAILLMSettingsMixin,
     # chat_api still issues tokens and owns users. Phase 5 moves that to the
-    # identity service, at which point this drops to TokenVerificationMixin.
-    TokenIssuingMixin,
+    # identity service, at which point this drops to TokenVerificationSettingsMixin.
+    TokenIssuingSettingsMixin,
     OAuthSettingsMixin,
-    IdpResourceServerMixin,
+    IdpSettingsMixin,
 ):
     model_config = SettingsConfigDict(
         env_file=("../../.env.shared", ".env", ".env.local"),

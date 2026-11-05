@@ -12,8 +12,9 @@ from base.services.configuration.mixins import (
     RedisSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
-    TokenVerificationMixin,
+    TokenVerificationSettingsMixin,
 )
+from base.tools.misc import split_csv
 
 
 class ChatApiSettings(
@@ -25,7 +26,7 @@ class ChatApiSettings(
     BrokerSettingsMixin,
     LLMSettingsMixin,
     AzureOpenAILLMSettingsMixin,
-    TokenVerificationMixin,
+    TokenVerificationSettingsMixin,
     PromptSettingsMixin,
 ):
     model_config = SettingsConfigDict(
@@ -43,7 +44,7 @@ class ChatApiSettings(
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return split_csv(self.cors_origins)
 
 
 settings = ChatApiSettings()

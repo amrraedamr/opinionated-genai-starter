@@ -205,6 +205,7 @@ MIXINS_FOR_LLM_PROVIDER: dict[str, str] = {
     "azure-openai": "AzureOpenAILLMSettingsMixin",
     "openai": "OpenAILLMSettingsMixin",
     "anthropic": "AnthropicSettingsMixin",
+    "gemini": "GeminiSettingsMixin",
 }
 """Which provider settings a generated service declares alongside the neutral
 `LLMSettingsMixin`, the way `--storage` picks a backend mixin."""
@@ -258,14 +259,14 @@ def build(
         mixins.append("BrokerSettingsMixin")
     if slices:
         # A composed service verifies tokens; only the auth slice issues them.
-        mixins.append("TokenVerificationMixin")
+        mixins.append("TokenVerificationSettingsMixin")
         for slice_ in slices:
             mixins += [m for m in slice_.mixins if m not in mixins]
     mixins = list(dict.fromkeys(mixins))
-    # TokenIssuingMixin subclasses TokenVerificationMixin, so naming both would
+    # TokenIssuingSettingsMixin subclasses TokenVerificationSettingsMixin, so naming both would
     # be an unresolvable MRO. Issuing already provides verification.
-    if "TokenIssuingMixin" in mixins and "TokenVerificationMixin" in mixins:
-        mixins.remove("TokenVerificationMixin")
+    if "TokenIssuingSettingsMixin" in mixins and "TokenVerificationSettingsMixin" in mixins:
+        mixins.remove("TokenVerificationSettingsMixin")
     mixin_imports = [m for m in mixins if m != "CoreSettings"]
 
     print(f"Creating services/{name}")

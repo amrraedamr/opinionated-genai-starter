@@ -33,6 +33,17 @@ def _make_json_serializable(obj: Any) -> Any:
         return obj
 
 
+def split_csv(value: str | None, *, lower: bool = False) -> list[str]:
+    """A comma-separated setting as a list, with blanks and spacing dropped.
+
+    Environment variables carry lists as one string, so a setting that holds
+    several values is split where it is read. `lower` is for values compared
+    against known names rather than passed through, like provider names.
+    """
+    items = [part.strip() for part in (value or "").split(",") if part.strip()]
+    return [item.lower() for item in items] if lower else items
+
+
 def parse_uuid(value: str | UUID | None) -> UUID | None:
     """Coerce a value to a UUID, or None when it is not one."""
     if isinstance(value, UUID):

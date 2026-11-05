@@ -536,14 +536,15 @@ returns one complete object rather than deltas.
 `LLMResult.finish_reason` is normalised to a `FinishReason` rather than passed
 through. The providers disagree on vocabulary and even on meaning — the Responses
 API reports a *status* (`completed`), Chat Completions a reason (`length`), Anthropic
-a third set (`end_turn`, `tool_use`) — so a caller branching on the raw string would
+a third set (`end_turn`, `tool_use`) and Gemini a fourth (`STOP`, `MAX_TOKENS`) — so a caller branching on the raw string would
 work against one provider and silently never fire against another. `LENGTH` in
 particular means the reply is truncated, which is worth branching on.
 
 `max_output_tokens` and `reasoning_effort` are neutral parameters on the seam. Each adapter
 spells them the way its provider wants: the Responses API takes `max_output_tokens` and a
 nested `reasoning` block, Chat Completions takes `max_completion_tokens` and a flat
-`reasoning_effort`, and Anthropic takes `max_tokens` with a thinking budget in tokens.
+`reasoning_effort`, and Anthropic takes `max_tokens` with a thinking budget in tokens, as Gemini does
+through `thinking_config`.
 `ModelConfigurations.supports_responses_api` picks the OpenAI surface, so a gateway that only
 serves Chat Completions needs no change at the call site.
 
@@ -559,10 +560,27 @@ itself, `Httpx2BearerTokenAuth` in `credentials/httpx2.py` because `httpx2` arri
 only with the `anthropic` extra — both over the shared `TokenProvider`, so one
 acquired token serves either.
 
-`base.services.llm` holds only what every provider shares: `AbstractLLMService`. Each provider gets a package — `llm/openai/`, `llm/anthropic/` —
-holding its service in `__init__.py` beside its message adapter and its error handler. Adding
-a provider adds a directory rather than widening a shared module, and importing the seam
+`base.services.llm` holds only what every provider shares: `AbstractLLMService`. Each
+provider gets a package — `llm/openai/`, `llm/anthropic/`, `llm/gemini/` — holding its
+service in `__init__.py` beside its message adapter and its error handler. Adding a
+provider adds a directory rather than widening a shared module, and importing the seam
 pulls in no SDK.
+
+Gemini is where that claim was tested. Three of its differences reach the adapter rather
+than the caller. Its assistant role is called `model`; its instructions are a request
+field rather than a role, as Anthropic's are; and a tool result is matched to the call it
+answers by **function name** rather than by an id, so the id this library carries has to
+be resolved back to the name the model used before a result can be sent — and an id has
+to be invented for a call coming the other way, because Gemini sends none. Its structured
+output needs no such work: `response_schema` constrains decoding directly, where the
+Anthropic adapter forces a tool call and unwraps it.
+
+Its token accounting needed the same care Anthropic's did, in the opposite direction.
+Gemini reports `thoughts_token_count` alongside `candidates_token_count` rather than
+inside it, while the neutral shape treats reasoning as a share of the output total, so
+the two are added. Cached input needs no handling at all: `prompt_token_count` already
+includes it, which is what the neutral shape expects and the reverse of Anthropic, whose
+cache counts sit outside the input total.
 
 `AbstractTextEmbeddingService` is the same arrangement for embeddings, with
 `text_embedding/openai/` beside it. Batching belongs to the abstraction rather than

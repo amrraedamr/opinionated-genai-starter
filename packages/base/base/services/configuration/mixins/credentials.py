@@ -6,7 +6,7 @@ from pydantic import BaseModel
 class CredentialsSettingsMixin(BaseModel):
     """Outbound OAuth2 credentials — how this service authenticates itself.
 
-    The inbound half is `TokenVerificationMixin` / `OAuthSettingsMixin`. One
+    The inbound half is `TokenVerificationSettingsMixin` / `OAuthSettingsMixin`. One
     mixin covers every authorization server; nothing is defaulted to a vendor.
     """
 

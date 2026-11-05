@@ -46,7 +46,7 @@ from base.models.view_models.streams import (
     StreamStart,
 )
 from base.services.common.meta import KeyedSingletonABC
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsLLMConfig
 from base.services.error_handling.llm.anthropic import AnthropicErrorHandler
 from base.services.execution_context import ExecutionContext
@@ -543,7 +543,7 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         )
 
         if self._execution_context.debug_trace.started_at:
-            capture = cast(SupportsLLMConfig, get_settings()).capture_raw_traces
+            capture = settings_for(SupportsLLMConfig).capture_raw_traces
             self._execution_context.debug_trace.calls.append(
                 DebugCall(
                     call_id=call_id,

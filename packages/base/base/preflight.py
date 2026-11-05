@@ -33,8 +33,10 @@ from enum import StrEnum
 from base.models.definitions.broker import BrokerBackend, installed_brokers
 from base.models.definitions.database import SQLBackend, installed_backends
 from base.services.configuration.core import CoreSettings
-from base.services.configuration.mixins.broker import BrokerSettingsMixin
-from base.services.configuration.mixins.sql import SQLSettingsMixin
+from base.services.configuration.mixins import (
+    BrokerSettingsMixin,
+    SQLSettingsMixin,
+)
 from base.tools.errors import UnsupportedBackendError
 
 

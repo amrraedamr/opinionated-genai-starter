@@ -1,9 +1,10 @@
 import ssl
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
-from typing import Any, cast
+from typing import Any
 from urllib.parse import quote_plus
 
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError, UnsupportedBackendError
 
 try:
@@ -22,7 +23,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.models.definitions.database import SQLBackend, installed_backends
 from base.services.common.meta import KeyedSingleton
-from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsSQLConfig
 
 
@@ -31,9 +31,7 @@ class SQLClient(metaclass=KeyedSingleton):
         self, backend: SQLBackend, config: SupportsSQLConfig | None = None
     ) -> None:
         self._backend: SQLBackend = backend
-        self._config: SupportsSQLConfig = config or cast(
-            SupportsSQLConfig, get_settings()
-        )
+        self._config: SupportsSQLConfig = config or settings_for(SupportsSQLConfig)
         self._require_driver()
 
         self._sync_engine: Engine | None = None

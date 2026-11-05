@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 
-class IdpResourceServerMixin(BaseModel):
+class IdpSettingsMixin(BaseModel):
     """Accept enterprise IdP access tokens on this API."""
 
     idp_resource_server_enabled: bool = False

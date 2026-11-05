@@ -4,6 +4,7 @@ from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontext
 from types import ModuleType
 
 from base.tools.errors import MissingExtraError
+from base.tools.misc import split_csv
 
 try:
     from fastapi import FastAPI, Response
@@ -103,9 +104,7 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    trusted_hosts = [
-        host.strip() for host in settings.trusted_hosts.split(",") if host.strip()
-    ]
+    trusted_hosts = split_csv(settings.trusted_hosts)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts or ["*"])
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.request_max_bytes)
     app.add_middleware(

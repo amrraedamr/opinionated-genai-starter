@@ -5,6 +5,7 @@ class ProviderType(StrEnum):
     AZURE_OPENAI = "azure-openai"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
     OLLAMA = "ollama"
     VLLM = "vllm"
     GROQ = "groq"

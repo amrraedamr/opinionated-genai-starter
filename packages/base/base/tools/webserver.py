@@ -1,8 +1,9 @@
 import importlib
 import logging
 import multiprocessing
-from typing import Any, cast
+from typing import Any
 
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
 try:
@@ -14,7 +15,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "server", "uvicorn / gunicorn", feature="run_webserver"
     ) from exc
 
-from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsServerConfig
 
 
@@ -36,7 +36,7 @@ def run_webserver(
     settings: SupportsServerConfig | None = None,
 ) -> None:
     """Serve `app_path` with uvicorn locally and gunicorn everywhere else."""
-    settings = settings or cast(SupportsServerConfig, get_settings())
+    settings = settings or settings_for(SupportsServerConfig)
     host = host or settings.api_host
     port = int(port if port is not None else settings.api_port)
     environment = environment if environment is not None else settings.environment
@@ -63,7 +63,7 @@ def run_gunicorn(
     port: int = 8000,
     settings: SupportsServerConfig | None = None,
 ) -> None:
-    settings = settings or cast(SupportsServerConfig, get_settings())
+    settings = settings or settings_for(SupportsServerConfig)
 
     # Runs pre-fork under `preload: True`. Create engines, pools and clients
     # in a capability's `startup()`, which runs per worker post-fork.

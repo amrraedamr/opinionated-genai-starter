@@ -11,7 +11,7 @@ from base.clients.credentials.oauth2 import (
 )
 from base.models.definitions.health import ProbeStatus
 from base.models.view_models.health import ProbeResult
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsCredentialsConfig
 from base.services.logging.console import ConsoleLoggerService
 
@@ -51,7 +51,7 @@ class OutboundCredentials:
     def settings(self) -> SupportsCredentialsConfig:
         # Resolved lazily: capabilities are built at import, settings are
         # registered by the composition root.
-        return self._config or cast(SupportsCredentialsConfig, get_settings())
+        return self._config or settings_for(SupportsCredentialsConfig)
 
     @property
     def provider(self) -> TokenProvider:

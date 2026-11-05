@@ -1,12 +1,12 @@
-from typing import cast
 
 from base.models.definitions.model import ProviderType
 from base.models.view_models import BaseModel
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import (
     SupportsAnthropicConfig,
     SupportsAzureOpenAIEmbeddingConfig,
     SupportsAzureOpenAILLMConfig,
+    SupportsGeminiConfig,
     SupportsOpenAIEmbeddingConfig,
     SupportsOpenAILLMConfig,
 )
@@ -27,7 +27,7 @@ class ModelConfigurations(BaseModel):
     @staticmethod
     def get_default_for_provider(provider: ProviderType) -> "ModelConfigurations":
         if provider == ProviderType.OPENAI:
-            settings = cast(SupportsOpenAILLMConfig, get_settings())
+            settings = settings_for(SupportsOpenAILLMConfig)
             return ModelConfigurations(
                 api_host=settings.openai_llm_endpoint or None,
                 api_key=settings.openai_llm_api_key or None,
@@ -37,7 +37,7 @@ class ModelConfigurations(BaseModel):
                 wait_time=1.0,
             )
         elif provider == ProviderType.AZURE_OPENAI:
-            settings = cast(SupportsAzureOpenAILLMConfig, get_settings())
+            settings = settings_for(SupportsAzureOpenAILLMConfig)
             return ModelConfigurations(
                 api_host=settings.azure_openai_llm_endpoint or None,
                 api_key=settings.azure_openai_llm_api_key or None,
@@ -48,12 +48,22 @@ class ModelConfigurations(BaseModel):
                 wait_time=1.0,
             )
         elif provider == ProviderType.ANTHROPIC:
-            settings = cast(SupportsAnthropicConfig, get_settings())
+            settings = settings_for(SupportsAnthropicConfig)
             return ModelConfigurations(
                 api_host=settings.anthropic_llm_endpoint or None,
                 api_key=settings.anthropic_api_key or None,
                 model_name=settings.anthropic_llm_model or None,
                 api_type=ProviderType.ANTHROPIC,
+                api_retries=2,
+                wait_time=1.0,
+            )
+        elif provider == ProviderType.GEMINI:
+            settings = settings_for(SupportsGeminiConfig)
+            return ModelConfigurations(
+                api_host=settings.gemini_llm_endpoint or None,
+                api_key=settings.gemini_api_key or None,
+                model_name=settings.gemini_llm_model or None,
+                api_type=ProviderType.GEMINI,
                 api_retries=2,
                 wait_time=1.0,
             )
@@ -73,7 +83,7 @@ class EmbeddingConfigurations(BaseModel):
     @staticmethod
     def get_default_for_provider(provider: ProviderType) -> "EmbeddingConfigurations":
         if provider == ProviderType.OPENAI:
-            settings = cast(SupportsOpenAIEmbeddingConfig, get_settings())
+            settings = settings_for(SupportsOpenAIEmbeddingConfig)
             return EmbeddingConfigurations(
                 api_host=settings.openai_embedding_endpoint or None,
                 api_key=settings.openai_embedding_api_key or None,
@@ -83,7 +93,7 @@ class EmbeddingConfigurations(BaseModel):
                 dimensions=settings.openai_embedding_dimensions,
             )
         elif provider == ProviderType.AZURE_OPENAI:
-            settings = cast(SupportsAzureOpenAIEmbeddingConfig, get_settings())
+            settings = settings_for(SupportsAzureOpenAIEmbeddingConfig)
             return EmbeddingConfigurations(
                 api_host=settings.azure_openai_embedding_endpoint or None,
                 api_key=settings.azure_openai_embedding_api_key or None,

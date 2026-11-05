@@ -1,7 +1,7 @@
 from typing import Protocol, runtime_checkable
 
 from base.models.definitions.broker import BrokerBackend
-from base.services.configuration.protocols.redis import SupportsRedisConfig
+from base.services.configuration.protocols.cache.redis import SupportsRedisConfig
 
 
 @runtime_checkable

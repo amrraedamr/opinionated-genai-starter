@@ -1,10 +1,9 @@
 """Transport selection, shared by every service that publishes or consumes events."""
 
-from typing import cast
 
 from base.models.definitions.broker import BrokerBackend
 from base.services.broker import AbstractBroker
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsBrokerConfig
 
 
@@ -18,7 +17,7 @@ def build_broker(config: SupportsBrokerConfig | None = None) -> AbstractBroker:
     raises instead of quietly returning the in-process one, which would start
     cleanly, report healthy and deliver nothing between containers.
     """
-    settings = config or cast(SupportsBrokerConfig, get_settings())
+    settings = config or settings_for(SupportsBrokerConfig)
     backend = BrokerBackend(settings.broker)
 
     match backend:

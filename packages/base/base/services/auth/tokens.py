@@ -7,14 +7,14 @@ from typing import Any, cast
 from base.models.definitions.errors import AuthErrors
 from base.services.auth.models import AccessToken, Principal, RefreshToken, TokenPair
 from base.services.common.meta import Singleton
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import (
     SupportsIdpConfig,
     SupportsTokenIssuingConfig,
     SupportsTokenVerificationConfig,
 )
 from base.tools.errors import InvalidSignedPayload, MissingExtraError, raise_error
-from base.tools.misc import parse_uuid
+from base.tools.misc import parse_uuid, split_csv
 
 try:
     from jwt import (
@@ -34,7 +34,7 @@ class TokenIssuer(metaclass=Singleton):
     """Signs first-party RS256 access and refresh tokens."""
 
     def __init__(self, config: SupportsTokenIssuingConfig | None = None) -> None:
-        self._config = config or cast(SupportsTokenIssuingConfig, get_settings())
+        self._config = config or settings_for(SupportsTokenIssuingConfig)
         self._private_key: str = Path(self._config.auth_private_key_path).read_text()
 
     def issue_pair(self, claims: dict[str, Any]) -> TokenPair:
@@ -72,7 +72,7 @@ class TokenVerifier(metaclass=Singleton):
     """Verifies a bearer token and returns a `Principal`."""
 
     def __init__(self, config: SupportsTokenVerificationConfig | None = None) -> None:
-        self._config = config or cast(SupportsTokenVerificationConfig, get_settings())
+        self._config = config or settings_for(SupportsTokenVerificationConfig)
         self._public_key: str = Path(self._config.auth_public_key_path).read_text()
         self._jwks_client: PyJWKClient | None = None
         if self._idp_enabled:
@@ -203,9 +203,7 @@ class TokenVerifier(metaclass=Singleton):
         idp = self._idp
         if self._jwks_client is None or idp is None:
             raise_error(AuthErrors.IDP_NOT_CONFIGURED)
-        algorithms = [a.strip() for a in idp.idp_algorithms.split(",") if a.strip()] or [
-            "RS256"
-        ]
+        algorithms = split_csv(idp.idp_algorithms) or ["RS256"]
         try:
             signing_key = self._jwks_client.get_signing_key_from_jwt(token)
             payload: dict[str, Any] = decode(
