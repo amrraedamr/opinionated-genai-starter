@@ -13,7 +13,7 @@ from base.services.configuration.protocols import (
     SupportsTokenIssuingConfig,
     SupportsTokenVerificationConfig,
 )
-from base.tools.errors import MissingExtraError, raise_error
+from base.tools.errors import InvalidSignedPayload, MissingExtraError, raise_error
 from base.tools.misc import parse_uuid
 
 try:
@@ -28,14 +28,6 @@ try:
     from jwt.exceptions import PyJWKClientError, PyJWKError
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("auth", "pyjwt", feature="token issuing/verification") from exc
-
-
-class InvalidSignedPayload(Exception):
-    """A signed payload failed verification."""
-
-    def __init__(self, *, expired: bool) -> None:
-        super().__init__("expired" if expired else "invalid")
-        self.expired = expired
 
 
 class TokenIssuer(metaclass=Singleton):
