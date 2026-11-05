@@ -570,6 +570,17 @@ to each adapter: splitting a list to fit a provider's per-request ceiling is the
 work whoever answers, and an adapter reimplementing it could silently return vectors
 out of order. An adapter implements one batch and nothing else.
 
+`AbstractKeyVaultService` closes the last capability that had none. A secret store was
+shipped as a concrete Azure class with an empty `__init__.py`, so a service reaching for
+a runtime secret would have imported the vendor, which is the coupling the seam exists
+to remove — and `list_secrets` handed back Azure's own `SecretProperties`, putting the
+SDK in the return type. A neutral `SecretInfo` carries what every vault knows, and lives
+in `view_models/` with the other capabilities' shapes rather than in the service module.
+Fetching several secrets belongs to the abstraction for the same reason batching does:
+doing them one at a time is what keeps each name's retries its own, and it is the same
+work whoever answers. Naming rules stay with the adapter, because what a legal secret
+name looks like is the vault's rule, not the caller's.
+
 Retrying a call that leaves this process is not an LLM concern, so it is not in the LLM
 package. `base.services.error_handling` owns the loop, the jittered backoff and the
 logging, and names no domain at all. The base never constructs a domain error itself —
@@ -733,6 +744,19 @@ without doing any work, so the failure would happen later, outside the retry loo
 for exactly that reason. A health check is left alone too: it reports what is true
 now, and retrying one would report a failing dependency as healthy for as long as the
 backoff lasted.
+
+A decorated method calling another one is common — pagination counts then fetches, a
+secret store reads several names — and the handler lets an error that is already a
+`ProviderError` through untouched rather than treating it as something unexpected.
+Without that, the outer call would re-wrap what the inner call had already worked out,
+so the same dropped connection arrived as a connection failure from `query` and an
+unexpected failure from `paginate`. The inner call has also already spent its retries,
+so there is nothing left for the outer one to repeat.
+
+Nothing computed belongs behind the policy at all. `format_secret_name` applies this
+starter's tag prefixes and reaches no vault, so retrying it repeated no call, and
+routing it through the handler turned a deliberate `ValueError` about a bad prefix into
+a vault failure. Being able to decorate a method is not a reason to.
 
 Those domains are deliberately separate families. `EmbeddingRateLimitError` is not an
 `LLMError`, so a service that both embeds and generates can catch a failure of one
