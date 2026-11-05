@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any, final
 
+from base.models.view_models.exceptions.provider import ProviderError
 from base.services.logging.console import ConsoleLoggerService
 from base.tools.attempt_trail import (
     mark_attempt,
@@ -130,6 +131,12 @@ class AbstractErrorHandler[E: Exception](ABC):
                     self._log_exhausted(exc, attempt, max_attempts)
                     break
                 raise self.wrap(exc, domain_cls) from exc
+            except ProviderError:
+                # Already classified, by this handler or one further in. A
+                # method that calls another through the same handler would
+                # otherwise have its failure re-wrapped as unexpected, losing
+                # what the inner call worked out and the attempts it spent.
+                raise
             except Exception as exc:
                 # Intentional boundary: nothing raw escapes this call.
                 mark_attempt_failure(exc)
@@ -169,6 +176,12 @@ class AbstractErrorHandler[E: Exception](ABC):
                     self._log_exhausted(exc, attempt, max_attempts)
                     break
                 raise self.wrap(exc, domain_cls) from exc
+            except ProviderError:
+                # Already classified, by this handler or one further in. A
+                # method that calls another through the same handler would
+                # otherwise have its failure re-wrapped as unexpected, losing
+                # what the inner call worked out and the attempts it spent.
+                raise
             except Exception as exc:
                 # Intentional boundary: nothing raw escapes this call.
                 mark_attempt_failure(exc)

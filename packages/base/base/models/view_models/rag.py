@@ -47,3 +47,25 @@ class IngestionResult(BaseModel):
     documents: int
     chunks: int
     collection: str
+
+
+class ChunkingConfig(BaseModel):
+    """How a document is cut up."""
+
+    max_tokens: int = Field(default=512, ge=1)
+    """Upper bound per chunk. Embedding models reject anything longer."""
+
+    overlap_tokens: int = Field(default=64, ge=0)
+    """Tokens repeated from the end of the previous chunk, so a sentence
+    split across a boundary is still retrievable from either side."""
+
+    model: str = "gpt-4o"
+    """Whose tokenizer decides what a token is."""
+
+
+class IngestionConfig(BaseModel):
+    """Where documents go and how they are cut up on the way."""
+
+    collection: str
+    distance: str = "cosine"
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)

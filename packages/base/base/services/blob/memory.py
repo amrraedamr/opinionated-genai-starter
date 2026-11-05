@@ -2,7 +2,8 @@ from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from base.services.blob import AbstractBlobService, BlobProperties
+from base.models.view_models.blob import BlobProperties
+from base.services.blob import AbstractBlobService
 from base.services.common.meta import SingletonABC
 from base.services.logging.console import ConsoleLoggerService
 

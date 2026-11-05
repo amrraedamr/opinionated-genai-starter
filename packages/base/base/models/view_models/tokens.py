@@ -23,6 +23,9 @@ class TokenPair(BaseModel):
 class TokenResponse(PydanticBaseModel):
     """An OAuth2 token endpoint's reply, per RFC 6749 section 5.1.
 
+    Plain pydantic on purpose: the field names are the wire format a provider
+    sends, so the shared base's camelised aliases would stop it parsing.
+
     Parsed by both the inbound authorization-code exchange and the outbound
     client-credentials grant. `expires_in` is optional because providers are
     inconsistent about sending it; `id_token` is absent from a pure
