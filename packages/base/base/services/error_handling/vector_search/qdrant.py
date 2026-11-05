@@ -15,6 +15,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "vectors", "qdrant-client", feature="QdrantErrorHandler"
     ) from exc
 
+from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
@@ -30,11 +31,7 @@ from base.models.view_models.exceptions.vector_search import (
     VectorSearchTimeoutError,
     VectorSearchUnexpectedError,
 )
-from base.services.error_handling import (
-    RETRYABLE_FAILURES,
-    AbstractErrorHandler,
-    FailureKind,
-)
+from base.services.error_handling import AbstractErrorHandler
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {
     FailureKind.RATE_LIMIT: VectorSearchRateLimitError,

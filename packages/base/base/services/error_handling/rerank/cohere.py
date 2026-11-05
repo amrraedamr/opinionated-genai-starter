@@ -23,6 +23,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("rerank", "cohere", feature="CohereErrorHandler") from exc
 
+from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
@@ -38,11 +39,7 @@ from base.models.view_models.exceptions.rerank import (
     RerankTimeoutError,
     RerankUnexpectedError,
 )
-from base.services.error_handling import (
-    RETRYABLE_FAILURES,
-    AbstractErrorHandler,
-    FailureKind,
-)
+from base.services.error_handling import AbstractErrorHandler
 
 _FAILURE_MAP: dict[type[ApiError], FailureKind] = {
     TooManyRequestsError: FailureKind.RATE_LIMIT,

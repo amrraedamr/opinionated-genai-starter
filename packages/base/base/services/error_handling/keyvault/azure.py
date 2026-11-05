@@ -1,5 +1,6 @@
 """Azure SDK errors, as the Key Vault family."""
 
+from base.models.definitions.error_handling import FailureKind
 from base.models.view_models.exceptions.keyvault import (
     KeyVaultAuthError,
     KeyVaultBadRequestError,
@@ -12,7 +13,6 @@ from base.models.view_models.exceptions.keyvault import (
     KeyVaultUnexpectedError,
 )
 from base.models.view_models.exceptions.provider import ProviderError
-from base.services.error_handling import FailureKind
 from base.services.error_handling.azure import AzureSDKErrorHandler
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {

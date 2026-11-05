@@ -1,5 +1,6 @@
 """Azure AI Search errors, as the vector search family."""
 
+from base.models.definitions.error_handling import FailureKind
 from base.models.view_models.exceptions.provider import ProviderError
 from base.models.view_models.exceptions.vector_search import (
     VectorSearchAuthError,
@@ -12,7 +13,6 @@ from base.models.view_models.exceptions.vector_search import (
     VectorSearchTimeoutError,
     VectorSearchUnexpectedError,
 )
-from base.services.error_handling import FailureKind
 from base.services.error_handling.azure import AzureSDKErrorHandler
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {

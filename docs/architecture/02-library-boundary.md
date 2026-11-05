@@ -590,15 +590,18 @@ deliberately: it covers both a dropped connection and a statement the server ref
 so the pool's own verdict decides, and anything it did not invalidate is treated as
 permanent rather than retried into the same wall.
 
-Depth is how specific a module is. The package root is domain-free: the abstraction, plus
-`FailureKind`, the vocabulary an SDK classifies into. `openai.py` beside it reads the
-OpenAI SDK but decides nothing about what callers see. The subfolders bind a domain:
-`llm/openai.py` and `llm/anthropic.py` raise the LLM family, `embedding/openai.py` raises
-the embedding family. Because the kind an exception represents is a property of the SDK
-rather than of the caller, it is stated once and two domains reuse it.
+Depth is how specific a module is. The package root holds the abstraction and nothing
+else: `openai.py` beside it reads the OpenAI SDK but decides nothing about what callers
+see. The subfolders bind a domain: `llm/openai.py` and `llm/anthropic.py` raise the LLM
+family, `embedding/openai.py` raises the embedding family. Because the kind an exception
+represents is a property of the SDK rather than of the caller, it is stated once and two
+domains reuse it.
 
-Which kinds are worth another attempt is stated once too, in `RETRYABLE_FAILURES`.
-Throttling, a server fault, a timeout and a connection failure are properties of the
+That vocabulary is `FailureKind`, and it lives in `models/definitions/` with every other
+enum rather than inside the handler package — it describes a failure, and the retry loop
+is only one of the things that reads it. `RETRYABLE_FAILURES` sits beside it and is what
+makes the decision reviewable in one place: throttling, a server fault, a timeout and a
+connection failure are properties of the
 moment, so the same request a little later plausibly succeeds. A malformed request, a
 rejected credential, a missing resource and a conflict are properties of the request,
 so a second attempt buys latency and arrives at the identical error. An unrecognised
@@ -640,7 +643,10 @@ attempt saying what went wrong. A call that was throttled twice and then succeed
 is otherwise indistinguishable from a clean one, which is the case worth seeing —
 the failure that ends a call was always recorded, the ones it recovered from were
 not. The handler collects that in a `ContextVar`, because one handler serves many
-concurrent calls and each task needs its own.
+concurrent calls and each task needs its own. It sits in `tools/attempt_trail.py`
+alongside `tools/correlation.py`, which is the same shape for the same reason: state
+scoped to one unit of work, kept with its accessors rather than inside whichever
+service happens to write to it.
 
 Reranking is billed per search unit rather than per token, so its records usually
 carry no cost. `UsageRecord.cost_usd` stays `None` when no rate is known, which is

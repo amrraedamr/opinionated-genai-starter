@@ -27,6 +27,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("redis", "redis", feature="RedisErrorHandler") from exc
 
+from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.cache import (
     CacheAuthError,
     CacheBadRequestError,
@@ -42,11 +43,7 @@ from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )
-from base.services.error_handling import (
-    RETRYABLE_FAILURES,
-    AbstractErrorHandler,
-    FailureKind,
-)
+from base.services.error_handling import AbstractErrorHandler
 
 _FAILURE_MAP: dict[type[RedisError], FailureKind] = {
     # Authentication derives from ConnectionError, so it must resolve first.

@@ -19,6 +19,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("mongo", "pymongo", feature="MongoErrorHandler") from exc
 
+from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.nosql import (
     NoSqlAuthError,
     NoSqlBadRequestError,
@@ -34,11 +35,7 @@ from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )
-from base.services.error_handling import (
-    RETRYABLE_FAILURES,
-    AbstractErrorHandler,
-    FailureKind,
-)
+from base.services.error_handling import AbstractErrorHandler
 
 _UNAUTHORIZED_CODES: frozenset[int] = frozenset({13, 18, 8000})
 """Mongo reports a rejected credential as an `OperationFailure` carrying a

@@ -28,15 +28,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "azure", "azure-core", feature="Azure error handling"
     ) from exc
 
+from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )
-from base.services.error_handling import (
-    RETRYABLE_FAILURES,
-    AbstractErrorHandler,
-    FailureKind,
-)
+from base.services.error_handling import AbstractErrorHandler
 
 _FAILURE_MAP: dict[type[AzureError], FailureKind] = {
     ServiceRequestTimeoutError: FailureKind.TIMEOUT,
