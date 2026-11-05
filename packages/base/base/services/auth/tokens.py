@@ -27,7 +27,9 @@ try:
     )
     from jwt.exceptions import PyJWKClientError, PyJWKError
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("auth", "pyjwt", feature="token issuing/verification") from exc
+    raise MissingExtraError(
+        "auth", "pyjwt", feature="token issuing/verification"
+    ) from exc
 
 
 class TokenIssuer(metaclass=Singleton):

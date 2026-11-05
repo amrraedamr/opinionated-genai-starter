@@ -1,6 +1,5 @@
 """Transport selection, shared by every service that publishes or consumes events."""
 
-
 from base.models.definitions.broker import BrokerBackend
 from base.services.broker import AbstractBroker
 from base.services.configuration import settings_for

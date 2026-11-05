@@ -278,22 +278,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server   = ["fastapi>=0.133.1,<0.134", "uvicorn[standard]>=0.41.0,<0.42",
-            "gunicorn>=25.1.0,<26"]
-sql      = ["sqlalchemy>=2.0.47,<3", "alembic>=1.18.4,<2",
-            "sqlalchemy-utils>=0.42.1,<0.43", "greenlet>=3.3.2,<4"]
-sqlite   = ["aiosqlite>=0.22.1,<0.23"]
-postgres = ["asyncpg>=0.31.0,<0.32", "psycopg2-binary>=2.9.11,<3"]
-mysql    = ["aiomysql>=0.3.2,<0.4", "pymysql>=1.1.2,<2"]
-auth     = ["pyjwt>=2.11.0,<3", "argon2-cffi>=25.1.0,<26", "cryptography>=46.0.5,<47"]
-llm      = ["openai>=2.24.0,<3", "tiktoken>=0.12.0,<0.13"]
-redis    = ["redis>=7.2.1,<8"]
-mongo    = ["pymongo>=4.16.0,<5"]
-vectors  = ["qdrant-client>=1.17.0,<2"]
-sse      = ["sse-starlette>=3.2.0,<4"]
-azure    = ["azure-identity>=1.25.2,<2", "azure-keyvault-secrets>=4.10.0,<5",
-            "azure-storage-blob>=12.28.0,<13", "azure-cosmos>=4.15.0,<5",
-            "azure-search-documents>=11.6.0,<12"]
+server    = ["fastapi>=0.133.1,<0.134", "uvicorn[standard]>=0.41.0,<0.42",
+             "gunicorn>=25.1.0,<26"]
+sql       = ["sqlalchemy>=2.0.47,<3", "alembic>=1.18.4,<2",
+             "sqlalchemy-utils>=0.42.1,<0.43", "greenlet>=3.3.2,<4"]
+sqlite    = ["aiosqlite>=0.22.1,<0.23"]
+postgres  = ["asyncpg>=0.31.0,<0.32", "psycopg2-binary>=2.9.11,<3"]
+mysql     = ["aiomysql>=0.3.2,<0.4", "pymysql>=1.1.2,<2"]
+auth      = ["pyjwt>=2.11.0,<3", "argon2-cffi>=25.1.0,<26", "cryptography>=46.0.5,<47"]
+openai    = ["openai>=2.24.0,<3"]
+anthropic = ["anthropic>=2.4.0,<3"]
+gemini    = ["google-genai>=2.34.0,<3"]
+tokenizer = ["tiktoken>=0.12.0,<0.13"]
+redis     = ["redis>=7.2.1,<8"]
+rerank    = ["cohere>=7.3.1,<8"]
+mongo     = ["pymongo>=4.16.0,<5"]
+vectors   = ["qdrant-client>=1.17.0,<2"]
+sse       = ["sse-starlette>=3.2.0,<4"]
+azure     = ["azure-identity>=1.25.2,<2", "azure-keyvault-secrets>=4.10.0,<5",
+             "azure-storage-blob>=12.28.0,<13", "azure-cosmos>=4.15.0,<5",
+             "azure-search-documents>=11.6.0,<12"]
 ```
 
 Notes from doing it:
@@ -312,7 +316,7 @@ Notes from doing it:
 Services then declare intent legibly:
 
 ```toml
-# chat_api          → base[server,sql,postgres,auth,llm,redis,sse]
+# chat_api          → base[server,sql,postgres,auth,openai,tokenizer,redis,sse]
 # identity          → base[server,sql,postgres,auth,redis]
 # ingestion_worker  → base[sql,postgres,redis]   # no server extra
 ```

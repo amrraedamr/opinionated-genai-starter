@@ -113,7 +113,9 @@ def _usable(cfg: OAuthProviderConfig) -> bool:
     if not cfg.client_id or not cfg.redirect_uri:
         return False
     if cfg.name == "apple":
-        can_mint = bool(cfg.apple_team_id and cfg.apple_key_id and cfg.apple_private_key)
+        can_mint = bool(
+            cfg.apple_team_id and cfg.apple_key_id and cfg.apple_private_key
+        )
         return bool(cfg.client_secret) or can_mint
     return bool(cfg.client_secret)
 
@@ -128,7 +130,9 @@ def load_oauth_provider_configs() -> dict[str, OAuthProviderConfig]:
     settings = get_settings()
     configs: dict[str, OAuthProviderConfig] = {}
 
-    for name in split_csv(settings_for(SupportsOAuthConfig).oauth_providers, lower=True):
+    for name in split_csv(
+        settings_for(SupportsOAuthConfig).oauth_providers, lower=True
+    ):
         entry = _PROVIDERS.get(name)
         if entry is None:
             raise_error(AuthErrors.OAUTH_PROVIDER_DISABLED)

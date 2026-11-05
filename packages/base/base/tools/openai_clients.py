@@ -9,7 +9,7 @@ from base.tools.errors import MissingExtraError
 try:
     from openai import AsyncOpenAI, DefaultAsyncHttpxClient, DefaultHttpxClient, OpenAI
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAI clients") from exc
+    raise MissingExtraError("openai", "openai", feature="OpenAI clients") from exc
 
 DEFAULT_TIMEOUT_TOTAL: float = 60.0
 DEFAULT_TIMEOUT_CONNECT: float = 5.0

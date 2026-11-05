@@ -193,7 +193,9 @@ class AzureKeyVaultService(AbstractKeyVaultService, metaclass=SingletonABC):
                     )
                 return secret_name
 
-        return f"{settings_for(SupportsKeyVaultConfig).system_keyvault_tag}-{secret_name}"
+        return (
+            f"{settings_for(SupportsKeyVaultConfig).system_keyvault_tag}-{secret_name}"
+        )
 
     def get_service_name(self) -> str:
         return "Azure Key Vault"

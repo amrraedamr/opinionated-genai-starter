@@ -1,6 +1,5 @@
 """Point every agent at an LLM client that authenticates with a credential."""
 
-
 from fastapi import FastAPI
 
 from base.clients.credentials import OutboundAuth

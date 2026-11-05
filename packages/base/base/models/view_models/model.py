@@ -1,4 +1,3 @@
-
 from base.models.definitions.model import ProviderType
 from base.models.view_models import BaseModel
 from base.services.configuration import settings_for

@@ -94,9 +94,7 @@ class GeminiErrorHandler(AbstractErrorHandler[genai_errors.APIError]):
             provider_error=error,
         )
 
-    def wrap_exhausted(
-        self, error: genai_errors.APIError, attempts: int
-    ) -> Exception:
+    def wrap_exhausted(self, error: genai_errors.APIError, attempts: int) -> Exception:
         domain_cls, _ = self.classify(error)
         assert issubclass(domain_cls, ProviderRetryExhausted), (
             f"Retryable error {type(error).__name__} mapped to non-retry-exhausted "

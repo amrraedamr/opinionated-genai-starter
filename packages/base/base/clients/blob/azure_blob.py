@@ -1,4 +1,3 @@
-
 from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 

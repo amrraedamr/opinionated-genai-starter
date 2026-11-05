@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Chat API service — conversations, messages, users and auth"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "base[server,sql,postgres,auth,llm,redis,sse]",
+    "base[server,sql,postgres,auth,openai,tokenizer,redis,sse]",
 ]
 
 [project.scripts]
@@ -30,7 +30,7 @@ build-backend = "uv_build"
 [tool.starter.slice]
 summary = "Conversations — chat, agents, prompts, chat history and log streaming."
 mixins = ["LLMSettingsMixin", "PromptSettingsMixin"]
-extras = ["llm", "sse"]
+extras = ["openai", "tokenizer", "sse"]
 publishes_events = true
 
 [[tool.starter.slice.capabilities]]

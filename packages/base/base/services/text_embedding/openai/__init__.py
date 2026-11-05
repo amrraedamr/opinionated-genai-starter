@@ -6,7 +6,9 @@ try:
     from openai import AsyncOpenAI, OpenAI
     from openai.types import CreateEmbeddingResponse
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAIEmbeddingService") from exc
+    raise MissingExtraError(
+        "openai", "openai", feature="OpenAIEmbeddingService"
+    ) from exc
 
 from base.models.definitions.model import ProviderType
 from base.models.view_models.embedding import EmbeddingBatch

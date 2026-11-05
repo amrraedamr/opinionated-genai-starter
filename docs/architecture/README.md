@@ -46,7 +46,7 @@ Three existing design decisions make this unusually cheap:
 | --- | --- | --- | --- |
 | 1 | **uv workspace monorepo**, one lockfile, many packages | Repo already uses uv + `uv.lock`; one resolution keeps transitive versions consistent across services | [01](01-workspace-layout.md) |
 | 2 | `base` becomes a **domain-free library**; it ships zero tables and zero routers | A shared library that knows about `users` is not shared, it is a monolith with extra steps | [02](02-library-boundary.md) |
-| 3 | **Dependencies split into extras** — `base[sql,llm,redis,…]` | Today's 40 hard deps would force a worker service to install Qdrant, Cosmos, Azure Search, MySQL *and* Postgres | [02](02-library-boundary.md) |
+| 3 | **Dependencies split into extras** — `base[sql,openai,redis,…]` | Today's 40 hard deps would force a worker service to install Qdrant, Cosmos, Azure Search, MySQL *and* Postgres | [02](02-library-boundary.md) |
 | 4 | **Database per service.** Each service picks SQL, NoSQL or nothing, owns its own schema, its own migrations, its own connection | Independent deployability; the store abstraction already allows it | [03](03-data-ownership.md) |
 | 5 | **Each service defines its own `DeclarativeBase`** — never a shared one | Sharing `Base` shares `metadata`, which silently couples every service's migrations | [03](03-data-ownership.md) |
 | 6 | **No cross-service foreign keys.** Foreign entities are opaque IDs | FKs are a physical coupling that defeats separate databases | [03](03-data-ownership.md) |

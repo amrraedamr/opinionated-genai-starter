@@ -26,7 +26,7 @@ try:
     )
     from openai.types.responses.response_input_param import FunctionCallOutput
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAIMessageAdapter") from exc
+    raise MissingExtraError("openai", "openai", feature="OpenAIMessageAdapter") from exc
 
 from base.models.definitions.message import MessageRole
 from base.models.view_models.chat_history import StoredMessage

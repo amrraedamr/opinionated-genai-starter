@@ -25,13 +25,21 @@ class MongoDBClient(metaclass=Singleton):
     def __init__(self) -> None:
         self._connection_string: str = self._build_connection_string()
 
-        self._min_pool_size: int = settings_for(SupportsMongoConfig).mongodb_min_pool_size
-        self._max_pool_size: int = settings_for(SupportsMongoConfig).mongodb_max_pool_size
-        self._connect_timeout_ms: int = settings_for(SupportsMongoConfig).mongodb_connect_timeout_ms
-        self._socket_timeout_ms: int = settings_for(SupportsMongoConfig).mongodb_socket_timeout_ms
-        self._server_selection_timeout_ms: int = (
-            settings_for(SupportsMongoConfig).mongodb_server_selection_timeout_ms
-        )
+        self._min_pool_size: int = settings_for(
+            SupportsMongoConfig
+        ).mongodb_min_pool_size
+        self._max_pool_size: int = settings_for(
+            SupportsMongoConfig
+        ).mongodb_max_pool_size
+        self._connect_timeout_ms: int = settings_for(
+            SupportsMongoConfig
+        ).mongodb_connect_timeout_ms
+        self._socket_timeout_ms: int = settings_for(
+            SupportsMongoConfig
+        ).mongodb_socket_timeout_ms
+        self._server_selection_timeout_ms: int = settings_for(
+            SupportsMongoConfig
+        ).mongodb_server_selection_timeout_ms
 
         self._sync_client: MongoClient[dict[str, Any]] | None = None
         self._async_client: AsyncMongoClient[dict[str, Any]] | None = None

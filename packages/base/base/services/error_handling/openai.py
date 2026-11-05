@@ -27,7 +27,9 @@ try:
         UnprocessableEntityError,
     )
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAI error handling") from exc
+    raise MissingExtraError(
+        "openai", "openai", feature="OpenAI error handling"
+    ) from exc
 
 from base.models.definitions.error_handling import RETRYABLE_FAILURES, FailureKind
 from base.models.view_models.exceptions.provider import (

@@ -36,7 +36,7 @@ try:
         ResponseUsage,
     )
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAIService") from exc
+    raise MissingExtraError("openai", "openai", feature="OpenAIService") from exc
 
 from base.models.definitions.model import (
     FinishReason,

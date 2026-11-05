@@ -121,7 +121,9 @@ class GeminiContentAdapter:
             return cls._function_response(message.tool_call_id, content, names)
 
         if message.role == MessageRole.USER:
-            parts = cls.to_parts(message.parts) if message.parts else [{"text": content}]
+            parts = (
+                cls.to_parts(message.parts) if message.parts else [{"text": content}]
+            )
             return {"role": _ROLE_MAP[message.role], "parts": parts}
 
         if message.role == MessageRole.ASSISTANT:
