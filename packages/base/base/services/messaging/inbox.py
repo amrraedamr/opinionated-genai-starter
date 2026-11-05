@@ -8,7 +8,6 @@ rather than lost.
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
 
 from base.tools.errors import MissingExtraError
 
@@ -17,17 +16,12 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="Inbox") from exc
 
+from base.models.definitions.messaging import InboxState
 from base.services.messaging.protocol import InboxRow
 from base.services.sql.service import SQLService
 from contracts.events import Event
 
 EventHandler = Callable[[Event], Awaitable[None]]
-
-
-class InboxState(StrEnum):
-    PROCESSING = "processing"
-    PROCESSED = "processed"
-    FAILED = "failed"
 
 
 class InboxProcessor:

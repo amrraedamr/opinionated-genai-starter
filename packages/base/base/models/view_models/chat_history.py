@@ -6,7 +6,6 @@ from pydantic import Field, model_validator
 from base.models.definitions.message import MessageRole
 from base.models.view_models import BaseModel
 from base.models.view_models.content import ContentPart
-from base.models.view_models.models import OpenAIModels
 
 # Identifiers
 
@@ -128,6 +127,6 @@ class StoredMessage(BaseModel):
 class ChatHistoryConfig(BaseModel):
     """Configuration for ChatHistoryService."""
 
-    tokenizer_model: OpenAIModels = OpenAIModels.GPT_4O
-    """Passed to tiktoken.encoding_for_model(). Falls back to cl100k_base
+    tokenizer_model: str = "gpt-4o"
+    """Passed to tiktoken.encoding_for_model(). Falls back to o200k_base
     for unknown models."""
