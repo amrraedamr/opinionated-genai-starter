@@ -1,8 +1,7 @@
 from typing import ClassVar
 
-from sqlalchemy.exc import IntegrityError
-
 from base.models.definitions.errors import DatabaseErrors
+from base.models.view_models.exceptions.sql import SQLConflictError
 from base.services.common.meta import SingletonABC
 from base.services.messaging import add_event
 from base.services.store.sql import SQLStore
@@ -38,6 +37,6 @@ class UserStore(SQLStore[UserDTO], metaclass=SingletonABC):
                 )
                 add_event(session, OutboxEventDTO, event)
                 await session.flush()
-        except IntegrityError:
+        except SQLConflictError:
             raise_error(DatabaseErrors.UNIQUE_CONSTRAINT_VIOLATION)
         return user

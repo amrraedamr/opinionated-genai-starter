@@ -1,11 +1,11 @@
 from sqlalchemy import Select, delete, func, select
-from sqlalchemy.exc import IntegrityError
 
 from base.models.view_models.chat_history import (
     ConversationId,
     StoredMessage,
     StoredToolCall,
 )
+from base.models.view_models.exceptions.sql import SQLConflictError
 from base.services.common.meta import SingletonABC
 from base.services.sql.service import SQLService
 from base.services.store.chat_history import ChatHistoryStore
@@ -17,7 +17,7 @@ class SqlChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
     """SQLAlchemy-backed ChatHistoryStore. One row per message.
 
     Concurrency: a unique constraint on (conversation_id, sequence) enforces
-    correctness. The store does not retry on collision — it lets IntegrityError
+    correctness. The store does not retry on collision — it lets the conflict
     propagate. Upstream (ChatHistoryService) serializes anext_sequence and
     aappend per conversation so collisions don't reach the database.
 
@@ -33,7 +33,7 @@ class SqlChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
         )
 
     def _duplicate_error_types(self) -> tuple[type[BaseException], ...]:
-        return (IntegrityError,)
+        return (SQLConflictError,)
 
     # Mapping
 

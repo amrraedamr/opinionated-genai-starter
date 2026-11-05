@@ -1,6 +1,11 @@
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager, AbstractContextManager
+from collections.abc import AsyncGenerator, Callable, Generator
+from contextlib import (
+    AbstractAsyncContextManager,
+    AbstractContextManager,
+    asynccontextmanager,
+    contextmanager,
+)
 from typing import Any, TypeVar, final
 
 from base.tools.errors import MissingExtraError
@@ -21,6 +26,13 @@ from base.models.view_models.database import (
     SortingOrder,
     SortingParams,
 )
+from base.services.error_handling import (
+    aclassifying,
+    aretrying,
+    classifying,
+    retrying,
+)
+from base.services.error_handling.sql import SQLErrorHandler
 from base.tools.errors import ServiceHealthCheckError
 from base.tools.pagination import apaginate, paginate
 
@@ -36,6 +48,10 @@ class AbstractSQLService(ABC):
     Subclasses only need to implement session management and metadata.
     All query, execute, pagination, upsert, and health check logic is handled here.
     """
+
+    _error_handler: SQLErrorHandler = SQLErrorHandler()
+    """Shared by every subclass: the policy belongs to the backend, not the
+    instance, and the handler holds no per-call state."""
 
     # Abstract — subclasses must implement
 
@@ -57,25 +73,46 @@ class AbstractSQLService(ABC):
     # Transactions callers drive themselves
 
     @final
-    def transaction(self) -> AbstractContextManager[Session]:
+    @contextmanager
+    def transaction(self) -> Generator[Session, None, None]:
         """A unit of work for callers that must control the boundary.
 
         Use a store for ordinary CRUD. This is for work a store cannot express
         — several writes that must commit together, or row locking.
+
+        Nothing here is retried: the statements are the caller's, and a failed
+        session cannot be resumed, so repeating the block is a decision only
+        the caller can make. Failures are still reported as this backend's
+        family, so one `except` serves whichever method raised.
         """
-        return self._get_session()
+        try:
+            with self._get_session() as session:
+                yield session
+        except SQLAlchemyError as exc:
+            raise self._error_handler.as_domain_error(exc) from exc
 
     @final
-    def atransaction(self) -> AbstractAsyncContextManager[AsyncSession]:
+    @asynccontextmanager
+    async def atransaction(self) -> AsyncGenerator[AsyncSession, None]:
         """A unit of work for callers that must control the boundary.
 
         Use a store for ordinary CRUD. This is for work a store cannot express
         — several writes that must commit together, or row locking.
+
+        Nothing here is retried: the statements are the caller's, and a failed
+        session cannot be resumed, so repeating the block is a decision only
+        the caller can make. Failures are still reported as this backend's
+        family, so one `except` serves whichever method raised.
         """
-        return self._aget_session()
+        try:
+            async with self._aget_session() as session:
+                yield session
+        except SQLAlchemyError as exc:
+            raise self._error_handler.as_domain_error(exc) from exc
 
     # Query
 
+    @retrying
     def query(
         self,
         sql_query: Select[tuple[RowT]],
@@ -90,6 +127,7 @@ class AbstractSQLService(ABC):
                 session.expunge_all()
             return result
 
+    @aretrying
     async def aquery(
         self,
         sql_query: Select[tuple[RowT]],
@@ -106,11 +144,13 @@ class AbstractSQLService(ABC):
 
     # Execute
 
+    @classifying
     def execute(self, execute_query: Any) -> Any:
         """Performs update, delete queries."""
         with self._get_session() as session:
             return session.execute(execute_query)
 
+    @aclassifying
     async def aexecute(self, execute_query: Any) -> Any:
         """Performs update, delete queries asynchronously."""
         async with self._aget_session() as session:
@@ -118,6 +158,7 @@ class AbstractSQLService(ABC):
 
     # Transactions
 
+    @classifying
     def execute_in_transaction(
         self,
         statements: list[Any] | None = None,
@@ -146,6 +187,7 @@ class AbstractSQLService(ABC):
                     session.expunge_all()
         return rows
 
+    @aclassifying
     async def aexecute_in_transaction(
         self,
         statements: list[Any] | None = None,
@@ -176,21 +218,25 @@ class AbstractSQLService(ABC):
 
     # Bulk Operations
 
+    @classifying
     def update_many(self, update_query: Any) -> None:
         """Performs bulk update queries."""
         with self._get_session() as session:
             session.execute(update_query)
 
+    @aclassifying
     async def aupdate_many(self, update_query: Any) -> None:
         """Performs bulk update queries asynchronously."""
         async with self._aget_session() as session:
             await session.execute(update_query)
 
+    @classifying
     def delete_many(self, delete_query: Any) -> None:
         """Performs bulk delete queries."""
         with self._get_session() as session:
             session.execute(delete_query)
 
+    @aclassifying
     async def adelete_many(self, delete_query: Any) -> None:
         """Performs bulk delete queries asynchronously."""
         async with self._aget_session() as session:
@@ -198,6 +244,7 @@ class AbstractSQLService(ABC):
 
     # Pagination & Sorting
 
+    @retrying
     def paginate(
         self,
         sql_query: Any,
@@ -220,6 +267,7 @@ class AbstractSQLService(ABC):
 
         return paginate(total, page_params, fetch)
 
+    @aretrying
     async def apaginate(
         self,
         sql_query: Any,
@@ -265,6 +313,7 @@ class AbstractSQLService(ABC):
 
     # Upsert
 
+    @retrying
     def upsert_row(
         self,
         model_row_object: T,
@@ -283,6 +332,7 @@ class AbstractSQLService(ABC):
                 session.expunge(model_row_object)
         return model_row_object
 
+    @aretrying
     async def aupsert_row(
         self,
         model_row_object: T,
@@ -301,6 +351,7 @@ class AbstractSQLService(ABC):
                 session.expunge(model_row_object)
         return model_row_object
 
+    @retrying
     def upsert_rows(
         self,
         model_row_objects: list[T],
@@ -320,6 +371,7 @@ class AbstractSQLService(ABC):
                 session.expunge_all()
         return model_row_objects
 
+    @aretrying
     async def aupsert_rows(
         self,
         model_row_objects: list[T],
@@ -339,6 +391,7 @@ class AbstractSQLService(ABC):
                 session.expunge_all()
         return model_row_objects
 
+    @retrying
     def bulk_upsert_rows(
         self,
         model_row_objects: list[Any],
@@ -357,6 +410,7 @@ class AbstractSQLService(ABC):
             if expunge:
                 session.expunge_all()
 
+    @aretrying
     async def abulk_upsert_rows(
         self,
         model_row_objects: list[Any],

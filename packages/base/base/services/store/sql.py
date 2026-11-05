@@ -13,12 +13,12 @@ from base.tools.errors import MissingExtraError
 
 try:
     from sqlalchemy import ColumnElement, Select, inspect, or_, select
-    from sqlalchemy.exc import IntegrityError
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="SqlStore") from exc
 
 from base.models.orm import TimestampMixin
 from base.models.view_models.database import FilteredPaginationParams, PaginatedResult
+from base.models.view_models.exceptions.sql import SQLConflictError
 from base.services.sql.service import SQLService
 from base.services.store import AbstractStore
 from base.tools.database import SQLResultFormats
@@ -49,7 +49,7 @@ class SQLStore(AbstractStore[TEntity]):
         self._base_select_query: Select[tuple[TEntity]] = select(model)
 
     def _duplicate_error_types(self) -> tuple[type[BaseException], ...]:
-        return (IntegrityError,)
+        return (SQLConflictError,)
 
     # Query building
 
