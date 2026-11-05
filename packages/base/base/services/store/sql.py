@@ -9,8 +9,13 @@ genuinely its own — its model, the columns `edit` must not touch, the columns
 from functools import cached_property
 from typing import Any, ClassVar, TypeVar
 
-from sqlalchemy import ColumnElement, Select, inspect, or_, select
-from sqlalchemy.exc import IntegrityError
+from base.tools.errors import MissingExtraError
+
+try:
+    from sqlalchemy import ColumnElement, Select, inspect, or_, select
+    from sqlalchemy.exc import IntegrityError
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("sql", "sqlalchemy", feature="SqlStore") from exc
 
 from base.models.orm import TimestampMixin
 from base.models.view_models.database import FilteredPaginationParams, PaginatedResult

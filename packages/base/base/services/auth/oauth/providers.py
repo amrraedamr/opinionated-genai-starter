@@ -5,8 +5,14 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlencode
 
-from jwt import encode
 from pydantic import ValidationError
+
+from base.tools.errors import MissingExtraError
+
+try:
+    from jwt import decode, encode
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise MissingExtraError("auth", "pyjwt", feature="OAuth providers") from exc
 
 from base.models.definitions.errors import AuthErrors
 from base.services.auth.models import TokenResponse
@@ -310,8 +316,6 @@ class OAuthProviderRegistry:
         if not id_token:
             raise_error(AuthErrors.OAUTH_PROFILE_INCOMPLETE)
 
-        from jwt import decode
-
         claims = decode(id_token, options={"verify_signature": False})
         subject = str(claims.get("sub") or "")
         email = str(claims.get("email") or "")
@@ -352,8 +356,6 @@ class OAuthProviderRegistry:
     ) -> OAuthProfile:
         id_token = token_payload.id_token
         if id_token:
-            from jwt import decode
-
             claims = decode(id_token, options={"verify_signature": False})
             email = str(claims.get("email") or "")
             subject = str(claims.get("sub") or "")
