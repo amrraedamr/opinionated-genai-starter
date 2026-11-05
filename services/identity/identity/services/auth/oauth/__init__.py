@@ -4,9 +4,8 @@ from urllib.parse import urlencode
 from base.models.definitions.errors import AuthErrors
 from base.services.auth import TokenIssuer, TokenPair, TokenVerifier
 from base.services.auth.oauth import OAuthProfile, OAuthProviderRegistry
-from base.services.auth.tokens import InvalidSignedPayload
 from base.services.common.meta import Singleton
-from base.tools.errors import raise_error
+from base.tools.errors import InvalidSignedPayload, raise_error
 from base.tools.security import pkce_pair
 from identity.models.orm.user import UserDTO
 from identity.models.orm.user_identity import UserIdentityDTO

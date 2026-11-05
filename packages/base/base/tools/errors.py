@@ -24,6 +24,14 @@ class StateDecodeError(ValueError):
     """Raised when the encoded state is invalid, tampered, or cannot be decoded."""
 
 
+class InvalidSignedPayload(Exception):
+    """A signed payload failed verification."""
+
+    def __init__(self, *, expired: bool) -> None:
+        super().__init__("expired" if expired else "invalid")
+        self.expired = expired
+
+
 class MissingExtraError(ImportError):
     """Raised when a subsystem is used without the extra that provides it."""
 
