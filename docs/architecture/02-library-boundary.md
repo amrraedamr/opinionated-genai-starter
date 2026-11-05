@@ -641,6 +641,22 @@ client can tell. A replayed insert against a server-generated key is the case th
 quietly duplicates, so a write path that matters should carry a key the client
 generated and a unique constraint to go with it, and fail loudly instead.
 
+The document stores draw the same line, for the same reason. `update_one`,
+`update_many` and an aggregation take an operation the caller wrote, and `{"$inc": …}`
+is MongoDB's version of adding one to a column: repeating it adds two. Those are
+classified rather than retried, while reads, a replace, a delete by filter and an insert
+keep their retry, because repeating those reaches the same state. A Cosmos aggregation
+runs read-only Cosmos SQL, so it stays a read.
+
+MongoDB is also the one client whose own retry is kept rather than turned off, which is
+the opposite of what the model and search clients do. It sends a transaction number the
+server uses to recognise a repeat, so a single-document write that lands but is never
+acknowledged is applied once rather than twice — the one thing a retry above the driver
+cannot do. It covers single-document writes only, which is exactly why `update_many` and
+the operations carrying a caller's update document are not repeated at all. Reads are
+left to the handler, so the budget, the backoff and the logging stay in one place rather
+than multiplying against the driver's own.
+
 Depth is how specific a module is. The package root holds the abstraction and nothing
 else: `openai.py` beside it reads the OpenAI SDK but decides nothing about what callers
 see. The subfolders bind a domain: `llm/openai.py` and `llm/anthropic.py` raise the LLM
