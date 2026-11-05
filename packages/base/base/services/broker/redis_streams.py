@@ -1,15 +1,12 @@
 import asyncio
 import json
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import cast
 
 from base.services.broker import AbstractBroker, Handler
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
-from base.services.configuration.protocols import (
-    SupportsBrokerConfig,
-    SupportsRedisConfig,
-)
+from base.services.configuration.protocols.broker import SupportsRedisBrokerConfig
 from base.services.logging.console import ConsoleLoggerService
 from base.tools.errors import MissingExtraError
 from contracts.events import Event
@@ -21,13 +18,11 @@ except ModuleNotFoundError as exc:
     raise MissingExtraError("redis", "redis", feature="RedisStreamsBroker") from exc
 
 
-class BrokerConfig(SupportsRedisConfig, SupportsBrokerConfig, Protocol):
-    """What this broker reads: Redis connection plus delivery policy."""
-
-
 class RedisStreamsBroker(AbstractBroker, metaclass=SingletonABC):
-    def __init__(self, config: BrokerConfig | None = None) -> None:
-        self._config: BrokerConfig = config or cast(BrokerConfig, get_settings())
+    def __init__(self, config: SupportsRedisBrokerConfig | None = None) -> None:
+        self._config: SupportsRedisBrokerConfig = config or cast(
+            SupportsRedisBrokerConfig, get_settings()
+        )
         self._redis: Redis | None = None
         self._subscriptions: list[tuple[str, str, Handler]] = []
         self._tasks: list[asyncio.Task[None]] = []

@@ -1,34 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
-from typing import Any
 
-
-class BlobProperties(dict[str, Any]):
-    """Lightweight wrapper around blob metadata/properties returned by backends.
-
-    Acts as a plain dict so callers can access arbitrary keys while the most
-    common properties are exposed as typed helpers.
-    """
-
-    @property
-    def name(self) -> str:
-        return str(self.get("name", ""))
-
-    @property
-    def size(self) -> int:
-        return int(self.get("size", 0))
-
-    @property
-    def content_type(self) -> str:
-        return str(self.get("content_type", "application/octet-stream"))
-
-    @property
-    def etag(self) -> str | None:
-        return self.get("etag")
-
-    @property
-    def last_modified(self) -> str | None:
-        return self.get("last_modified")
+from base.models.view_models.blob import BlobProperties
 
 
 class AbstractBlobService(ABC):

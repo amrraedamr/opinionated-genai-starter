@@ -1,12 +1,15 @@
 """Getting documents into a vector collection, and keeping them current."""
 
-from pydantic import Field
 
-from base.models.view_models import BaseModel
-from base.models.view_models.rag import Chunk, Document, IngestionResult
+from base.models.view_models.rag import (
+    Chunk,
+    Document,
+    IngestionConfig,
+    IngestionResult,
+)
 from base.models.view_models.vector_search import VectorRecord
 from base.services.logging.console import ConsoleLoggerService
-from base.services.rag.chunking import ChunkingConfig, TextChunker
+from base.services.rag.chunking import TextChunker
 from base.services.text_embedding import AbstractTextEmbeddingService
 from base.services.text_embedding.openai import OpenAIEmbeddingService
 from base.services.vector_search import AbstractVectorSearchService
@@ -14,14 +17,6 @@ from base.services.vector_search import AbstractVectorSearchService
 DOCUMENT_ID_FIELD = "document_id"
 CHUNK_INDEX_FIELD = "chunk_index"
 TEXT_FIELD = "text"
-
-
-class IngestionConfig(BaseModel):
-    """Where documents go and how they are cut up on the way."""
-
-    collection: str
-    distance: str = "cosine"
-    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
 
 
 class RagIngestionService:

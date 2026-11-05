@@ -2,28 +2,11 @@
 
 import re
 
-from pydantic import Field
-
-from base.models.view_models import BaseModel
-from base.models.view_models.rag import Chunk, Document
+from base.models.view_models.rag import Chunk, ChunkingConfig, Document
 from base.tools.tokenizer import TokenCounter
 
 _PARAGRAPH = re.compile(r"\n\s*\n")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
-
-
-class ChunkingConfig(BaseModel):
-    """How a document is cut up."""
-
-    max_tokens: int = Field(default=512, ge=1)
-    """Upper bound per chunk. Embedding models reject anything longer."""
-
-    overlap_tokens: int = Field(default=64, ge=0)
-    """Tokens repeated from the end of the previous chunk, so a sentence
-    split across a boundary is still retrievable from either side."""
-
-    model: str = "gpt-4o"
-    """Whose tokenizer decides what a token is."""
 
 
 class TextChunker:

@@ -1,6 +1,5 @@
 import json
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlencode
@@ -15,6 +14,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("auth", "pyjwt", feature="OAuth providers") from exc
 
 from base.models.definitions.errors import AuthErrors
+from base.models.view_models.oauth import OAuthProfile, OAuthProviderConfig
 from base.services.auth.models import TokenResponse
 from base.services.configuration import get_settings
 from base.services.configuration.mixins import OAuthSettingsMixin
@@ -25,35 +25,6 @@ from base.tools.errors import raise_error
 def _config() -> OAuthSettingsMixin:
     """The service's OAuth settings."""
     return cast(OAuthSettingsMixin, get_settings())
-
-
-@dataclass(frozen=True, slots=True)
-class OAuthProviderConfig:
-    name: str
-    client_id: str
-    client_secret: str
-    redirect_uri: str
-    scopes: str
-    discovery_url: str = ""
-    authorize_url: str = ""
-    token_url: str = ""
-    userinfo_url: str = ""
-    # oidc | facebook | github | apple
-    profile_style: str = "oidc"
-    response_mode: str = ""
-    # Apple ES256 client-secret material (secret regenerated at token exchange)
-    apple_team_id: str = ""
-    apple_key_id: str = ""
-    apple_private_key: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class OAuthProfile:
-    subject: str
-    email: str
-    email_verified: bool
-    first_name: str | None = None
-    last_name: str | None = None
 
 
 def _split_providers(raw: str) -> list[str]:

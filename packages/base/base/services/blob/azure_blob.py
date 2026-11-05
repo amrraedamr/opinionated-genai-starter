@@ -15,7 +15,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     ) from exc
 
 from base.clients.blob.azure_blob import AzureBlobClient
-from base.services.blob import AbstractBlobService, BlobProperties
+from base.models.view_models.blob import BlobProperties
+from base.services.blob import AbstractBlobService
 from base.services.common.meta import SingletonABC
 from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.blob.azure import AzureBlobErrorHandler
