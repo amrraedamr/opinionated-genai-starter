@@ -576,6 +576,20 @@ logging, and names no domain at all. The base never constructs a domain error it
 `wrap`, `wrap_exhausted` and `wrap_unexpected` belong to the implementation — so a store
 handler raises store errors and a model handler raises model errors over one retry policy.
 
+An SDK that serves more than one capability gets its reader at the root, where it
+reads exceptions without deciding what callers see: `openai.py` for generation and
+embeddings, `azure.py` for object storage and search, `sqlalchemy.py` for anything
+reaching a database. That is why an Azure 429 becomes a blob error in one place and
+a vector-search error in another from the same classification.
+
+Retrying a SQLAlchemy failure is only safe where the statement is idempotent and the
+method opens its own transaction, because a failed session cannot be resumed. The
+pgvector backend qualifies — DDL guarded by `IF NOT EXISTS`, writes upserted with
+`ON CONFLICT DO UPDATE`, deletes by id. `OperationalError` is left out of the map
+deliberately: it covers both a dropped connection and a statement the server refused,
+so the pool's own verdict decides, and anything it did not invalidate is treated as
+permanent rather than retried into the same wall.
+
 Depth is how specific a module is. The package root is domain-free: the abstraction, plus
 `FailureKind`, the vocabulary an SDK classifies into. `openai.py` beside it reads the
 OpenAI SDK but decides nothing about what callers see. The subfolders bind a domain:

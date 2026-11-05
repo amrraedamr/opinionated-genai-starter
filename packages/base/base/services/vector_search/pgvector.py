@@ -24,6 +24,8 @@ from base.models.definitions.vector_search import (
 )
 from base.models.view_models.vector_search import VectorRecord, VectorSearchResult
 from base.services.common.meta import SingletonABC
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.vector_search.pgvector import PgVectorErrorHandler
 from base.services.sql.service import SQLService
 from base.services.vector_search import AbstractVectorSearchService
 
@@ -64,6 +66,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         super().__init__()
         self._sql: SQLService = SQLService()
         self._metrics: dict[str, str] = {}
+        self._error_handler: PgVectorErrorHandler = PgVectorErrorHandler()
 
     @classmethod
     def _table(cls, collection: str) -> str:
@@ -120,9 +123,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         if collection in self._metrics:
             return self._metrics[collection]
         with self._sql.transaction() as session:
-            row = session.execute(
-                text(self._METRIC_SQL), {"name": collection}
-            ).scalar()
+            row = session.execute(text(self._METRIC_SQL), {"name": collection}).scalar()
         return self._resolve_metric(collection, row)
 
     async def _ametric_for(self, collection: str) -> str:
@@ -136,7 +137,9 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
 
     # Collection management
 
-    def _create_sql(self, collection: str, vector_size: int, distance: str) -> list[str]:
+    def _create_sql(
+        self, collection: str, vector_size: int, distance: str
+    ) -> list[str]:
         table = self._table(collection)
         _, index_ops, _ = self._metric(distance)
         return [
@@ -153,6 +156,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             f"USING gin (to_tsvector('simple', coalesce(metadata ->> 'text', '')))",
         ]
 
+    @retrying
     def create_collection(
         self,
         collection: str,
@@ -166,6 +170,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
                 session.execute(text(statement))
         self._metrics[collection] = self._metric_name(distance)
 
+    @aretrying
     async def acreate_collection(
         self,
         collection: str,
@@ -179,23 +184,29 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
                 await session.execute(text(statement))
         self._metrics[collection] = self._metric_name(distance)
 
+    @retrying
     def delete_collection(self, collection: str) -> None:
         with self._sql.transaction() as session:
             session.execute(text(f"DROP TABLE IF EXISTS {self._table(collection)}"))
         self._metrics.pop(collection, None)
 
+    @aretrying
     async def adelete_collection(self, collection: str) -> None:
         async with self._sql.atransaction() as session:
-            await session.execute(text(f"DROP TABLE IF EXISTS {self._table(collection)}"))
+            await session.execute(
+                text(f"DROP TABLE IF EXISTS {self._table(collection)}")
+            )
         self._metrics.pop(collection, None)
 
     _EXISTS = "SELECT to_regclass(:name) IS NOT NULL AS present"
 
+    @retrying
     def collection_exists(self, collection: str) -> bool:
         with self._sql.transaction() as session:
             result = session.execute(text(self._EXISTS), {"name": collection})
             return bool(result.scalar())
 
+    @aretrying
     async def acollection_exists(self, collection: str) -> bool:
         async with self._sql.atransaction() as session:
             result = await session.execute(text(self._EXISTS), {"name": collection})
@@ -222,6 +233,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             for r in records
         ]
 
+    @retrying
     def upsert(self, collection: str, records: list[VectorRecord]) -> None:
         statement = text(self._upsert_sql(collection))
         with self._sql.transaction() as session:
@@ -229,6 +241,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
                 batch = records[i : i + VECTOR_UPSERT_BATCH_SIZE]
                 session.execute(statement, self._upsert_params(batch))
 
+    @aretrying
     async def aupsert(self, collection: str, records: list[VectorRecord]) -> None:
         statement = text(self._upsert_sql(collection))
         async with self._sql.atransaction() as session:
@@ -262,6 +275,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             params,
         )
 
+    @retrying
     def search(
         self,
         collection: str,
@@ -278,6 +292,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             rows = session.execute(text(sql), params).mappings().all()
         return [self._to_result(row) for row in rows]
 
+    @aretrying
     async def asearch(
         self,
         collection: str,
@@ -304,15 +319,20 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         return VectorSearchResult(
             id=row["id"],
             score=float(row["score"]),
-            metadata=metadata if isinstance(metadata, dict) else json.loads(metadata or "{}"),
+            metadata=metadata
+            if isinstance(metadata, dict)
+            else json.loads(metadata or "{}"),
         )
 
     # Get by id
 
     def _get_sql(self, collection: str, with_vectors: bool) -> str:
-        columns = "id, metadata" + (", embedding::text AS embedding" if with_vectors else "")
+        columns = "id, metadata" + (
+            ", embedding::text AS embedding" if with_vectors else ""
+        )
         return f"SELECT {columns} FROM {self._table(collection)} WHERE id = ANY(:ids)"
 
+    @retrying
     def get(
         self, collection: str, ids: list[str], with_vectors: bool = False
     ) -> list[VectorRecord]:
@@ -322,6 +342,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             ).all()
         return [self._to_record(row, with_vectors) for row in rows]
 
+    @aretrying
     async def aget(
         self, collection: str, ids: list[str], with_vectors: bool = False
     ) -> list[VectorRecord]:
@@ -339,16 +360,20 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         return VectorRecord(
             id=row.id,
             vector=json.loads(row.embedding) if with_vectors else [],
-            metadata=metadata if isinstance(metadata, dict) else json.loads(metadata or "{}"),
+            metadata=metadata
+            if isinstance(metadata, dict)
+            else json.loads(metadata or "{}"),
         )
 
     # Delete
 
+    @retrying
     def delete(self, collection: str, ids: list[str]) -> None:
         sql = f"DELETE FROM {self._table(collection)} WHERE id = ANY(:ids)"
         with self._sql.transaction() as session:
             session.execute(text(sql), {"ids": list(ids)})
 
+    @aretrying
     async def adelete(self, collection: str, ids: list[str]) -> None:
         sql = f"DELETE FROM {self._table(collection)} WHERE id = ANY(:ids)"
         async with self._sql.atransaction() as session:
@@ -356,11 +381,13 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
 
     # Count
 
+    @retrying
     def count(self, collection: str) -> int:
         sql = f"SELECT count(*) FROM {self._table(collection)}"
         with self._sql.transaction() as session:
             return int(session.execute(text(sql)).scalar() or 0)
 
+    @aretrying
     async def acount(self, collection: str) -> int:
         sql = f"SELECT count(*) FROM {self._table(collection)}"
         async with self._sql.atransaction() as session:
@@ -376,7 +403,9 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         filters: dict[str, Any] | None,
         with_vectors: bool,
     ) -> tuple[str, dict[str, Any]]:
-        columns = "id, metadata" + (", embedding::text AS embedding" if with_vectors else "")
+        columns = "id, metadata" + (
+            ", embedding::text AS embedding" if with_vectors else ""
+        )
         where, params = self._where(filters)
         conditions = [where] if where else []
         if offset is not None:
@@ -390,6 +419,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             params,
         )
 
+    @retrying
     def scroll(
         self,
         collection: str,
@@ -403,6 +433,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             rows = session.execute(text(sql), params).all()
         return self._page(rows, limit, with_vectors)
 
+    @aretrying
     async def ascroll(
         self,
         collection: str,
@@ -447,6 +478,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             params,
         )
 
+    @retrying
     def lexical_search(
         self,
         collection: str,
@@ -465,6 +497,7 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             rows = session.execute(text(sql), params).mappings().all()
         return [self._to_result(row) for row in rows]
 
+    @aretrying
     async def alexical_search(
         self,
         collection: str,

@@ -68,6 +68,20 @@ from base.models.view_models.exceptions.rerank import (
     RerankTimeoutError,
     RerankUnexpectedError,
 )
+from base.models.view_models.exceptions.vector_search import (
+    VectorSearchAuthError,
+    VectorSearchBadRequestError,
+    VectorSearchConfigError,
+    VectorSearchConflictError,
+    VectorSearchConnectionError,
+    VectorSearchError,
+    VectorSearchNotFoundError,
+    VectorSearchRateLimitError,
+    VectorSearchRetryExhausted,
+    VectorSearchServerError,
+    VectorSearchTimeoutError,
+    VectorSearchUnexpectedError,
+)
 
 __all__ = [
     "BlobAuthError",
@@ -124,4 +138,16 @@ __all__ = [
     "RerankServerError",
     "RerankTimeoutError",
     "RerankUnexpectedError",
+    "VectorSearchAuthError",
+    "VectorSearchBadRequestError",
+    "VectorSearchConfigError",
+    "VectorSearchConflictError",
+    "VectorSearchConnectionError",
+    "VectorSearchError",
+    "VectorSearchNotFoundError",
+    "VectorSearchRateLimitError",
+    "VectorSearchRetryExhausted",
+    "VectorSearchServerError",
+    "VectorSearchTimeoutError",
+    "VectorSearchUnexpectedError",
 ]

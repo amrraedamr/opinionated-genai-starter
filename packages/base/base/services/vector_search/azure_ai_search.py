@@ -30,6 +30,8 @@ from base.models.definitions.vector_search import (
 from base.models.view_models.vector_search import VectorRecord, VectorSearchResult
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.vector_search.azure import AzureSearchErrorHandler
 from base.services.vector_search import AbstractVectorSearchService
 from base.tools.errors import ServiceHealthCheckError
 
@@ -59,8 +61,10 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
         self._vector_field: str = get_settings().azure_search_vector_field
         self._key_field: str = get_settings().azure_search_key_field
 
-    # Collection / Index Management
+        # Collection / Index Management
+        self._error_handler: AzureSearchErrorHandler = AzureSearchErrorHandler()
 
+    @retrying
     def create_collection(
         self,
         collection: str,
@@ -71,6 +75,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
         index = self._build_index(collection, vector_size, distance, **kwargs)
         self._client.sync_index_client.create_or_update_index(index)
 
+    @aretrying
     async def acreate_collection(
         self,
         collection: str,
@@ -81,16 +86,20 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
         index = self._build_index(collection, vector_size, distance, **kwargs)
         await self._client.async_index_client.create_or_update_index(index)
 
+    @retrying
     def delete_collection(self, collection: str) -> None:
         self._client.sync_index_client.delete_index(collection)
 
+    @aretrying
     async def adelete_collection(self, collection: str) -> None:
         await self._client.async_index_client.delete_index(collection)
 
+    @retrying
     def collection_exists(self, collection: str) -> bool:
         names: list[str] = list(self._client.sync_index_client.list_index_names())
         return collection in names
 
+    @aretrying
     async def acollection_exists(self, collection: str) -> bool:
         names: list[str] = [
             name async for name in self._client.async_index_client.list_index_names()
@@ -99,6 +108,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
 
     # Upsert
 
+    @retrying
     def upsert(self, collection: str, records: list[VectorRecord]) -> None:
         client = self._client.get_search_client(collection)
         for i in range(0, len(records), VECTOR_UPSERT_BATCH_SIZE):
@@ -106,6 +116,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
             documents = [self._record_to_document(r) for r in batch]
             client.merge_or_upload_documents(documents)
 
+    @aretrying
     async def aupsert(self, collection: str, records: list[VectorRecord]) -> None:
         client = self._client.get_async_search_client(collection)
         for i in range(0, len(records), VECTOR_UPSERT_BATCH_SIZE):
@@ -115,6 +126,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
 
     # Search
 
+    @retrying
     def search(
         self,
         collection: str,
@@ -143,6 +155,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
             output.append(self._document_to_search_result(doc, score))
         return output
 
+    @aretrying
     async def asearch(
         self,
         collection: str,
@@ -173,6 +186,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
 
     # Get by ID
 
+    @retrying
     def get(
         self,
         collection: str,
@@ -189,6 +203,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
                 continue
         return records
 
+    @aretrying
     async def aget(
         self,
         collection: str,
@@ -207,12 +222,14 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
 
     # Delete
 
+    @retrying
     def delete(self, collection: str, ids: list[str]) -> None:
         client = self._client.get_search_client(collection)
         documents = [{self._key_field: doc_id} for doc_id in ids]
         for i in range(0, len(documents), VECTOR_UPSERT_BATCH_SIZE):
             client.delete_documents(documents[i : i + VECTOR_UPSERT_BATCH_SIZE])
 
+    @aretrying
     async def adelete(self, collection: str, ids: list[str]) -> None:
         client = self._client.get_async_search_client(collection)
         documents = [{self._key_field: doc_id} for doc_id in ids]
@@ -221,16 +238,19 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
 
     # Count
 
+    @retrying
     def count(self, collection: str) -> int:
         client = self._client.get_search_client(collection)
         return client.get_document_count()
 
+    @aretrying
     async def acount(self, collection: str) -> int:
         client = self._client.get_async_search_client(collection)
         return await client.get_document_count()
 
     # Scroll
 
+    @retrying
     def scroll(
         self,
         collection: str,
@@ -260,6 +280,7 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
 
         return records, next_offset
 
+    @aretrying
     async def ascroll(
         self,
         collection: str,
