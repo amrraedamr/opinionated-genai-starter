@@ -8,6 +8,8 @@ from base.clients.redis_client import RedisClient
 from base.models.definitions.cache import CacheChannels, CacheKeys
 from base.services.cache import AbstractCacheService
 from base.services.common.meta import SingletonABC
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.cache.redis import RedisErrorHandler
 from base.tools.deserializers import ExpansiveDecoder
 from base.tools.misc import generic_deep_deserialize, parse_json_pairs
 from base.tools.serializers import serialize
@@ -20,8 +22,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         super().__init__()
         self._redis_client = RedisClient()
 
-    # Basic Get/Set
+        # Basic Get/Set
+        self._error_handler: RedisErrorHandler = RedisErrorHandler(retries=1)
 
+    @retrying
     def get(
         self,
         key: CacheKeys | str,
@@ -37,6 +41,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             return json.loads(result, cls=ExpansiveDecoder)
         return value_type(result)
 
+    @aretrying
     async def aget(
         self,
         key: CacheKeys | str,
@@ -52,6 +57,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             return json.loads(result, cls=ExpansiveDecoder)
         return value_type(result)
 
+    @retrying
     def set(
         self,
         key: CacheKeys | str,
@@ -65,6 +71,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             ex=ttl_seconds,
         )
 
+    @aretrying
     async def aset(
         self,
         key: CacheKeys | str,
@@ -78,9 +85,11 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             ex=ttl_seconds,
         )
 
+    @retrying
     def remove(self, key: CacheKeys | str, namespace: UUID | str | None = None) -> None:
         self._redis_client.sync_client.delete(self._get_key(key, namespace))
 
+    @aretrying
     async def aremove(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
@@ -90,6 +99,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     # Hashset Operations
 
+    @retrying
     def get_hashset_pairs(
         self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
     ) -> dict | None:
@@ -100,6 +110,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             return None
         return parse_json_pairs(hashset_keys, result)
 
+    @aretrying
     async def aget_hashset_pairs(
         self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
     ) -> dict | None:
@@ -110,6 +121,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             return None
         return parse_json_pairs(hashset_keys, result)
 
+    @retrying
     def get_hashset_all(
         self, key: CacheKeys | str, namespace: UUID | None = None
     ) -> dict | None:
@@ -123,6 +135,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             for hash_key, value in result.items()
         }
 
+    @aretrying
     async def aget_hashset_all(
         self, key: CacheKeys | str, namespace: UUID | None = None
     ) -> dict | None:
@@ -136,6 +149,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             for hash_key, value in result.items()
         }
 
+    @retrying
     def set_hashset(
         self,
         key: CacheKeys | str,
@@ -150,6 +164,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         if ttl_seconds is not None:
             self._redis_client.sync_client.expire(composite_key, ttl_seconds)
 
+    @aretrying
     async def aset_hashset(
         self,
         key: CacheKeys | str,
@@ -164,6 +179,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         if ttl_seconds is not None:
             await self._redis_client.async_client.expire(composite_key, ttl_seconds)  # type: ignore
 
+    @retrying
     def delete_hashset_pairs(
         self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
     ) -> None:
@@ -171,6 +187,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             self._get_key(key, namespace), *hashset_keys
         )
 
+    @aretrying
     async def adelete_hashset_pairs(
         self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
     ) -> None:
@@ -180,6 +197,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     # List Operations
 
+    @retrying
     def append_to_list(
         self,
         key: CacheKeys | str,
@@ -191,6 +209,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         self._redis_client.sync_client.rpush(composite_key, serialize(value))
         self._redis_client.sync_client.expire(composite_key, ttl_seconds)
 
+    @aretrying
     async def aappend_to_list(
         self,
         key: CacheKeys | str,
@@ -202,6 +221,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         await self._redis_client.async_client.rpush(composite_key, serialize(value))  # type: ignore
         await self._redis_client.async_client.expire(composite_key, ttl_seconds)  # type: ignore
 
+    @retrying
     def get_list(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> list[Any]:
@@ -210,6 +230,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         )
         return [json.loads(x, cls=ExpansiveDecoder) for x in items] if items else []
 
+    @aretrying
     async def aget_list(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> list[Any]:
@@ -218,6 +239,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         )
         return [json.loads(x, cls=ExpansiveDecoder) for x in items] if items else []
 
+    @aretrying
     async def aget_list_raw(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> list[str]:
@@ -230,11 +252,13 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             else []
         )
 
+    @retrying
     def clear_list(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
         self._redis_client.sync_client.delete(self._get_key(key, namespace))
 
+    @aretrying
     async def aclear_list(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
@@ -244,6 +268,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     # Distributed Locks
 
+    @retrying
     def acquire_lock(
         self,
         key: CacheKeys | str,
@@ -256,6 +281,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             )
         )
 
+    @aretrying
     async def aacquire_lock(
         self,
         key: CacheKeys | str,
@@ -267,11 +293,13 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         )
         return bool(result)
 
+    @retrying
     def release_lock(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
         self._redis_client.sync_client.delete(self._get_key(key, namespace))
 
+    @aretrying
     async def arelease_lock(
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
@@ -281,6 +309,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     # Pub/Sub
 
+    @retrying
     def publish(
         self, channel: CacheChannels | str, message: str, ttl_seconds: int = 86400
     ) -> int:
@@ -293,6 +322,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         results: list[Any] = pipe.execute()  # type: ignore
         return results[0]
 
+    @aretrying
     async def apublish(
         self, channel: CacheChannels | str, message: str, ttl_seconds: int = 86400
     ) -> int:
@@ -323,6 +353,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
             await pubsub.unsubscribe(ch)
             await pubsub.close()
 
+    @retrying
     def publish_batch(
         self,
         channel: CacheChannels | str,
@@ -338,6 +369,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         pipe.expire(f"{ch}:history", ttl_seconds)
         pipe.execute()
 
+    @aretrying
     async def apublish_batch(
         self,
         channel: CacheChannels | str,

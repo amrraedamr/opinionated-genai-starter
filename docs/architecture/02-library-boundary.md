@@ -597,6 +597,29 @@ OpenAI SDK but decides nothing about what callers see. The subfolders bind a dom
 the embedding family. Because the kind an exception represents is a property of the SDK
 rather than of the caller, it is stated once and two domains reuse it.
 
+Which kinds are worth another attempt is stated once too, in `RETRYABLE_FAILURES`.
+Throttling, a server fault, a timeout and a connection failure are properties of the
+moment, so the same request a little later plausibly succeeds. A malformed request, a
+rejected credential, a missing resource and a conflict are properties of the request,
+so a second attempt buys latency and arrives at the identical error. An unrecognised
+failure is not retried either, on the grounds that something the SDK never promised is
+a poor thing to hammer. Where a provider says how long to wait, that is honoured ahead
+of the backoff.
+
+The same arrangement reaches the remaining backends. Cosmos DB reports failures as
+`CosmosHttpResponseError`, which derives from the same `HttpResponseError` as object
+storage, so `nosql/cosmos.py` and `keyvault/azure.py` are kind-to-class maps over the
+existing Azure reader and read no SDK themselves. MongoDB and Redis needed their own,
+and both carry an ordering hazard worth naming: Redis derives `AuthenticationError`
+from `ConnectionError`, so a map resolved in the wrong order would retry a rejected
+password until the budget ran out, while PyMongo reports a rejected credential as an
+`OperationFailure` like any other, separated only by its code. A stepping-down primary
+is retried deliberately, because finding the new one is how the driver recovers.
+
+A cache is the one backend given a shorter budget than the default. It sits on the
+request path and is an optimisation, so waiting out a long backoff costs more than the
+miss it was there to avoid.
+
 Every billable call is recorded, and recording sits in the abstraction rather than
 in each adapter. It has to happen once per call while an adapter retries inside
 itself, so doing it above the retry is the only place it can go — and it means a new
@@ -633,7 +656,10 @@ body were wrapped by hand. `retrying` and `aretrying` run a method through the
 handler on its `_error_handler`, so the method keeps its shape and the policy stays
 in one place. Neither may decorate a generator: calling one returns an iterator
 without doing any work, so the failure would happen later, outside the retry loop.
-`AzureBlobService.list_blobs` is left undecorated for exactly that reason.
+`AzureBlobService.list_blobs` and `RedisCacheService.subscribe` are left undecorated
+for exactly that reason. A health check is left alone too: it reports what is true
+now, and retrying one would report a failing dependency as healthy for as long as the
+backoff lasted.
 
 Those domains are deliberately separate families. `EmbeddingRateLimitError` is not an
 `LLMError`, so a service that both embeds and generates can catch a failure of one
