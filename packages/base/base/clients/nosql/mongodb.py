@@ -56,6 +56,18 @@ class MongoDBClient(metaclass=Singleton):
             "connectTimeoutMS": self._connect_timeout_ms,
             "socketTimeoutMS": self._socket_timeout_ms,
             "serverSelectionTimeoutMS": self._server_selection_timeout_ms,
+            # The driver's write retry is kept, against the usual rule of
+            # turning a client's own retries off. It sends a transaction
+            # number the server uses to recognise a repeat, so a single
+            # document write that lands but is never acknowledged is applied
+            # once rather than twice — something a retry above the driver
+            # cannot do. It only covers single-document writes, which is why
+            # update_many and the operations carrying a caller's update
+            # document are not repeated at all.
+            "retryWrites": True,
+            # Reads are retried by the error handler instead, so the budget,
+            # the backoff and the logging stay in one place.
+            "retryReads": False,
         }
 
     # Sync
