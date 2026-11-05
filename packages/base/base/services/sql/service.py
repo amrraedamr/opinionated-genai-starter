@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
-from typing import cast
 
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
 try:
@@ -13,16 +13,13 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.clients.sql.client import SQLClient
 from base.models.definitions.database import SQLBackend
 from base.services.common.meta import SingletonABC
-from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsSQLConfig
 from base.services.sql import AbstractSQLService
 
 
 class SQLService(AbstractSQLService, metaclass=SingletonABC):
     def __init__(self, config: SupportsSQLConfig | None = None) -> None:
-        self._config: SupportsSQLConfig = config or cast(
-            SupportsSQLConfig, get_settings()
-        )
+        self._config: SupportsSQLConfig = config or settings_for(SupportsSQLConfig)
         self._backend: SQLBackend = SQLBackend(self._config.sql_backend)
         self._client: SQLClient = SQLClient(
             self._backend, self._config, _key=self._backend.value

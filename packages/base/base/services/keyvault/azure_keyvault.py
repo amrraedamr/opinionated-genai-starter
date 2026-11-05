@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterator
 
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
 try:
@@ -16,7 +17,7 @@ from typing_extensions import Self
 
 from base.models.view_models.keyvault import SecretInfo
 from base.services.common.meta import SingletonABC
-from base.services.configuration import get_settings
+from base.services.configuration.protocols import SupportsKeyVaultConfig
 from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.keyvault.azure import AzureKeyVaultErrorHandler
 from base.services.keyvault import AbstractKeyVaultService
@@ -32,7 +33,7 @@ class AzureKeyVaultService(AbstractKeyVaultService, metaclass=SingletonABC):
 
     Wiring Key Vault into Settings later (optional):
       - Build a `PydanticBaseSettingsSource` that calls `alist_secrets` /
-        `aget_secrets`, strips `get_settings().system_keyvault_tag` + `-`, and returns
+        `aget_secrets`, strips the `system_keyvault_tag` prefix, and returns
         a dict of Settings field names → values.
       - Register it in `Settings.settings_customise_sources`.
       - For multi-instance hot reload: after rotating secrets, publish
@@ -56,7 +57,7 @@ class AzureKeyVaultService(AbstractKeyVaultService, metaclass=SingletonABC):
         if self._client is None:
             self._credential = DefaultAzureCredential()
             self._client = SecretClient(
-                vault_url=get_settings().keyvault_url,
+                vault_url=settings_for(SupportsKeyVaultConfig).keyvault_url,
                 credential=self._credential,
             )
         return self._client
@@ -67,7 +68,7 @@ class AzureKeyVaultService(AbstractKeyVaultService, metaclass=SingletonABC):
         if self._async_client is None:
             self._async_credential = AsyncDefaultAzureCredential()
             self._async_client = AsyncSecretClient(
-                vault_url=get_settings().keyvault_url,
+                vault_url=settings_for(SupportsKeyVaultConfig).keyvault_url,
                 credential=self._async_credential,
             )
         return self._async_client
@@ -179,8 +180,8 @@ class AzureKeyVaultService(AbstractKeyVaultService, metaclass=SingletonABC):
     ) -> str:
         """Azure-specific secret name formatting with keyvault tag prefixes."""
         prefixes: list[str] = [
-            get_settings().system_keyvault_tag,
-            get_settings().model_keyvault_tag,
+            settings_for(SupportsKeyVaultConfig).system_keyvault_tag,
+            settings_for(SupportsKeyVaultConfig).model_keyvault_tag,
         ]
 
         for prefix in prefixes:
@@ -192,7 +193,9 @@ class AzureKeyVaultService(AbstractKeyVaultService, metaclass=SingletonABC):
                     )
                 return secret_name
 
-        return f"{get_settings().system_keyvault_tag}-{secret_name}"
+        return (
+            f"{settings_for(SupportsKeyVaultConfig).system_keyvault_tag}-{secret_name}"
+        )
 
     def get_service_name(self) -> str:
         return "Azure Key Vault"

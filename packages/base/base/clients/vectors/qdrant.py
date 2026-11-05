@@ -1,5 +1,6 @@
-from typing import Any, cast
+from typing import Any
 
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
 try:
@@ -13,7 +14,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("vectors", "qdrant-client", feature="QdrantClient") from exc
 
 from base.services.common.meta import Singleton
-from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsQdrantConfig
 
 
@@ -24,7 +24,7 @@ class QdrantClient(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        config = cast(SupportsQdrantConfig, get_settings())
+        config = settings_for(SupportsQdrantConfig)
         self._url: str = config.qdrant_url
         self._api_key: str = config.qdrant_api_key
         self._grpc_port: int = config.qdrant_grpc_port

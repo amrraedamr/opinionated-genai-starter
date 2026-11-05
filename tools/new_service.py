@@ -149,9 +149,13 @@ def compose(
         capability_imports.append("from base.capabilities.sql import SQLDependency")
         capability_exprs.append("SQLDependency()")
     if publishes_events:
-        capability_imports.append("from base.capabilities.broker import BrokerDependency")
+        capability_imports.append(
+            "from base.capabilities.broker import BrokerDependency"
+        )
         capability_exprs.append("BrokerDependency(BROKER)")
-        lifespan_imports.append(f"from {pkg}.messaging import BROKER, messaging_lifespan")
+        lifespan_imports.append(
+            f"from {pkg}.messaging import BROKER, messaging_lifespan"
+        )
         lifespan_exprs.append("messaging_lifespan")
 
     imports = sorted(
@@ -205,9 +209,19 @@ MIXINS_FOR_LLM_PROVIDER: dict[str, str] = {
     "azure-openai": "AzureOpenAILLMSettingsMixin",
     "openai": "OpenAILLMSettingsMixin",
     "anthropic": "AnthropicSettingsMixin",
+    "gemini": "GeminiSettingsMixin",
 }
 """Which provider settings a generated service declares alongside the neutral
 `LLMSettingsMixin`, the way `--storage` picks a backend mixin."""
+
+EXTRAS_FOR_LLM_PROVIDER: dict[str, str] = {
+    "azure-openai": "openai",
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "gemini": "gemini",
+}
+"""Which SDK the `llm` capability installs. Azure OpenAI ships in the `openai`
+package, so both providers resolve to the same extra; the rest are their own."""
 
 
 def build(
@@ -231,7 +245,13 @@ def build(
     uses_sql = storage in SQL_STORAGE
     extras = ["server"] if http else []
     extras += EXTRAS_FOR_STORAGE[storage]
-    extras += [c for c in capabilities if c not in extras]
+    # `llm` is the capability a service asks for; the extra is whichever SDK
+    # serves it, so the provider choice has to reach the dependency list too.
+    extras += [
+        EXTRAS_FOR_LLM_PROVIDER[llm_provider] if c == "llm" else c
+        for c in capabilities
+        if c not in extras
+    ]
     for slice_ in slices:
         extras += [e for e in slice_.extras if e not in extras]
     if publishes_events and "redis" not in extras:
@@ -258,14 +278,17 @@ def build(
         mixins.append("BrokerSettingsMixin")
     if slices:
         # A composed service verifies tokens; only the auth slice issues them.
-        mixins.append("TokenVerificationMixin")
+        mixins.append("TokenVerificationSettingsMixin")
         for slice_ in slices:
             mixins += [m for m in slice_.mixins if m not in mixins]
     mixins = list(dict.fromkeys(mixins))
-    # TokenIssuingMixin subclasses TokenVerificationMixin, so naming both would
+    # TokenIssuingSettingsMixin subclasses TokenVerificationSettingsMixin, so naming both would
     # be an unresolvable MRO. Issuing already provides verification.
-    if "TokenIssuingMixin" in mixins and "TokenVerificationMixin" in mixins:
-        mixins.remove("TokenVerificationMixin")
+    if (
+        "TokenIssuingSettingsMixin" in mixins
+        and "TokenVerificationSettingsMixin" in mixins
+    ):
+        mixins.remove("TokenVerificationSettingsMixin")
     mixin_imports = [m for m in mixins if m != "CoreSettings"]
 
     print(f"Creating services/{name}")
@@ -281,8 +304,8 @@ def build(
             "base[{extras_str}]",
         ]
 
-        {'[project.scripts]' if http else ''}
-        {f'serve = "{pkg}.app:start"' if http else ''}
+        {"[project.scripts]" if http else ""}
+        {f'serve = "{pkg}.app:start"' if http else ""}
 
         [tool.uv.sources]
         base = {{ workspace = true }}
@@ -467,7 +490,8 @@ def build(
         )
         write(directory / "alembic" / "versions" / ".gitkeep", "")
         env_imports = "\n".join(
-            f"from {pkg}.{module} import *  # noqa: F401, F403" for module in sorted(orm_modules)
+            f"from {pkg}.{module} import *  # noqa: F401, F403"
+            for module in sorted(orm_modules)
         )
         write_raw(
             directory / "alembic" / "env.py",
@@ -491,7 +515,7 @@ def build(
         SERVICE_NAME={name}
         ENVIRONMENT=local
         LOG_LEVEL=INFO
-        {'API_PREFIX=/api' if http else ''}
+        {"API_PREFIX=/api" if http else ""}
         """,
     )
 
@@ -526,7 +550,8 @@ def main() -> int:
     parser.add_argument(
         "--capabilities",
         default="",
-        help="comma-separated base extras, e.g. redis,llm",
+        help="comma-separated capabilities this service uses, e.g. redis,llm; "
+        "llm resolves to the SDK named by --llm-provider",
     )
     parser.add_argument(
         "--llm-provider",
@@ -551,7 +576,9 @@ def main() -> int:
     slices: list[Slice] = []
     if args.slices:
         try:
-            slices = [load_slice(s.strip()) for s in args.slices.split(",") if s.strip()]
+            slices = [
+                load_slice(s.strip()) for s in args.slices.split(",") if s.strip()
+            ]
             check_composable(slices)
         except CompositionError as exc:
             raise SystemExit(f"cannot compose: {exc}") from exc

@@ -18,7 +18,7 @@ try:
         ResponseUsage,
     )
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAI result models") from exc
+    raise MissingExtraError("openai", "openai", feature="OpenAI result models") from exc
 
 from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredToolCall, StoredToolCallFunction

@@ -7,7 +7,7 @@ from base.services.configuration.protocols.token_verification import (
 
 @runtime_checkable
 class SupportsTokenIssuingConfig(SupportsTokenVerificationConfig, Protocol):
-    """Satisfied by `TokenIssuingMixin`."""
+    """Satisfied by `TokenIssuingSettingsMixin`."""
 
     auth_private_key_path: str
     access_token_expiry_seconds: int

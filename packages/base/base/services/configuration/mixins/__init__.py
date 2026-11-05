@@ -1,26 +1,32 @@
-"""One settings mixin per optional subsystem, mirroring the dependency extras.
+"""Settings a service composes, grouped by the capability they configure.
 
-A service composes `CoreSettings` with only the mixins it actually uses, so a
-worker with no HTTP surface never carries HTTP settings.
+A capability holds what no provider owns in its package, with a module per
+provider beside it, so adding a provider is a file rather than a rename and a
+service declares the providers it configures and nothing else.
 """
 
-from base.services.configuration.mixins.anthropic import AnthropicSettingsMixin
-from base.services.configuration.mixins.azure_blob import AzureBlobSettingsMixin
-from base.services.configuration.mixins.azure_openai import (
-    AzureOpenAIEmbeddingSettingsMixin,
-    AzureOpenAILLMSettingsMixin,
-    AzureOpenAISettingsMixin,
-)
-from base.services.configuration.mixins.azure_search import AzureSearchSettingsMixin
+from base.services.configuration.mixins.azure_openai import AzureOpenAISettingsMixin
+from base.services.configuration.mixins.blob.azure import AzureBlobSettingsMixin
 from base.services.configuration.mixins.broker import BrokerSettingsMixin
-from base.services.configuration.mixins.cohere import CohereSettingsMixin
-from base.services.configuration.mixins.cosmos import CosmosSettingsMixin
+from base.services.configuration.mixins.cache.redis import RedisSettingsMixin
 from base.services.configuration.mixins.credentials import CredentialsSettingsMixin
-from base.services.configuration.mixins.idp import IdpResourceServerMixin
+from base.services.configuration.mixins.embedding.azure_openai import (
+    AzureOpenAIEmbeddingSettingsMixin,
+)
+from base.services.configuration.mixins.embedding.openai import (
+    OpenAIEmbeddingSettingsMixin,
+)
+from base.services.configuration.mixins.idp import IdpSettingsMixin
 from base.services.configuration.mixins.keyvault import KeyVaultSettingsMixin
 from base.services.configuration.mixins.llm import LLMSettingsMixin
-from base.services.configuration.mixins.mongo import MongoSettingsMixin
-from base.services.configuration.mixins.mysql import MySQLSettingsMixin
+from base.services.configuration.mixins.llm.anthropic import AnthropicSettingsMixin
+from base.services.configuration.mixins.llm.azure_openai import (
+    AzureOpenAILLMSettingsMixin,
+)
+from base.services.configuration.mixins.llm.gemini import GeminiSettingsMixin
+from base.services.configuration.mixins.llm.openai import OpenAILLMSettingsMixin
+from base.services.configuration.mixins.nosql.cosmos import CosmosSettingsMixin
+from base.services.configuration.mixins.nosql.mongo import MongoSettingsMixin
 from base.services.configuration.mixins.oauth import OAuthSettingsMixin
 from base.services.configuration.mixins.oauth.apple import AppleOAuthSettingsMixin
 from base.services.configuration.mixins.oauth.facebook import FacebookOAuthSettingsMixin
@@ -29,19 +35,21 @@ from base.services.configuration.mixins.oauth.google import GoogleOAuthSettingsM
 from base.services.configuration.mixins.oauth.microsoft import (
     MicrosoftOAuthSettingsMixin,
 )
-from base.services.configuration.mixins.openai import (
-    OpenAIEmbeddingSettingsMixin,
-    OpenAILLMSettingsMixin,
-)
-from base.services.configuration.mixins.postgres import PostgresSettingsMixin
 from base.services.configuration.mixins.prompt import PromptSettingsMixin
-from base.services.configuration.mixins.qdrant import QdrantSettingsMixin
-from base.services.configuration.mixins.redis import RedisSettingsMixin
 from base.services.configuration.mixins.rerank import RerankSettingsMixin
+from base.services.configuration.mixins.rerank.cohere import CohereSettingsMixin
 from base.services.configuration.mixins.server import ServerSettingsMixin
 from base.services.configuration.mixins.sql import SQLSettingsMixin
-from base.services.configuration.mixins.token_issuing import TokenIssuingMixin
-from base.services.configuration.mixins.token_verification import TokenVerificationMixin
+from base.services.configuration.mixins.sql.mysql import MySQLSettingsMixin
+from base.services.configuration.mixins.sql.postgres import PostgresSettingsMixin
+from base.services.configuration.mixins.token_issuing import TokenIssuingSettingsMixin
+from base.services.configuration.mixins.token_verification import (
+    TokenVerificationSettingsMixin,
+)
+from base.services.configuration.mixins.vector_search.azure_search import (
+    AzureSearchSettingsMixin,
+)
+from base.services.configuration.mixins.vector_search.qdrant import QdrantSettingsMixin
 
 __all__ = [
     "AnthropicSettingsMixin",
@@ -56,9 +64,10 @@ __all__ = [
     "CosmosSettingsMixin",
     "CredentialsSettingsMixin",
     "FacebookOAuthSettingsMixin",
+    "GeminiSettingsMixin",
     "GitHubOAuthSettingsMixin",
     "GoogleOAuthSettingsMixin",
-    "IdpResourceServerMixin",
+    "IdpSettingsMixin",
     "KeyVaultSettingsMixin",
     "LLMSettingsMixin",
     "MicrosoftOAuthSettingsMixin",
@@ -74,6 +83,6 @@ __all__ = [
     "RerankSettingsMixin",
     "SQLSettingsMixin",
     "ServerSettingsMixin",
-    "TokenIssuingMixin",
-    "TokenVerificationMixin",
+    "TokenIssuingSettingsMixin",
+    "TokenVerificationSettingsMixin",
 ]

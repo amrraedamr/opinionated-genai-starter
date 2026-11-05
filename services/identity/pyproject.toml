@@ -33,6 +33,6 @@ build-backend = "uv_build"
 # added here is part of the slice automatically.
 [tool.starter.slice]
 summary = "Authentication — signup, login, OAuth, token issuance and user records."
-mixins = ["TokenIssuingMixin", "OAuthSettingsMixin", "IdpResourceServerMixin"]
+mixins = ["TokenIssuingSettingsMixin", "OAuthSettingsMixin", "IdpSettingsMixin"]
 extras = ["auth"]
 publishes_events = true

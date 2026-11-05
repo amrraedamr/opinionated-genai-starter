@@ -4,7 +4,7 @@ Only the providers `oauth_providers` names are read, so a service composes a
 settings mixin per provider it offers and declares no credentials for the rest.
 """
 
-from typing import Any, cast
+from typing import Any
 
 from base.models.definitions.errors import AuthErrors
 from base.models.view_models.oauth import OAuthProviderConfig
@@ -12,27 +12,17 @@ from base.services.auth.oauth.apple_secret import (
     load_apple_private_key,
     resolve_apple_client_secret,
 )
-from base.services.configuration import get_settings
-from base.services.configuration.protocols.oauth import SupportsOAuthConfig
-from base.services.configuration.protocols.oauth.apple import SupportsAppleOAuthConfig
-from base.services.configuration.protocols.oauth.facebook import (
+from base.services.configuration import get_settings, settings_for
+from base.services.configuration.protocols import (
+    SupportsAppleOAuthConfig,
     SupportsFacebookOAuthConfig,
-)
-from base.services.configuration.protocols.oauth.github import SupportsGitHubOAuthConfig
-from base.services.configuration.protocols.oauth.google import SupportsGoogleOAuthConfig
-from base.services.configuration.protocols.oauth.microsoft import (
+    SupportsGitHubOAuthConfig,
+    SupportsGoogleOAuthConfig,
     SupportsMicrosoftOAuthConfig,
+    SupportsOAuthConfig,
 )
 from base.tools.errors import MissingSettingsMixinError, raise_error
-
-
-def _config() -> SupportsOAuthConfig:
-    """The settings every OAuth service carries, whatever providers it offers."""
-    return cast(SupportsOAuthConfig, get_settings())
-
-
-def _split_providers(raw: str) -> list[str]:
-    return [p.strip().lower() for p in raw.split(",") if p.strip()]
+from base.tools.misc import split_csv
 
 
 def _google(config: SupportsGoogleOAuthConfig) -> OAuthProviderConfig:
@@ -123,7 +113,9 @@ def _usable(cfg: OAuthProviderConfig) -> bool:
     if not cfg.client_id or not cfg.redirect_uri:
         return False
     if cfg.name == "apple":
-        can_mint = bool(cfg.apple_team_id and cfg.apple_key_id and cfg.apple_private_key)
+        can_mint = bool(
+            cfg.apple_team_id and cfg.apple_key_id and cfg.apple_private_key
+        )
         return bool(cfg.client_secret) or can_mint
     return bool(cfg.client_secret)
 
@@ -138,7 +130,9 @@ def load_oauth_provider_configs() -> dict[str, OAuthProviderConfig]:
     settings = get_settings()
     configs: dict[str, OAuthProviderConfig] = {}
 
-    for name in _split_providers(_config().oauth_providers):
+    for name in split_csv(
+        settings_for(SupportsOAuthConfig).oauth_providers, lower=True
+    ):
         entry = _PROVIDERS.get(name)
         if entry is None:
             raise_error(AuthErrors.OAUTH_PROVIDER_DISABLED)

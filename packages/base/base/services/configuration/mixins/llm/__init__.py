@@ -1,3 +1,9 @@
+"""Generation settings, one module per provider.
+
+This holds what no provider owns. A service composes it plus the mixin for the
+provider it actually configures.
+"""
+
 from pydantic import BaseModel
 
 

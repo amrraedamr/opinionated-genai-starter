@@ -9,14 +9,14 @@ from base.services.configuration.mixins import (
     FacebookOAuthSettingsMixin,
     GitHubOAuthSettingsMixin,
     GoogleOAuthSettingsMixin,
-    IdpResourceServerMixin,
+    IdpSettingsMixin,
     MicrosoftOAuthSettingsMixin,
     OAuthSettingsMixin,
     PostgresSettingsMixin,
     RedisSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
-    TokenIssuingMixin,
+    TokenIssuingSettingsMixin,
 )
 
 
@@ -27,7 +27,7 @@ class IdentitySettings(
     PostgresSettingsMixin,
     RedisSettingsMixin,
     BrokerSettingsMixin,
-    TokenIssuingMixin,
+    TokenIssuingSettingsMixin,
     OAuthSettingsMixin,
     # The reference identity service offers all five. A service that offers
     # fewer composes fewer, and declares no credentials for the rest.
@@ -36,7 +36,7 @@ class IdentitySettings(
     MicrosoftOAuthSettingsMixin,
     GitHubOAuthSettingsMixin,
     AppleOAuthSettingsMixin,
-    IdpResourceServerMixin,
+    IdpSettingsMixin,
 ):
     model_config = SettingsConfigDict(
         env_file=("../../.env.shared", ".env", ".env.local"),

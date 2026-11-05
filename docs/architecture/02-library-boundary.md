@@ -278,22 +278,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server   = ["fastapi>=0.133.1,<0.134", "uvicorn[standard]>=0.41.0,<0.42",
-            "gunicorn>=25.1.0,<26"]
-sql      = ["sqlalchemy>=2.0.47,<3", "alembic>=1.18.4,<2",
-            "sqlalchemy-utils>=0.42.1,<0.43", "greenlet>=3.3.2,<4"]
-sqlite   = ["aiosqlite>=0.22.1,<0.23"]
-postgres = ["asyncpg>=0.31.0,<0.32", "psycopg2-binary>=2.9.11,<3"]
-mysql    = ["aiomysql>=0.3.2,<0.4", "pymysql>=1.1.2,<2"]
-auth     = ["pyjwt>=2.11.0,<3", "argon2-cffi>=25.1.0,<26", "cryptography>=46.0.5,<47"]
-llm      = ["openai>=2.24.0,<3", "tiktoken>=0.12.0,<0.13"]
-redis    = ["redis>=7.2.1,<8"]
-mongo    = ["pymongo>=4.16.0,<5"]
-vectors  = ["qdrant-client>=1.17.0,<2"]
-sse      = ["sse-starlette>=3.2.0,<4"]
-azure    = ["azure-identity>=1.25.2,<2", "azure-keyvault-secrets>=4.10.0,<5",
-            "azure-storage-blob>=12.28.0,<13", "azure-cosmos>=4.15.0,<5",
-            "azure-search-documents>=11.6.0,<12"]
+server    = ["fastapi>=0.133.1,<0.134", "uvicorn[standard]>=0.41.0,<0.42",
+             "gunicorn>=25.1.0,<26"]
+sql       = ["sqlalchemy>=2.0.47,<3", "alembic>=1.18.4,<2",
+             "sqlalchemy-utils>=0.42.1,<0.43", "greenlet>=3.3.2,<4"]
+sqlite    = ["aiosqlite>=0.22.1,<0.23"]
+postgres  = ["asyncpg>=0.31.0,<0.32", "psycopg2-binary>=2.9.11,<3"]
+mysql     = ["aiomysql>=0.3.2,<0.4", "pymysql>=1.1.2,<2"]
+auth      = ["pyjwt>=2.11.0,<3", "argon2-cffi>=25.1.0,<26", "cryptography>=46.0.5,<47"]
+openai    = ["openai>=2.24.0,<3"]
+anthropic = ["anthropic>=2.4.0,<3"]
+gemini    = ["google-genai>=2.34.0,<3"]
+tokenizer = ["tiktoken>=0.12.0,<0.13"]
+redis     = ["redis>=7.2.1,<8"]
+rerank    = ["cohere>=7.3.1,<8"]
+mongo     = ["pymongo>=4.16.0,<5"]
+vectors   = ["qdrant-client>=1.17.0,<2"]
+sse       = ["sse-starlette>=3.2.0,<4"]
+azure     = ["azure-identity>=1.25.2,<2", "azure-keyvault-secrets>=4.10.0,<5",
+             "azure-storage-blob>=12.28.0,<13", "azure-cosmos>=4.15.0,<5",
+             "azure-search-documents>=11.6.0,<12"]
 ```
 
 Notes from doing it:
@@ -312,7 +316,7 @@ Notes from doing it:
 Services then declare intent legibly:
 
 ```toml
-# chat_api          → base[server,sql,postgres,auth,llm,redis,sse]
+# chat_api          → base[server,sql,postgres,auth,openai,tokenizer,redis,sse]
 # identity          → base[server,sql,postgres,auth,redis]
 # ingestion_worker  → base[sql,postgres,redis]   # no server extra
 ```
@@ -536,14 +540,15 @@ returns one complete object rather than deltas.
 `LLMResult.finish_reason` is normalised to a `FinishReason` rather than passed
 through. The providers disagree on vocabulary and even on meaning — the Responses
 API reports a *status* (`completed`), Chat Completions a reason (`length`), Anthropic
-a third set (`end_turn`, `tool_use`) — so a caller branching on the raw string would
+a third set (`end_turn`, `tool_use`) and Gemini a fourth (`STOP`, `MAX_TOKENS`) — so a caller branching on the raw string would
 work against one provider and silently never fire against another. `LENGTH` in
 particular means the reply is truncated, which is worth branching on.
 
 `max_output_tokens` and `reasoning_effort` are neutral parameters on the seam. Each adapter
 spells them the way its provider wants: the Responses API takes `max_output_tokens` and a
 nested `reasoning` block, Chat Completions takes `max_completion_tokens` and a flat
-`reasoning_effort`, and Anthropic takes `max_tokens` with a thinking budget in tokens.
+`reasoning_effort`, and Anthropic takes `max_tokens` with a thinking budget in tokens, as Gemini does
+through `thinking_config`.
 `ModelConfigurations.supports_responses_api` picks the OpenAI surface, so a gateway that only
 serves Chat Completions needs no change at the call site.
 
@@ -559,10 +564,27 @@ itself, `Httpx2BearerTokenAuth` in `credentials/httpx2.py` because `httpx2` arri
 only with the `anthropic` extra — both over the shared `TokenProvider`, so one
 acquired token serves either.
 
-`base.services.llm` holds only what every provider shares: `AbstractLLMService`. Each provider gets a package — `llm/openai/`, `llm/anthropic/` —
-holding its service in `__init__.py` beside its message adapter and its error handler. Adding
-a provider adds a directory rather than widening a shared module, and importing the seam
+`base.services.llm` holds only what every provider shares: `AbstractLLMService`. Each
+provider gets a package — `llm/openai/`, `llm/anthropic/`, `llm/gemini/` — holding its
+service in `__init__.py` beside its message adapter and its error handler. Adding a
+provider adds a directory rather than widening a shared module, and importing the seam
 pulls in no SDK.
+
+Gemini is where that claim was tested. Three of its differences reach the adapter rather
+than the caller. Its assistant role is called `model`; its instructions are a request
+field rather than a role, as Anthropic's are; and a tool result is matched to the call it
+answers by **function name** rather than by an id, so the id this library carries has to
+be resolved back to the name the model used before a result can be sent — and an id has
+to be invented for a call coming the other way, because Gemini sends none. Its structured
+output needs no such work: `response_schema` constrains decoding directly, where the
+Anthropic adapter forces a tool call and unwraps it.
+
+Its token accounting needed the same care Anthropic's did, in the opposite direction.
+Gemini reports `thoughts_token_count` alongside `candidates_token_count` rather than
+inside it, while the neutral shape treats reasoning as a share of the output total, so
+the two are added. Cached input needs no handling at all: `prompt_token_count` already
+includes it, which is what the neutral shape expects and the reverse of Anthropic, whose
+cache counts sit outside the input total.
 
 `AbstractTextEmbeddingService` is the same arrangement for embeddings, with
 `text_embedding/openai/` beside it. Batching belongs to the abstraction rather than

@@ -47,6 +47,25 @@ class MissingExtraError(ImportError):
         )
 
 
+class MissingSettingsError(RuntimeError):
+    """A subsystem read settings that do not satisfy the contract it declares.
+
+    Each subsystem states what it needs as a protocol. A service composing the
+    mixins it uses satisfies them structurally; one that reaches a subsystem
+    whose mixin it never composed does not. Naming the contract that went
+    unmet beats an AttributeError raised wherever the first missing field
+    happened to be read.
+    """
+
+    def __init__(self, settings_class: str, contract: str) -> None:
+        self.settings_class = settings_class
+        self.contract = contract
+        super().__init__(
+            f"{settings_class} does not satisfy {contract}. Compose the settings "
+            f"mixin that satisfies it, or stop using the subsystem that reads it."
+        )
+
+
 class MissingSettingsMixinError(RuntimeError):
     """Configuration enables something the settings do not carry.
 

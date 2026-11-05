@@ -12,7 +12,9 @@ from base.models.view_models.rerank import RerankBatch, RerankResult
 from base.models.view_models.usage import ProviderUsage
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
-from base.services.configuration.protocols.cohere import SupportsCohereConfig
+from base.services.configuration.protocols import (
+    SupportsCohereConfig,
+)
 from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.rerank.cohere import CohereErrorHandler
 from base.services.reranking import AbstractRerankService

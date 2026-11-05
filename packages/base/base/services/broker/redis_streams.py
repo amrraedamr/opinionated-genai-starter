@@ -1,12 +1,13 @@
 import asyncio
 import json
 from datetime import UTC, datetime
-from typing import cast
 
 from base.services.broker import AbstractBroker, Handler
 from base.services.common.meta import SingletonABC
-from base.services.configuration import get_settings
-from base.services.configuration.protocols.broker import SupportsRedisBrokerConfig
+from base.services.configuration import get_settings, settings_for
+from base.services.configuration.protocols import (
+    SupportsRedisBrokerConfig,
+)
 from base.services.logging.console import ConsoleLoggerService
 from base.tools.errors import MissingExtraError
 from contracts.events import Event
@@ -20,8 +21,8 @@ except ModuleNotFoundError as exc:
 
 class RedisStreamsBroker(AbstractBroker, metaclass=SingletonABC):
     def __init__(self, config: SupportsRedisBrokerConfig | None = None) -> None:
-        self._config: SupportsRedisBrokerConfig = config or cast(
-            SupportsRedisBrokerConfig, get_settings()
+        self._config: SupportsRedisBrokerConfig = config or settings_for(
+            SupportsRedisBrokerConfig
         )
         self._redis: Redis | None = None
         self._subscriptions: list[tuple[str, str, Handler]] = []
@@ -58,7 +59,9 @@ class RedisStreamsBroker(AbstractBroker, metaclass=SingletonABC):
             except ResponseError as exc:
                 if "BUSYGROUP" not in str(exc):
                     raise
-            self._tasks.append(asyncio.create_task(self._consume(topic, group, handler)))
+            self._tasks.append(
+                asyncio.create_task(self._consume(topic, group, handler))
+            )
 
     async def _astop(self) -> None:
         self._stopping.set()
@@ -127,7 +130,9 @@ class RedisStreamsBroker(AbstractBroker, metaclass=SingletonABC):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            pending = await self.client.xpending_range(topic, group, message_id, message_id, 1)
+            pending = await self.client.xpending_range(
+                topic, group, message_id, message_id, 1
+            )
             deliveries = int(pending[0].get("times_delivered", 1)) if pending else 1
             if deliveries >= self._max_attempts:
                 await self.client.xadd(

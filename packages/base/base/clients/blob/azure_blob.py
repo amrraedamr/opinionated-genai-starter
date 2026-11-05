@@ -1,5 +1,4 @@
-from typing import cast
-
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
 try:
@@ -15,7 +14,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.models.view_models.exceptions.blob import BlobConfigError
 from base.services.common.meta import Singleton
-from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsAzureBlobConfig
 from base.tools.resources import aclose_all, close_all
 
@@ -28,7 +26,7 @@ class AzureBlobClient(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        settings = cast(SupportsAzureBlobConfig, get_settings())
+        settings = settings_for(SupportsAzureBlobConfig)
         self._account_url: str = settings.azure_blob_account_url
         if not self._account_url:
             raise BlobConfigError("azure_blob_account_url is required")

@@ -162,7 +162,7 @@ name = "chat_api"
 version = "0.1.0"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "base[sql,postgres,llm,redis,auth,server]",
+    "base[sql,postgres,openai,tokenizer,redis,auth,server]",
     "contracts",
 ]
 

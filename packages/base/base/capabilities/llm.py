@@ -1,7 +1,5 @@
 """Point every agent at an LLM client that authenticates with a credential."""
 
-from typing import cast
-
 from fastapi import FastAPI
 
 from base.clients.credentials import OutboundAuth
@@ -9,7 +7,7 @@ from base.models.definitions.health import ProbeStatus
 from base.models.definitions.model import ProviderType
 from base.models.view_models.health import ProbeResult
 from base.models.view_models.model import ModelConfigurations
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsCredentialsConfig
 from base.services.llm import AbstractLLMService
 from base.services.llm.openai import OpenAIService
@@ -69,7 +67,7 @@ class AuthenticatedLLM:
     def _verify_tls(self) -> bool:
         if self._verify is not None:
             return self._verify
-        return cast(SupportsCredentialsConfig, get_settings()).outbound_verify_tls
+        return settings_for(SupportsCredentialsConfig).outbound_verify_tls
 
     async def astartup(self, app: FastAPI) -> None:
         del app

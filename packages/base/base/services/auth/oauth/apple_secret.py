@@ -16,7 +16,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from pathlib import Path
 
-from base.services.configuration.protocols.oauth.apple import SupportsAppleOAuthConfig
+from base.services.configuration.protocols import (
+    SupportsAppleOAuthConfig,
+)
 
 
 def load_apple_private_key(config: SupportsAppleOAuthConfig) -> str:

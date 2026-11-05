@@ -1,5 +1,4 @@
-from typing import cast
-
+from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
 try:
@@ -17,7 +16,6 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     ) from exc
 
 from base.services.common.meta import Singleton
-from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsAzureSearchConfig
 
 
@@ -31,7 +29,7 @@ class AzureAISearchClient(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        config = cast(SupportsAzureSearchConfig, get_settings())
+        config = settings_for(SupportsAzureSearchConfig)
         self._endpoint: str = config.azure_search_endpoint
         if not self._endpoint:
             raise ValueError("azure_search_endpoint must be configured in Settings")

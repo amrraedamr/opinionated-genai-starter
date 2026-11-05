@@ -3,7 +3,7 @@ from base.tools.errors import MissingExtraError
 try:
     import tiktoken
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "tiktoken", feature="TokenCounter") from exc
+    raise MissingExtraError("tokenizer", "tiktoken", feature="TokenCounter") from exc
 
 from base.services.common.meta import KeyedSingleton
 from base.services.logging.console import ConsoleLoggerService

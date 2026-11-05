@@ -3,13 +3,12 @@ import importlib
 import pkgutil
 from collections.abc import AsyncGenerator, Sequence
 from types import ModuleType
-from typing import cast
 
 from base.models.definitions.cache import CacheChannels
 from base.models.view_models.prompt import Prompt
 from base.services.cache.factory import get_cache_service
 from base.services.common.meta import Singleton
-from base.services.configuration import get_settings
+from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsPromptConfig
 from base.services.logging.console import ConsoleLoggerService
 from base.services.prompt.protocol import PromptTemplateStore
@@ -44,7 +43,7 @@ class PromptLoader(metaclass=Singleton):
         self.load_templates(template_packages)
         self._templates_loaded = True
 
-        config = cast(SupportsPromptConfig, get_settings())
+        config = settings_for(SupportsPromptConfig)
         if config.load_prompts_from_db:
             if store is None:
                 self._logger.warning(
@@ -114,7 +113,7 @@ class PromptLoader(metaclass=Singleton):
         return list(self._prompts.keys())
 
     def _channel(self) -> str:
-        config = cast(SupportsPromptConfig, get_settings())
+        config = settings_for(SupportsPromptConfig)
         return CacheChannels.PROMPT_RELOAD.for_app(config.service_name)
 
     async def _areload(self) -> int:

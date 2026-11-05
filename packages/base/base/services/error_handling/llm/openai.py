@@ -5,7 +5,7 @@ from base.tools.errors import MissingExtraError
 try:
     from openai import BadRequestError, OpenAIError
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError("llm", "openai", feature="OpenAIErrorHandler") from exc
+    raise MissingExtraError("openai", "openai", feature="OpenAIErrorHandler") from exc
 
 from base.models.definitions.error_handling import FailureKind
 from base.models.view_models.exceptions.llm import (
