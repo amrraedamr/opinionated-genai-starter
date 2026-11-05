@@ -3,7 +3,7 @@
 from httpx import Auth, Timeout
 
 from base.models.definitions.model import ProviderType
-from base.models.view_models.provider_exception import ProviderConfigError
+from base.models.view_models.exceptions.provider import ProviderConfigError
 from base.tools.errors import MissingExtraError
 
 try:

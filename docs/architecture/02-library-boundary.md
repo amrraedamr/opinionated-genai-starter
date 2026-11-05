@@ -576,12 +576,64 @@ logging, and names no domain at all. The base never constructs a domain error it
 `wrap`, `wrap_exhausted` and `wrap_unexpected` belong to the implementation — so a store
 handler raises store errors and a model handler raises model errors over one retry policy.
 
+An SDK that serves more than one capability gets its reader at the root, where it
+reads exceptions without deciding what callers see: `openai.py` for generation and
+embeddings, `azure.py` for object storage and search, `sqlalchemy.py` for anything
+reaching a database. That is why an Azure 429 becomes a blob error in one place and
+a vector-search error in another from the same classification.
+
+Retrying a SQLAlchemy failure is only safe where the statement is idempotent and the
+method opens its own transaction, because a failed session cannot be resumed. The
+pgvector backend qualifies — DDL guarded by `IF NOT EXISTS`, writes upserted with
+`ON CONFLICT DO UPDATE`, deletes by id. `OperationalError` is left out of the map
+deliberately: it covers both a dropped connection and a statement the server refused,
+so the pool's own verdict decides, and anything it did not invalidate is treated as
+permanent rather than retried into the same wall.
+
 Depth is how specific a module is. The package root is domain-free: the abstraction, plus
 `FailureKind`, the vocabulary an SDK classifies into. `openai.py` beside it reads the
 OpenAI SDK but decides nothing about what callers see. The subfolders bind a domain:
 `llm/openai.py` and `llm/anthropic.py` raise the LLM family, `embedding/openai.py` raises
 the embedding family. Because the kind an exception represents is a property of the SDK
 rather than of the caller, it is stated once and two domains reuse it.
+
+Every billable call is recorded, and recording sits in the abstraction rather than
+in each adapter. It has to happen once per call while an adapter retries inside
+itself, so doing it above the retry is the only place it can go — and it means a new
+provider cannot forget. That is why `_embed` and `_rerank` return usage alongside
+their payload instead of just the payload.
+
+The usage ledger and the debug trace split along what they cost to keep. Records are
+small, always on, and safe to aggregate or persist. The trace holds the verbatim
+prompt and response, which are large and often sensitive, so it is captured only when
+a request asks for it — `?debug=true` on the chat endpoint is what starts it, and an
+ordinary request pays nothing. Neither repeats the other: accounting lives on the
+record, payloads on the call, and a shared `call_id` joins them.
+
+One record covers one call however many tries it took, because a retried attempt
+is not billed and counting it as its own call would overstate how many were made.
+What it took rides on the record instead: `attempts`, and one entry per failed
+attempt saying what went wrong. A call that was throttled twice and then succeeded
+is otherwise indistinguishable from a clean one, which is the case worth seeing —
+the failure that ends a call was always recorded, the ones it recovered from were
+not. The handler collects that in a `ContextVar`, because one handler serves many
+concurrent calls and each task needs its own.
+
+Reranking is billed per search unit rather than per token, so its records usually
+carry no cost. `UsageRecord.cost_usd` stays `None` when no rate is known, which is
+the point: an unpriced call stays visible rather than looking free.
+
+Object storage is deliberately not in the usage ledger. It is not billed per call in
+the way that ledger models, and the call volume is an order of magnitude higher, so
+it belongs in logs and metrics rather than drowning a per-request trace.
+
+A service whose every method is its own round trip — a blob store has around
+twenty — would bury what each method does under what the retry policy does if each
+body were wrapped by hand. `retrying` and `aretrying` run a method through the
+handler on its `_error_handler`, so the method keeps its shape and the policy stays
+in one place. Neither may decorate a generator: calling one returns an iterator
+without doing any work, so the failure would happen later, outside the retry loop.
+`AzureBlobService.list_blobs` is left undecorated for exactly that reason.
 
 Those domains are deliberately separate families. `EmbeddingRateLimitError` is not an
 `LLMError`, so a service that both embeds and generates can catch a failure of one

@@ -29,7 +29,7 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("llm", "openai", feature="OpenAI error handling") from exc
 
-from base.models.view_models.provider_exception import (
+from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )

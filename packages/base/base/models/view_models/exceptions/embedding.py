@@ -4,7 +4,7 @@ Separate from the LLM family on purpose: a service that embeds and generates
 should be able to catch a failure of one without catching the other.
 """
 
-from base.models.view_models.provider_exception import (
+from base.models.view_models.exceptions.provider import (
     ProviderConfigError,
     ProviderError,
     ProviderRetryExhausted,

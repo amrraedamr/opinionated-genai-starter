@@ -9,9 +9,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("llm", "openai", feature="OpenAIEmbeddingService") from exc
 
 from base.models.definitions.model import ProviderType
-from base.models.view_models.embedding_exception import EmbeddingConfigError
+from base.models.view_models.embedding import EmbeddingBatch
+from base.models.view_models.exceptions.embedding import EmbeddingConfigError
 from base.models.view_models.model import EmbeddingConfigurations
+from base.models.view_models.usage import ProviderUsage
 from base.services.common.meta import KeyedSingletonABC
+from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.embedding.openai import (
     OpenAIEmbeddingErrorHandler,
 )
@@ -76,18 +79,26 @@ class OpenAIEmbeddingService(AbstractTextEmbeddingService, metaclass=KeyedSingle
         return kwargs
 
     @staticmethod
-    def _to_vectors(response: CreateEmbeddingResponse) -> list[list[float]]:
+    def _to_batch(response: CreateEmbeddingResponse) -> EmbeddingBatch:
         """Sort by index: the API does not promise response order."""
-        return [item.embedding for item in sorted(response.data, key=lambda x: x.index)]
-
-    def _embed(self, texts: list[str]) -> list[list[float]]:
-        response = self._error_handler.run(
-            self._client.embeddings.create, **self._request_kwargs(texts)
+        usage = getattr(response, "usage", None)
+        return EmbeddingBatch(
+            vectors=[
+                item.embedding for item in sorted(response.data, key=lambda x: x.index)
+            ],
+            usage=ProviderUsage(input_tokens=int(usage.prompt_tokens or 0))
+            if usage
+            else None,
         )
-        return self._to_vectors(response)
 
-    async def _aembed(self, texts: list[str]) -> list[list[float]]:
-        response = await self._error_handler.arun(
-            self._async_client.embeddings.create, **self._request_kwargs(texts)
+    @retrying
+    def _embed(self, texts: list[str]) -> EmbeddingBatch:
+        response = self._client.embeddings.create(**self._request_kwargs(texts))
+        return self._to_batch(response)
+
+    @aretrying
+    async def _aembed(self, texts: list[str]) -> EmbeddingBatch:
+        response = await self._async_client.embeddings.create(
+            **self._request_kwargs(texts)
         )
-        return self._to_vectors(response)
+        return self._to_batch(response)

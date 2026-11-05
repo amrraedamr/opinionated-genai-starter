@@ -31,6 +31,8 @@ from base.models.definitions.vector_search import (
 )
 from base.models.view_models.vector_search import VectorRecord, VectorSearchResult
 from base.services.common.meta import SingletonABC
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.vector_search.qdrant import QdrantErrorHandler
 from base.services.vector_search import AbstractVectorSearchService
 from base.tools.errors import ServiceHealthCheckError
 
@@ -50,8 +52,10 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
         super().__init__()
         self._client: QdrantClient = QdrantClient()
 
-    # Collection Management
+        # Collection Management
+        self._error_handler: QdrantErrorHandler = QdrantErrorHandler()
 
+    @retrying
     def create_collection(
         self,
         collection: str,
@@ -70,6 +74,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             **kwargs,
         )
 
+    @aretrying
     async def acreate_collection(
         self,
         collection: str,
@@ -88,15 +93,19 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             **kwargs,
         )
 
+    @retrying
     def delete_collection(self, collection: str) -> None:
         self._client.sync_client.delete_collection(collection_name=collection)
 
+    @aretrying
     async def adelete_collection(self, collection: str) -> None:
         await self._client.async_client.delete_collection(collection_name=collection)
 
+    @retrying
     def collection_exists(self, collection: str) -> bool:
         return self._client.sync_client.collection_exists(collection_name=collection)
 
+    @aretrying
     async def acollection_exists(self, collection: str) -> bool:
         return await self._client.async_client.collection_exists(
             collection_name=collection
@@ -104,6 +113,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
 
     # Upsert
 
+    @retrying
     def upsert(self, collection: str, records: list[VectorRecord]) -> None:
         for i in range(0, len(records), VECTOR_UPSERT_BATCH_SIZE):
             batch = records[i : i + VECTOR_UPSERT_BATCH_SIZE]
@@ -115,6 +125,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
                 ],
             )
 
+    @aretrying
     async def aupsert(self, collection: str, records: list[VectorRecord]) -> None:
         for i in range(0, len(records), VECTOR_UPSERT_BATCH_SIZE):
             batch = records[i : i + VECTOR_UPSERT_BATCH_SIZE]
@@ -128,6 +139,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
 
     # Search
 
+    @retrying
     def search(
         self,
         collection: str,
@@ -155,6 +167,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             for point in results.points
         ]
 
+    @aretrying
     async def asearch(
         self,
         collection: str,
@@ -184,6 +197,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
 
     # Get by ID
 
+    @retrying
     def get(
         self,
         collection: str,
@@ -204,6 +218,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             for r in records
         ]
 
+    @aretrying
     async def aget(
         self,
         collection: str,
@@ -226,12 +241,14 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
 
     # Delete
 
+    @retrying
     def delete(self, collection: str, ids: list[str]) -> None:
         self._client.sync_client.delete(
             collection_name=collection,
             points_selector=PointIdsList(points=cast(list[ExtendedPointId], ids)),
         )
 
+    @aretrying
     async def adelete(self, collection: str, ids: list[str]) -> None:
         await self._client.async_client.delete(
             collection_name=collection,
@@ -240,16 +257,19 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
 
     # Count
 
+    @retrying
     def count(self, collection: str) -> int:
         result = self._client.sync_client.count(collection_name=collection)
         return result.count
 
+    @aretrying
     async def acount(self, collection: str) -> int:
         result = await self._client.async_client.count(collection_name=collection)
         return result.count
 
     # Scroll
 
+    @retrying
     def scroll(
         self,
         collection: str,
@@ -277,6 +297,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             str(next_offset) if next_offset is not None else None,
         )
 
+    @aretrying
     async def ascroll(
         self,
         collection: str,

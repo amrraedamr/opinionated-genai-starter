@@ -1,6 +1,6 @@
 """OpenAI SDK errors, as the embedding family."""
 
-from base.models.view_models.embedding_exception import (
+from base.models.view_models.exceptions.embedding import (
     EmbeddingAuthError,
     EmbeddingBadRequestError,
     EmbeddingConflictError,
@@ -11,7 +11,7 @@ from base.models.view_models.embedding_exception import (
     EmbeddingTimeoutError,
     EmbeddingUnexpectedError,
 )
-from base.models.view_models.provider_exception import ProviderError
+from base.models.view_models.exceptions.provider import ProviderError
 from base.services.error_handling import FailureKind
 from base.services.error_handling.openai import OpenAISDKErrorHandler
 

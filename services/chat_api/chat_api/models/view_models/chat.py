@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import Field
 
 from base.models.view_models import BaseModel
+from base.models.view_models.debug_trace import DebugTrace
 
 
 class SendChatRequest(BaseModel):
@@ -11,6 +12,10 @@ class SendChatRequest(BaseModel):
 
 class SendChatResponse(BaseModel):
     content: str
+
+    debug: DebugTrace | None = None
+    """Present only when the caller asked for `?debug=true`. Carries the
+    prompts and responses the models saw, so it is off by default."""
 
 
 class ChatMessageView(BaseModel):

@@ -1,6 +1,7 @@
 """What a model call cost, in tokens and in money."""
 
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 from pydantic import Field
 
@@ -53,8 +54,30 @@ class ModelRate(BaseModel):
         ) / Decimal(1_000_000)
 
 
+class ProviderUsage(BaseModel):
+    """Tokens one outbound call consumed, split the way providers bill them.
+
+    What a provider reports about a single call, before it reaches the tracker.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_input_tokens: int = 0
+    """Share of `input_tokens` read from the provider's cache."""
+
+    cache_write_tokens: int = 0
+    """Share of `input_tokens` written to it, charged at a premium."""
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
 class UsageRecord(BaseModel):
     """One model call, as billed."""
+
+    call_id: UUID = Field(default_factory=uuid4)
+    """Matches the `DebugCall` for the same call, when one was captured."""
 
     model: str
     label: str
@@ -73,10 +96,24 @@ class UsageRecord(BaseModel):
     """None when no rate is known for the model, rather than a misleading zero."""
 
     error: str | None = None
+    """Why the call ultimately failed, or None when it succeeded."""
+
+    attempts: int = 1
+    """How many tries it took. More than one means the call was degraded even
+    if it eventually worked, which is otherwise invisible once it recovers."""
+
+    attempt_errors: list[str] = Field(default_factory=list)
+    """One entry per attempt that failed, in order, so a recovered call still
+    says what it recovered from."""
 
     @property
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
+
+    @property
+    def retried(self) -> bool:
+        """Whether this call had to be tried more than once."""
+        return self.attempts > 1
 
     @property
     def uncached_input_tokens(self) -> int:
@@ -112,7 +149,9 @@ class UsageTotals(BaseModel):
 
         Collapses when prompt-prefix stability breaks, before the bill shows it.
         """
-        return self.cached_input_tokens / self.input_tokens if self.input_tokens else 0.0
+        return (
+            self.cached_input_tokens / self.input_tokens if self.input_tokens else 0.0
+        )
 
     @property
     def fully_priced(self) -> bool:

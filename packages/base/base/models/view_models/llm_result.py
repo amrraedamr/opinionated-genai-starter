@@ -3,25 +3,14 @@
 from base.models.definitions.model import FinishReason
 from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredMessage, StoredToolCall
+from base.models.view_models.usage import ProviderUsage
 
 
-class LLMUsageCounts(BaseModel):
-    """Tokens one call consumed, split the way providers bill them."""
-
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cached_input_tokens: int = 0
-    """Share of `input_tokens` read from the provider's prompt cache."""
-
-    cache_write_tokens: int = 0
-    """Share of `input_tokens` written to it, charged at a premium."""
+class LLMUsageCounts(ProviderUsage):
+    """What a generation call consumed."""
 
     reasoning_tokens: int = 0
     """Output tokens spent thinking rather than answering, where reported."""
-
-    @property
-    def total_tokens(self) -> int:
-        return self.input_tokens + self.output_tokens
 
 
 class LLMResult(BaseModel):

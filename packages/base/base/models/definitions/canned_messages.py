@@ -1,7 +1,7 @@
 from enum import Enum
 
 from base.models.definitions.database import Locale
-from base.models.view_models.llm_exception import (
+from base.models.view_models.exceptions.llm import (
     LLMContentFilterError,
     LLMError,
     LLMIncompleteError,

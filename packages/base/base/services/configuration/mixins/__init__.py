@@ -5,13 +5,13 @@ worker with no HTTP surface never carries HTTP settings.
 """
 
 from base.services.configuration.mixins.anthropic import AnthropicSettingsMixin
+from base.services.configuration.mixins.azure_blob import AzureBlobSettingsMixin
 from base.services.configuration.mixins.azure_openai import (
     AzureOpenAIEmbeddingSettingsMixin,
     AzureOpenAILLMSettingsMixin,
     AzureOpenAISettingsMixin,
 )
 from base.services.configuration.mixins.azure_search import AzureSearchSettingsMixin
-from base.services.configuration.mixins.blob import BlobSettingsMixin
 from base.services.configuration.mixins.broker import BrokerSettingsMixin
 from base.services.configuration.mixins.cohere import CohereSettingsMixin
 from base.services.configuration.mixins.cosmos import CosmosSettingsMixin
@@ -40,7 +40,7 @@ __all__ = [
     "CohereSettingsMixin",
     "RerankSettingsMixin",
     "AzureSearchSettingsMixin",
-    "BlobSettingsMixin",
+    "AzureBlobSettingsMixin",
     "BrokerSettingsMixin",
     "CosmosSettingsMixin",
     "CredentialsSettingsMixin",
