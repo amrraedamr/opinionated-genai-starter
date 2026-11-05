@@ -4,8 +4,13 @@ from pydantic_settings import SettingsConfigDict
 
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
+    AppleOAuthSettingsMixin,
     BrokerSettingsMixin,
+    FacebookOAuthSettingsMixin,
+    GitHubOAuthSettingsMixin,
+    GoogleOAuthSettingsMixin,
     IdpResourceServerMixin,
+    MicrosoftOAuthSettingsMixin,
     OAuthSettingsMixin,
     PostgresSettingsMixin,
     RedisSettingsMixin,
@@ -24,6 +29,13 @@ class IdentitySettings(
     BrokerSettingsMixin,
     TokenIssuingMixin,
     OAuthSettingsMixin,
+    # The reference identity service offers all five. A service that offers
+    # fewer composes fewer, and declares no credentials for the rest.
+    GoogleOAuthSettingsMixin,
+    FacebookOAuthSettingsMixin,
+    MicrosoftOAuthSettingsMixin,
+    GitHubOAuthSettingsMixin,
+    AppleOAuthSettingsMixin,
     IdpResourceServerMixin,
 ):
     model_config = SettingsConfigDict(
