@@ -17,7 +17,7 @@ from base.models.view_models.exceptions.blob import BlobConfigError
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsAzureBlobConfig
-from base.tools import resources
+from base.tools.resources import aclose_all, close_all
 
 
 class AzureBlobClient(metaclass=Singleton):
@@ -82,12 +82,12 @@ class AzureBlobClient(metaclass=Singleton):
             return False
 
     def close(self) -> None:
-        resources.close_all(self._sync_client, self._credential)
+        close_all(self._sync_client, self._credential)
         self._sync_client = None
         self._credential = None
 
     async def aclose(self) -> None:
-        await resources.aclose_all(self._async_client, self._async_credential)
+        await aclose_all(self._async_client, self._async_credential)
         self._async_client = None
         self._async_credential = None
 

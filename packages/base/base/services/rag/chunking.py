@@ -5,7 +5,6 @@ import re
 from pydantic import Field
 
 from base.models.view_models import BaseModel
-from base.models.view_models.models import OpenAIModels
 from base.models.view_models.rag import Chunk, Document
 from base.tools.tokenizer import TokenCounter
 
@@ -23,7 +22,7 @@ class ChunkingConfig(BaseModel):
     """Tokens repeated from the end of the previous chunk, so a sentence
     split across a boundary is still retrievable from either side."""
 
-    model: OpenAIModels | str = "gpt-4o"
+    model: str = "gpt-4o"
     """Whose tokenizer decides what a token is."""
 
 

@@ -19,8 +19,8 @@ from base.services.configuration import get_settings
 from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.nosql.mongodb import MongoErrorHandler
 from base.services.nosql import AbstractNoSQLService
-from base.tools import pagination
 from base.tools.errors import ServiceHealthCheckError
+from base.tools.pagination import apaginate, paginate
 
 
 class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
@@ -343,7 +343,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         projection: dict[str, Any] | None = None,
         sort: list[tuple[str, int]] | None = None,
     ) -> PaginatedResult[dict[str, Any]]:
-        return pagination.paginate(
+        return paginate(
             self.count(collection, filter),
             page_params,
             lambda skip, limit: self.find_many(
@@ -365,7 +365,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         projection: dict[str, Any] | None = None,
         sort: list[tuple[str, int]] | None = None,
     ) -> PaginatedResult[dict[str, Any]]:
-        return await pagination.apaginate(
+        return await apaginate(
             await self.acount(collection, filter),
             page_params,
             lambda skip, limit: self.afind_many(

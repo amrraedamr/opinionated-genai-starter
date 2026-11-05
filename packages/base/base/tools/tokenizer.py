@@ -5,7 +5,6 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("llm", "tiktoken", feature="TokenCounter") from exc
 
-from base.models.view_models.models import OpenAIModels
 from base.services.common.meta import KeyedSingleton
 from base.services.logging.console import ConsoleLoggerService
 
@@ -19,11 +18,10 @@ class TokenCounter(metaclass=KeyedSingleton):
     share one encoder — important because tiktoken lazily loads encoding data
     files on first use.
 
-    Accepts OpenAIModels enum values for autocomplete and known-good models,
-    or plain strings for snapshot versions (e.g. "gpt-5.4-2026-03-15"),
-    fine-tuned models (e.g. "ft:gpt-4o:acme::abc123"), and Azure deployment
-    names. StrEnum instances are passed directly to tiktoken since they are
-    real strings at runtime.
+    Accepts any model name: a published model, a snapshot version
+    (e.g. "gpt-5.4-2026-03-15"), a fine-tuned model (e.g. "ft:gpt-4o:acme::abc123"),
+    or an Azure deployment name. Anything tiktoken has no mapping for falls back
+    to `FALLBACK_ENCODING`.
 
     Token counting is sync because tiktoken is CPU-bound with no I/O.
     """
@@ -33,7 +31,7 @@ class TokenCounter(metaclass=KeyedSingleton):
     the installed tiktoken. Counts here are estimates; the response `usage`
     object is what the provider bills against."""
 
-    def __init__(self, model: OpenAIModels | str) -> None:
+    def __init__(self, model: str) -> None:
         self._model: str = model
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
 

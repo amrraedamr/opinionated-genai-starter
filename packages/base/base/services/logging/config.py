@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from base.tools import correlation
+from base.tools.correlation import current_correlation_id
 
 _QUOTED_VALUE = re.compile(
     r"""(?ix)
@@ -39,7 +39,7 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": redact(record.getMessage()),
-            "correlation_id": str(correlation.current()),
+            "correlation_id": str(current_correlation_id()),
         }
         if record.exc_info:
             payload["exception"] = redact(self.formatException(record.exc_info))
