@@ -115,10 +115,14 @@ async def send_message(
     conversation_id: UUID,
     request: SendChatRequest,
     streaming: bool = False,
+    debug: bool = False,
     principal: Principal = principal_dependency,
 ) -> BaseResponse[SendChatResponse] | EventSourceResponse:
     execution_context = ExecutionContext()
-    execution_context.start_debug_trace()
+    if debug:
+        # Starting the trace is what makes the adapters capture prompts, so an
+        # ordinary request pays nothing for a feature it did not ask for.
+        execution_context.start_debug_trace()
 
     chat_history_service = ChatHistoryService(ChatHistoryConfig(), SqlChatHistoryStore)
     logger = ConsoleLoggerService()
@@ -178,7 +182,9 @@ async def send_message(
             if stream_iterator is None:
                 raise
             logger.error(f"send_message run failed: {e}")
-            await stream_iterator.asend(StreamError(error_code=500, text="Internal server error"))
+            await stream_iterator.asend(
+                StreamError(error_code=500, text="Internal server error")
+            )
             raise
         finally:
             Stored.delete_scope(request_scope_id)
@@ -193,7 +199,13 @@ async def send_message(
         return EventSourceResponse(stream_iterator, media_type="text/event-stream")
 
     result = await run()
-    return BaseResponse(data=SendChatResponse(content=result or ""))
+    # The scope is gone by now, but this reference still holds the trace.
+    return BaseResponse(
+        data=SendChatResponse(
+            content=result or "",
+            debug=execution_context.debug_trace if debug else None,
+        )
+    )
 
 
 @router.get(

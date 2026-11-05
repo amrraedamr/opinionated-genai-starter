@@ -7,11 +7,13 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("rerank", "cohere", feature="CohereRerankService") from exc
 
-from base.models.view_models.rerank import RerankResult
-from base.models.view_models.rerank_exception import RerankConfigError
+from base.models.view_models.exceptions.rerank import RerankConfigError
+from base.models.view_models.rerank import RerankBatch, RerankResult
+from base.models.view_models.usage import ProviderUsage
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
 from base.services.configuration.protocols.cohere import SupportsCohereConfig
+from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.rerank.cohere import CohereErrorHandler
 from base.services.reranking import AbstractRerankService
 
@@ -31,6 +33,10 @@ class CohereRerankService(AbstractRerankService, metaclass=SingletonABC):
         self._error_handler: CohereErrorHandler = CohereErrorHandler()
 
     @property
+    def model(self) -> str:
+        return self._model
+
+    @property
     def _client(self) -> ClientV2:
         # SDK-level retries are off: CohereErrorHandler owns retry policy, and
         # two layers of backoff would multiply the wait.
@@ -45,39 +51,51 @@ class CohereRerankService(AbstractRerankService, metaclass=SingletonABC):
         return self._async_client
 
     @staticmethod
-    def _to_results(response: object, documents: list[str]) -> list[RerankResult]:
-        return [
-            RerankResult(
-                index=item.index,
-                score=float(item.relevance_score),
-                document=documents[item.index],
+    def _to_batch(response: object, documents: list[str]) -> RerankBatch:
+        """Cohere bills reranking in search units, and reports tokens beside them."""
+        meta = getattr(response, "meta", None)
+        tokens = getattr(meta, "tokens", None) if meta else None
+        return RerankBatch(
+            results=[
+                RerankResult(
+                    index=item.index,
+                    score=float(item.relevance_score),
+                    document=documents[item.index],
+                )
+                for item in getattr(response, "results", [])
+            ],
+            usage=ProviderUsage(
+                input_tokens=int(getattr(tokens, "input_tokens", 0) or 0),
+                output_tokens=int(getattr(tokens, "output_tokens", 0) or 0),
+                cached_input_tokens=int(getattr(meta, "cached_tokens", 0) or 0),
             )
-            for item in getattr(response, "results", [])
-        ]
+            if meta
+            else None,
+        )
 
+    @retrying
     def _rerank(
         self, query: str, documents: list[str], top_n: int | None
-    ) -> list[RerankResult]:
-        response = self._error_handler.run(
-            self._client.rerank,
+    ) -> RerankBatch:
+        response = self._client.rerank(
             model=self._model,
             query=query,
             documents=documents,
             top_n=top_n or len(documents),
         )
-        return self._to_results(response, documents)
+        return self._to_batch(response, documents)
 
+    @aretrying
     async def _arerank(
         self, query: str, documents: list[str], top_n: int | None
-    ) -> list[RerankResult]:
-        response = await self._error_handler.arun(
-            self._aclient.rerank,
+    ) -> RerankBatch:
+        response = await self._aclient.rerank(
             model=self._model,
             query=query,
             documents=documents,
             top_n=top_n or len(documents),
         )
-        return self._to_results(response, documents)
+        return self._to_batch(response, documents)
 
     def get_service_name(self) -> str:
         return "cohere-rerank"

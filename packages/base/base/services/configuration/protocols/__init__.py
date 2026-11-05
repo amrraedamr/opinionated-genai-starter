@@ -9,6 +9,9 @@ Protocols describing collaborators rather than settings — `Capability`,
 """
 
 from base.services.configuration.protocols.anthropic import SupportsAnthropicConfig
+from base.services.configuration.protocols.azure_blob import (
+    SupportsAzureBlobConfig,
+)
 from base.services.configuration.protocols.azure_openai import (
     SupportsAzureOpenAIConfig,
     SupportsAzureOpenAIEmbeddingConfig,
@@ -47,6 +50,7 @@ __all__ = [
     "SupportsCohereConfig",
     "SupportsRerankConfig",
     "SupportsAzureSearchConfig",
+    "SupportsAzureBlobConfig",
     "SupportsBrokerConfig",
     "SupportsCredentialsConfig",
     "SupportsIdpConfig",

@@ -17,6 +17,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.clients.blob.azure_blob import AzureBlobClient
 from base.services.blob import AbstractBlobService, BlobProperties
 from base.services.common.meta import SingletonABC
+from base.services.error_handling import aretrying, retrying
+from base.services.error_handling.blob.azure import AzureBlobErrorHandler
 
 
 class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
@@ -25,35 +27,43 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
     def __init__(self) -> None:
         super().__init__()
         self._client: AzureBlobClient = AzureBlobClient()
+        self._error_handler: AzureBlobErrorHandler = AzureBlobErrorHandler()
 
     # Container Management
 
+    @retrying
     def create_container(self, container: str) -> None:
         container_client = self._client.sync_client.get_container_client(container)
         if not container_client.exists():
             container_client.create_container()
 
+    @aretrying
     async def acreate_container(self, container: str) -> None:
         container_client = self._client.async_client.get_container_client(container)
         if not await container_client.exists():
             await container_client.create_container()
 
+    @retrying
     def delete_container(self, container: str) -> None:
         self._client.sync_client.delete_container(container)
 
+    @aretrying
     async def adelete_container(self, container: str) -> None:
         await self._client.async_client.delete_container(container)
 
+    @retrying
     def container_exists(self, container: str) -> bool:
         container_client = self._client.sync_client.get_container_client(container)
         return container_client.exists()
 
+    @aretrying
     async def acontainer_exists(self, container: str) -> bool:
         container_client = self._client.async_client.get_container_client(container)
         return await container_client.exists()
 
     # Upload
 
+    @retrying
     def upload(
         self,
         container: str,
@@ -71,6 +81,7 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
             metadata=metadata,
         )
 
+    @aretrying
     async def aupload(
         self,
         container: str,
@@ -90,11 +101,13 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
 
     # Download
 
+    @retrying
     def download(self, container: str, blob_name: str) -> bytes:
         blob_client = self._client.sync_client.get_blob_client(container, blob_name)
         stream = blob_client.download_blob()
         return stream.readall()
 
+    @aretrying
     async def adownload(self, container: str, blob_name: str) -> bytes:
         blob_client = self._client.async_client.get_blob_client(container, blob_name)
         stream = await blob_client.download_blob()
@@ -102,31 +115,37 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
 
     # Delete
 
+    @retrying
     def delete(self, container: str, blob_name: str) -> None:
         blob_client = self._client.sync_client.get_blob_client(container, blob_name)
         blob_client.delete_blob()
 
+    @aretrying
     async def adelete(self, container: str, blob_name: str) -> None:
         blob_client = self._client.async_client.get_blob_client(container, blob_name)
         await blob_client.delete_blob()
 
     # Exists
 
+    @retrying
     def exists(self, container: str, blob_name: str) -> bool:
         blob_client = self._client.sync_client.get_blob_client(container, blob_name)
         return blob_client.exists()
 
+    @aretrying
     async def aexists(self, container: str, blob_name: str) -> bool:
         blob_client = self._client.async_client.get_blob_client(container, blob_name)
         return await blob_client.exists()
 
     # Properties
 
+    @retrying
     def get_properties(self, container: str, blob_name: str) -> BlobProperties:
         blob_client = self._client.sync_client.get_blob_client(container, blob_name)
         props = blob_client.get_blob_properties()
         return self._to_blob_properties(props)
 
+    @aretrying
     async def aget_properties(self, container: str, blob_name: str) -> BlobProperties:
         blob_client = self._client.async_client.get_blob_client(container, blob_name)
         props = await blob_client.get_blob_properties()
@@ -178,6 +197,7 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
 
     # Generate URL
 
+    @retrying
     def generate_url(
         self,
         container: str,
@@ -199,6 +219,7 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
         )
         return f"{self._client.sync_client.url}{container}/{blob_name}?{sas_token}"
 
+    @aretrying
     async def agenerate_url(
         self,
         container: str,

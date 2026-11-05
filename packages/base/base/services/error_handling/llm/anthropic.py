@@ -28,7 +28,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "anthropic", "anthropic", feature="AnthropicErrorHandler"
     ) from exc
 
-from base.models.view_models.llm_exception import (
+from base.models.view_models.exceptions.llm import (
     LLMAuthError,
     LLMBadRequestError,
     LLMConflictError,
@@ -39,7 +39,7 @@ from base.models.view_models.llm_exception import (
     LLMTimeoutError,
     LLMUnexpectedError,
 )
-from base.models.view_models.provider_exception import (
+from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )

@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import Sequence
 from typing import Any, cast
+from uuid import uuid4
 
 from base.tools.errors import MissingExtraError
 
@@ -29,7 +30,7 @@ from base.models.view_models.chat_history import (
     StoredToolCallFunction,
 )
 from base.models.view_models.debug_trace import DebugCall, LLMResponseContent
-from base.models.view_models.llm_exception import (
+from base.models.view_models.exceptions.llm import (
     LLMConfigError,
     LLMContentFilterError,
     LLMError,
@@ -526,9 +527,11 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
     ) -> None:
         """Record the call against usage, and against the trace when one runs."""
         effective_label = label or "anthropic"
+        call_id = uuid4()
         counts = usage or LLMUsageCounts()
 
         UsageTracker().record(
+            call_id=call_id,
             model=self._model,
             label=effective_label,
             input_tokens=counts.input_tokens,
@@ -543,16 +546,11 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
             capture = cast(SupportsLLMConfig, get_settings()).capture_raw_traces
             self._execution_context.debug_trace.calls.append(
                 DebugCall(
-                    agent=effective_label.split(":", 1)[0],
+                    call_id=call_id,
                     label=effective_label,
                     model=self._model,
                     prompt=list(prompt) if capture else [],
                     response=response if capture else None,
-                    input_tokens=counts.input_tokens,
-                    output_tokens=counts.output_tokens,
-                    total_tokens=counts.total_tokens,
-                    duration_ms=duration_ms,
-                    error=error,
                 )
             )
 

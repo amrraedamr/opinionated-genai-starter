@@ -134,7 +134,7 @@ The full set, each lifting one group from today's file **verbatim**:
 `SQLSettingsMixin`, `PostgresSettingsMixin`, `MySQLSettingsMixin`, `RedisSettingsMixin`,
 `LLMSettingsMixin`, `RerankSettingsMixin`, `TokenVerificationMixin`,
 `TokenIssuingMixin`, `OAuthSettingsMixin`, `IdpResourceServerMixin`,
-`MongoSettingsMixin`, `CosmosSettingsMixin`, `BlobSettingsMixin`,
+`MongoSettingsMixin`, `CosmosSettingsMixin`, `AzureBlobSettingsMixin`,
 `KeyVaultSettingsMixin`, `QdrantSettingsMixin`, `AzureSearchSettingsMixin`,
 
 A capability mixin carries only what holds whatever provider is behind it, and the

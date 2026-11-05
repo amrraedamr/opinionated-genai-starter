@@ -1,3 +1,5 @@
+from typing import cast
+
 from base.tools.errors import MissingExtraError
 
 try:
@@ -11,8 +13,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "azure", "azure-storage-blob", feature="AzureBlobClient"
     ) from exc
 
+from base.models.view_models.exceptions.blob import BlobConfigError
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
+from base.services.configuration.protocols import SupportsAzureBlobConfig
 from base.tools import resources
 
 
@@ -24,9 +28,10 @@ class AzureBlobClient(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        self._account_url: str = get_settings().azure_blob_account_url
+        settings = cast(SupportsAzureBlobConfig, get_settings())
+        self._account_url: str = settings.azure_blob_account_url
         if not self._account_url:
-            raise ValueError("azure_blob_account_url must be configured in Settings")
+            raise BlobConfigError("azure_blob_account_url is required")
 
         self._sync_client: BlobServiceClient | None = None
         self._async_client: AsyncBlobServiceClient | None = None
@@ -35,6 +40,9 @@ class AzureBlobClient(metaclass=Singleton):
 
     # Client accessors (lazy init)
 
+    # SDK-level retries are off on both: AzureBlobErrorHandler owns retry
+    # policy, and two layers of backoff would multiply the wait.
+
     @property
     def sync_client(self) -> BlobServiceClient:
         if self._sync_client is None:
@@ -42,6 +50,7 @@ class AzureBlobClient(metaclass=Singleton):
             self._sync_client = BlobServiceClient(
                 account_url=self._account_url,
                 credential=self._credential,
+                retry_total=0,
             )
         return self._sync_client
 
@@ -52,6 +61,7 @@ class AzureBlobClient(metaclass=Singleton):
             self._async_client = AsyncBlobServiceClient(
                 account_url=self._account_url,
                 credential=self._async_credential,
+                retry_total=0,
             )
         return self._async_client
 

@@ -4,7 +4,7 @@ Shape comes from `ProviderError`; what these add is the family, so catching an
 LLM failure never catches an embedding or store failure.
 """
 
-from base.models.view_models.provider_exception import (
+from base.models.view_models.exceptions.provider import (
     ProviderConfigError,
     ProviderError,
     ProviderRetryExhausted,

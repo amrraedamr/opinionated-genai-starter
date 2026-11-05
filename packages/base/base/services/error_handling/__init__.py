@@ -12,14 +12,40 @@ errors, both over one retry policy.
 """
 
 import asyncio
+import functools
 import random
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from enum import StrEnum
-from typing import final
+from typing import Any, NamedTuple, final
 
 from base.services.logging.console import ConsoleLoggerService
+
+
+class AttemptTrail(NamedTuple):
+    """How many tries one call took, and what went wrong on the way."""
+
+    attempts: int = 0
+    errors: tuple[str, ...] = ()
+    """One entry per attempt that failed, in order. A call that succeeded
+    first time has none; a call that recovered shows what it recovered from."""
+
+
+_TRAIL: ContextVar[AttemptTrail] = ContextVar("provider_call_trail")
+"""Set per call by the handler. A ContextVar rather than instance state because
+one handler serves many concurrent calls, and each task needs its own."""
+
+
+def take_attempt_trail() -> AttemptTrail:
+    """Read what the call that just finished went through, and forget it.
+
+    Reading clears it so a later record cannot inherit an earlier call's trail.
+    """
+    trail = _TRAIL.get(AttemptTrail())
+    _TRAIL.set(AttemptTrail())
+    return trail
 
 
 class FailureKind(StrEnum):
@@ -119,11 +145,14 @@ class AbstractErrorHandler[E: Exception](ABC):
         """Run `func`, retrying transient failures."""
         max_attempts = (self._retries + 1) if retry else 1
         last_error: E | None = None
+        _TRAIL.set(AttemptTrail())
 
         for attempt in range(max_attempts):
+            self._mark_attempt()
             try:
                 return func(*args, **kwargs)
             except self.provider_error_type as exc:
+                self._mark_failure(exc)
                 domain_cls, retryable = self.classify(exc)
                 if retryable and attempt + 1 < max_attempts:
                     last_error = exc
@@ -138,6 +167,7 @@ class AbstractErrorHandler[E: Exception](ABC):
                 raise self.wrap(exc, domain_cls) from exc
             except Exception as exc:
                 # Intentional boundary: nothing raw escapes this call.
+                self._mark_failure(exc)
                 raise self.wrap_unexpected(exc) from exc
 
         assert last_error is not None
@@ -154,11 +184,14 @@ class AbstractErrorHandler[E: Exception](ABC):
         """Await `func`, retrying transient failures."""
         max_attempts = (self._retries + 1) if retry else 1
         last_error: E | None = None
+        _TRAIL.set(AttemptTrail())
 
         for attempt in range(max_attempts):
+            self._mark_attempt()
             try:
                 return await func(*args, **kwargs)
             except self.provider_error_type as exc:
+                self._mark_failure(exc)
                 domain_cls, retryable = self.classify(exc)
                 if retryable and attempt + 1 < max_attempts:
                     last_error = exc
@@ -173,10 +206,23 @@ class AbstractErrorHandler[E: Exception](ABC):
                 raise self.wrap(exc, domain_cls) from exc
             except Exception as exc:
                 # Intentional boundary: nothing raw escapes this call.
+                self._mark_failure(exc)
                 raise self.wrap_unexpected(exc) from exc
 
         assert last_error is not None
         raise self.wrap_exhausted(last_error, max_attempts) from last_error
+
+    @staticmethod
+    def _mark_attempt() -> None:
+        trail = _TRAIL.get(AttemptTrail())
+        _TRAIL.set(trail._replace(attempts=trail.attempts + 1))
+
+    @staticmethod
+    def _mark_failure(error: Exception) -> None:
+        trail = _TRAIL.get(AttemptTrail())
+        _TRAIL.set(
+            trail._replace(errors=(*trail.errors, f"{type(error).__name__}: {error}"))
+        )
 
     def _compute_wait(self, error: E, attempt: int) -> float:
         """Respect the other end's own hint, else jittered exponential backoff."""
@@ -201,3 +247,42 @@ class AbstractErrorHandler[E: Exception](ABC):
             f"Attempt {attempt + 1}/{max_attempts} failed: "
             f"{type(error).__name__} — retries exhausted"
         )
+
+
+def retrying[T](method: Callable[..., T]) -> Callable[..., T]:
+    """Run a service method through the handler on its `_error_handler`.
+
+    Fits a method that *is* the call: it builds a request, makes it, and shapes
+    the reply. Retrying re-runs the whole body, so that body must be safe to
+    repeat. It also means a malformed reply becomes a domain error rather than
+    escaping as whatever the parsing raised.
+
+    It does not fit a method that wraps a call in work that must happen once —
+    recording usage, appending to a debug trace, emitting stream events. The
+    LLM adapters are that shape, and call the handler around the request alone.
+
+    Never use it on a generator either: calling one returns an iterator without
+    doing any work, so the failure happens later, outside the retry loop.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> T:
+        handler: AbstractErrorHandler[Any] = self._error_handler
+        return handler.run(method, self, *args, **kwargs)
+
+    return wrapper
+
+
+def aretrying[T](method: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    """Await a service method through the handler on its `_error_handler`.
+
+    The same rules as `retrying`: the body must be safe to repeat, and must not
+    carry work that has to happen exactly once. Never wrap an async generator.
+    """
+
+    @functools.wraps(method)
+    async def wrapper(self: Any, *args: Any, **kwargs: Any) -> T:
+        handler: AbstractErrorHandler[Any] = self._error_handler
+        return await handler.arun(method, self, *args, **kwargs)
+
+    return wrapper

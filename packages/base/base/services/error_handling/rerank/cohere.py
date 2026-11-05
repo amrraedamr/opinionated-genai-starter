@@ -23,11 +23,11 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("rerank", "cohere", feature="CohereErrorHandler") from exc
 
-from base.models.view_models.provider_exception import (
+from base.models.view_models.exceptions.provider import (
     ProviderError,
     ProviderRetryExhausted,
 )
-from base.models.view_models.rerank_exception import (
+from base.models.view_models.exceptions.rerank import (
     RerankAuthError,
     RerankBadRequestError,
     RerankConflictError,

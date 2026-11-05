@@ -4,7 +4,7 @@ Its own family, so a service that retrieves, embeds and reranks can tell which
 of the three failed.
 """
 
-from base.models.view_models.provider_exception import (
+from base.models.view_models.exceptions.provider import (
     ProviderConfigError,
     ProviderError,
     ProviderRetryExhausted,

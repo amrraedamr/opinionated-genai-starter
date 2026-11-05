@@ -7,8 +7,8 @@ from base.models.definitions.message import MessageRole
 from base.models.definitions.model import ReasoningEffort
 from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import ChatHistoryConfig, StoredMessage
+from base.models.view_models.exceptions.llm import LLMError
 from base.models.view_models.flow import FlowAbortError
-from base.models.view_models.llm_exception import LLMError
 from base.models.view_models.llm_result import LLMResult, ParsedResult
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.prompt import RenderedPrompt

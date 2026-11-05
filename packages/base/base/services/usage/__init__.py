@@ -13,9 +13,11 @@ which `UsageTotals.fully_priced` reports.
 """
 
 from decimal import Decimal
+from uuid import UUID, uuid4
 
 from base.models.view_models.usage import ModelRate, UsageRecord, UsageTotals
 from base.services.common.meta import Stored
+from base.services.error_handling import take_attempt_trail
 
 _DEFAULT_RATES: dict[str, ModelRate] = {
     "gpt-5.4": ModelRate(
@@ -87,15 +89,24 @@ class UsageTracker(metaclass=Stored):
         error: str | None = None,
         cached_input_tokens: int = 0,
         cache_write_tokens: int = 0,
+        call_id: UUID | None = None,
     ) -> UsageRecord:
         """Record one call. Returns what was recorded, priced if a rate exists.
 
         Both cache counts are shares of `input_tokens`, not additions to it.
+
+        One record per call, whatever it took to get there: a retried attempt
+        is not billed, so counting it as its own call would overstate how many
+        were made. What it took is carried on the record instead.
         """
+        trail = take_attempt_trail()
         rate = self.rate_for(model)
         entry = UsageRecord(
+            call_id=call_id or uuid4(),
             model=model,
             label=label,
+            attempts=max(trail.attempts, 1),
+            attempt_errors=list(trail.errors),
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_input_tokens=cached_input_tokens,
