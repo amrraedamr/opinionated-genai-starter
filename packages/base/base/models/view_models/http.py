@@ -1,11 +1,11 @@
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
+
+from base.models.view_models import BaseModel
 
 
 class HttpResponse(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     success: bool
     status_code: int | None = None
     data: dict[str, Any] | None = None

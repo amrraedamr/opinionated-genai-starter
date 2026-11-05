@@ -2,10 +2,10 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel as PydanticBaseModel
+from base.models.view_models import BaseModel
 
 
-class Principal(PydanticBaseModel):
+class Principal(BaseModel):
     """The verified caller, reconstructed from token claims alone."""
 
     subject: str
