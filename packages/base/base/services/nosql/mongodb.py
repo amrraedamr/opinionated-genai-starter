@@ -16,7 +16,12 @@ from base.clients.nosql.mongodb import MongoDBClient
 from base.models.view_models.database import PaginatedResult, PaginationParams
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
-from base.services.error_handling import aretrying, retrying
+from base.services.error_handling import (
+    aclassifying,
+    aretrying,
+    classifying,
+    retrying,
+)
 from base.services.error_handling.nosql.mongodb import MongoErrorHandler
 from base.services.nosql import AbstractNoSQLService
 from base.tools.errors import ServiceHealthCheckError
@@ -157,7 +162,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Update
 
-    @retrying
+    @classifying
     def update_one(
         self,
         collection: str,
@@ -170,7 +175,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
-    @aretrying
+    @aclassifying
     async def aupdate_one(
         self,
         collection: str,
@@ -183,7 +188,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
-    @retrying
+    @classifying
     def update_many(
         self,
         collection: str,
@@ -196,7 +201,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         )
         return result.modified_count
 
-    @aretrying
+    @aclassifying
     async def aupdate_many(
         self,
         collection: str,
@@ -315,7 +320,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Aggregation
 
-    @retrying
+    @classifying
     def aggregate(
         self,
         collection: str,
@@ -323,7 +328,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> list[dict[str, Any]]:
         return list(self._get_database()[collection].aggregate(pipeline))
 
-    @aretrying
+    @aclassifying
     async def aaggregate(
         self,
         collection: str,

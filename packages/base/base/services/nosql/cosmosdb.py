@@ -12,7 +12,12 @@ from base.clients.nosql.cosmosdb import CosmosDBClient
 from base.models.view_models.database import PaginatedResult, PaginationParams
 from base.services.common.meta import SingletonABC
 from base.services.configuration import get_settings
-from base.services.error_handling import aretrying, retrying
+from base.services.error_handling import (
+    aclassifying,
+    aretrying,
+    classifying,
+    retrying,
+)
 from base.services.error_handling.nosql.cosmos import CosmosErrorHandler
 from base.services.logging.console import ConsoleLoggerService
 from base.services.nosql import AbstractNoSQLService
@@ -304,7 +309,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
 
     # Update
 
-    @retrying
+    @classifying
     def update_one(
         self,
         collection: str,
@@ -325,7 +330,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         container.upsert_item(body=document)
         return 1
 
-    @aretrying
+    @aclassifying
     async def aupdate_one(
         self,
         collection: str,
@@ -346,7 +351,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         await container.upsert_item(body=document)
         return 1
 
-    @retrying
+    @classifying
     def update_many(
         self,
         collection: str,
@@ -370,7 +375,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             count += 1
         return count
 
-    @aretrying
+    @aclassifying
     async def aupdate_many(
         self,
         collection: str,
