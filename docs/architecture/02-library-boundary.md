@@ -585,10 +585,25 @@ a vector-search error in another from the same classification.
 Retrying a SQLAlchemy failure is only safe where the statement is idempotent and the
 method opens its own transaction, because a failed session cannot be resumed. The
 pgvector backend qualifies — DDL guarded by `IF NOT EXISTS`, writes upserted with
-`ON CONFLICT DO UPDATE`, deletes by id. `OperationalError` is left out of the map
-deliberately: it covers both a dropped connection and a statement the server refused,
-so the pool's own verdict decides, and anything it did not invalidate is treated as
-permanent rather than retried into the same wall.
+`ON CONFLICT DO UPDATE`, deletes by id.
+
+Which failure it is gets decided on the server's own SQLSTATE before the exception type
+is consulted, because the two cases that matter most are indistinguishable otherwise.
+A transaction the server rolled back for contention — `40001` when it could not
+serialise, `40P01` on a deadlock, `55P03` on a lock timeout — arrives as an
+`OperationalError` exactly like a dropped connection does. PostgreSQL documents retrying
+these as the remedy rather than a workaround, so they are retried; reading only the
+exception type treated them as a statement the server refused and gave up on the first
+attempt. They are reported as a server failure because the server is what aborted the
+work, and a kind of their own would have to be named by every domain to say the same
+thing.
+
+`OperationalError` is otherwise left out of the map deliberately: it covers both a
+dropped connection and a statement the server refused, so the pool's own verdict
+decides, and anything it did not invalidate is treated as permanent rather than retried
+into the same wall. A cancelled statement — `57014`, which a `statement_timeout` raises
+— stays on that path on purpose. A timeout does not say whether the server finished the
+work, so repeating it risks applying it twice.
 
 Depth is how specific a module is. The package root holds the abstraction and nothing
 else: `openai.py` beside it reads the OpenAI SDK but decides nothing about what callers

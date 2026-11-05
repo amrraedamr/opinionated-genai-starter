@@ -4,6 +4,11 @@ Shared by anything that reaches a database through SQLAlchemy. Retrying one of
 these is only safe when the statement is idempotent and the method opens its
 own transaction, because a failed session cannot be reused — a caller that
 retries must re-enter the transaction, not resume it.
+
+Where the driver reports a SQLSTATE, that decides first. A transaction the
+server rolled back for contention is the case the database itself tells you to
+retry, and it is indistinguishable from a refused statement by exception type
+alone.
 """
 
 from abc import ABC, abstractmethod
@@ -51,6 +56,27 @@ _FAILURE_MAP: dict[type[SQLAlchemyError], FailureKind] = {
     InternalError: FailureKind.SERVER,
 }
 
+_RETRYABLE_SQLSTATES: frozenset[str] = frozenset(
+    {
+        "40001",  # serialization_failure
+        "40P01",  # deadlock_detected
+        "55P03",  # lock_not_available
+    }
+)
+"""Codes where the server aborted the transaction and says to start again.
+
+Class 40 is PostgreSQL's transaction rollback class, and retrying is the
+documented remedy rather than a workaround: a serialization failure resolves
+once the competing transaction's result is visible, and a deadlock resolves
+because the next attempt is unlikely to interleave the same way. MySQL reports
+its own deadlock as `40001` too. `55P03` is the same situation reached through
+a lock timeout.
+
+They read as `SERVER` because the server is what aborted the work. The
+alternative would be a failure kind of their own, which every domain would
+then have to name.
+"""
+
 
 class SQLAlchemyErrorHandler(AbstractErrorHandler[SQLAlchemyError], ABC):
     """The SQLAlchemy half of error handling. Subclasses choose the domain."""
@@ -64,14 +90,23 @@ class SQLAlchemyErrorHandler(AbstractErrorHandler[SQLAlchemyError], ABC):
         return SQLAlchemyError
 
     def failure_kind(self, error: SQLAlchemyError) -> FailureKind:
-        """Walks the MRO so a subclass resolves like its parent.
+        """Resolves on the server's own code first, then on the exception type.
 
-        `OperationalError` is deliberately not in the map. It covers both a
-        dropped connection and a statement the server refused, and only the
-        driver knows which — so the pool's own verdict is used instead, and
-        anything it did not invalidate is treated as permanent rather than
-        retried into the same wall.
+        A transaction the server rolled back for contention arrives as an
+        `OperationalError` like a dropped connection does, and only the
+        SQLSTATE separates them. Reading it first is what stops a deadlock —
+        which the database tells us to retry — from being treated as a
+        statement the server refused.
+
+        `OperationalError` is otherwise deliberately not in the map. It covers
+        both a dropped connection and a statement the server refused, and only
+        the driver knows which, so the pool's own verdict is used instead. A
+        cancelled statement (`57014`, which a `statement_timeout` raises) stays
+        on that path on purpose: a timeout does not say whether the server
+        finished the work, so repeating it could apply it twice.
         """
+        if self._sqlstate(error) in _RETRYABLE_SQLSTATES:
+            return FailureKind.SERVER
         for cls in type(error).__mro__:
             if cls in _FAILURE_MAP:
                 return _FAILURE_MAP[cls]
@@ -108,6 +143,19 @@ class SQLAlchemyErrorHandler(AbstractErrorHandler[SQLAlchemyError], ABC):
     @staticmethod
     def _connection_lost(error: SQLAlchemyError) -> bool:
         return bool(isinstance(error, DBAPIError) and error.connection_invalidated)
+
+    @staticmethod
+    def _sqlstate(error: SQLAlchemyError) -> str:
+        """The server's five-character code, where the driver exposes one.
+
+        psycopg2 calls it `pgcode`; psycopg3 and asyncpg call it `sqlstate`.
+        SQLite has no equivalent, so this is empty there.
+        """
+        orig = getattr(error, "orig", None)
+        if orig is None:
+            return ""
+        code = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+        return str(code) if code else ""
 
     @staticmethod
     def _message(error: SQLAlchemyError) -> str:
