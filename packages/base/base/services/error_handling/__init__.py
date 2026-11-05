@@ -74,6 +74,22 @@ class AbstractErrorHandler[E: Exception](ABC):
     def wrap_unexpected(self, error: Exception) -> Exception:
         """Build the domain error for something the client never promised."""
 
+    @final
+    def as_domain_error(self, error: Exception) -> Exception:
+        """The domain error for a failure this handler did not run.
+
+        For work a caller drove itself — a transaction it opened and statements
+        it issued — where there is nothing to repeat but callers should still
+        see one family rather than the client's own exception. A retryable
+        failure is reported as having had the one attempt that was made.
+        """
+        if not isinstance(error, self.provider_error_type):
+            return self.wrap_unexpected(error)
+        domain_cls, retryable = self.classify(error)
+        if retryable:
+            return self.wrap_exhausted(error, 1)
+        return self.wrap(error, domain_cls)
+
     def retry_after(self, error: E) -> float | None:
         """Seconds the other end asked us to wait, when it said so.
 
@@ -221,5 +237,38 @@ def aretrying[T](method: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable
     async def wrapper(self: Any, *args: Any, **kwargs: Any) -> T:
         handler: AbstractErrorHandler[Any] = self._error_handler
         return await handler.arun(method, self, *args, **kwargs)
+
+    return wrapper
+
+
+def classifying[T](method: Callable[..., T]) -> Callable[..., T]:
+    """Run a method through the handler, but do not repeat it by default.
+
+    For a call this layer cannot judge: one that carries a statement the caller
+    wrote, where repeating it may apply it twice. Failures still become the
+    domain's errors rather than the client's, so a caller catches one family
+    whichever method it used, and decides for itself whether to try again by
+    passing `retry=True`.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: Any, *args: Any, retry: bool = False, **kwargs: Any) -> T:
+        handler: AbstractErrorHandler[Any] = self._error_handler
+        return handler.run(method, self, *args, retry=retry, **kwargs)
+
+    return wrapper
+
+
+def aclassifying[T](method: Callable[..., Awaitable[T]]) -> Callable[..., Awaitable[T]]:
+    """Await a method through the handler without repeating it by default.
+
+    The async counterpart of `classifying`, for a call carrying a statement
+    this layer did not write.
+    """
+
+    @functools.wraps(method)
+    async def wrapper(self: Any, *args: Any, retry: bool = False, **kwargs: Any) -> T:
+        handler: AbstractErrorHandler[Any] = self._error_handler
+        return await handler.arun(method, self, *args, retry=retry, **kwargs)
 
     return wrapper

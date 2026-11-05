@@ -17,17 +17,20 @@ class AbstractStore(ABC, Generic[T]):
     Subclasses are responsible for:
     - Setting up their own database service (SQL or NoSQL) in __init__
     - Implementing all abstract CRUD methods
-    - Overriding _duplicate_error_types() to map their DB's duplicate-key
-      exception (e.g. SQLAlchemy IntegrityError, PyMongo DuplicateKeyError)
+    - Overriding _duplicate_error_types() to name the duplicate-key error
+      their backend raises (e.g. SQLConflictError, NoSqlConflictError)
     """
 
     # Duplicate error hook
 
     def _duplicate_error_types(self) -> tuple[type[BaseException], ...]:
-        """Return driver-specific duplicate-key exception types.
+        """Return the exception types that mean a key already exists.
 
-        Empty tuple means the store does not translate duplicates — callers
-        see the raw driver error.
+        A backend behind an error handler names its own domain error rather
+        than the driver's, so a store detects a collision without knowing
+        which client raised it.
+
+        Empty tuple means the store does not translate duplicates.
         """
         return ()
 

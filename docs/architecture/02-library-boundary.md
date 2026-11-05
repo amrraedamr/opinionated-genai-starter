@@ -605,6 +605,42 @@ into the same wall. A cancelled statement — `57014`, which a `statement_timeou
 — stays on that path on purpose. A timeout does not say whether the server finished the
 work, so repeating it risks applying it twice.
 
+`SQLService` reaches the same database through the same reader, and is the one backend
+where the retry had to be split rather than applied whole. Every method opens its own
+session from `sessionmaker.begin()`, which commits on a clean exit and rolls back on an
+exception, so one method is one complete transaction and a retry enters a new one. That
+matters because a failed session cannot be resumed — SQLAlchemy refuses to continue on
+one until it is explicitly rolled back, and its own FAQ names retrying the whole
+transaction as the approach to take.
+
+Writing through the ORM survives a retry because the unit of work already distinguishes
+the two cases this layer could not. A flush that assigned a primary key and then rolled
+back leaves the object transient, so the retry inserts; a commit that landed but whose
+acknowledgement was lost leaves it detached with its identity, so the retry updates in
+place rather than inserting a second row. Both were measured rather than assumed.
+
+What could not be settled that way is a statement the caller wrote. `execute`,
+`update_many`, `delete_many` and `execute_in_transaction` carry SQL this layer never
+saw, and `DELETE ... WHERE id = :id` repeating is harmless where `UPDATE t SET n = n + 1`
+is not. They are wrapped by `classifying` rather than `retrying`: failures still become
+the SQL family, so a caller catches one thing whichever method it used, but nothing is
+repeated unless the caller passes `retry=True`. `transaction()` and `atransaction()` go
+further and are never repeated at all — they hand the caller a session to drive, so the
+statements inside are not ours to replay — but they still report their failures as the
+same family, which is what lets a store's duplicate check work through them.
+
+That family is also what a store now catches. `AbstractStore._duplicate_error_types()`
+exists so a store can tell a collision from a genuine failure, and it previously named
+`IntegrityError` directly — which stops arriving the moment the service wraps its
+errors, silently, since a missing match is not an error. It names the domain's conflict
+class instead, which is what the hook was for: detecting a duplicate without knowing
+which client raised it.
+
+One risk retry cannot remove: if a commit lands and the acknowledgement is lost, no
+client can tell. A replayed insert against a server-generated key is the case that
+quietly duplicates, so a write path that matters should carry a key the client
+generated and a unique constraint to go with it, and fail loudly instead.
+
 Depth is how specific a module is. The package root holds the abstraction and nothing
 else: `openai.py` beside it reads the OpenAI SDK but decides nothing about what callers
 see. The subfolders bind a domain: `llm/openai.py` and `llm/anthropic.py` raise the LLM
