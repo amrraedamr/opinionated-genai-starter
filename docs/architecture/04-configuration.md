@@ -145,6 +145,22 @@ and embeddings are `AzureOpenAIEmbeddingSettingsMixin` / `OpenAIEmbeddingSetting
 A service then declares exactly the provider it configures, and a chat service that
 never embeds carries no embedding settings.
 
+`OAuthSettingsMixin` follows the same rule, one mixin per login provider. It held all
+five — Google, Facebook, Microsoft, GitHub and Apple — in one class of thirty-seven
+fields, so a service offering only Google still declared four client secrets it had no
+use for and Apple's signing key. The package `mixins/oauth/` now holds what no provider
+owns in its `__init__` — the enabled list and the redirect and TTL policy — with a
+module beside it per provider, and `protocols/oauth/` mirrors it one for one. A
+Google-only service declares nine fields rather than thirty-seven, and one client secret
+rather than five.
+
+Reading them had to change with it. The loader built all five configurations and then
+filtered by the enabled list, which only works while every field exists; now each is
+built only if `oauth_providers` names it, behind an `isinstance` check against that
+provider's protocol. Enabling one whose mixin a service never composed is a
+configuration mistake rather than an empty value, and `MissingSettingsMixinError` names
+the mixin to add instead of failing later on a missing attribute.
+
 Both Azure mixins inherit `AzureOpenAISettingsMixin`, which holds `azure_openai_api_version`
 alone. It used to be declared separately in the generation and embedding mixins, and a
 service composing both got two declarations whose winner was decided silently by MRO

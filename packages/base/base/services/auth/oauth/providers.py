@@ -1,7 +1,5 @@
 import json
-import time
-from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from urllib.parse import urlencode
 
 from pydantic import ValidationError
@@ -9,154 +7,17 @@ from pydantic import ValidationError
 from base.tools.errors import MissingExtraError
 
 try:
-    from jwt import decode, encode
+    from jwt import decode
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("auth", "pyjwt", feature="OAuth providers") from exc
 
 from base.models.definitions.errors import AuthErrors
 from base.models.view_models.oauth import OAuthProfile, OAuthProviderConfig
 from base.services.auth.models import TokenResponse
-from base.services.configuration import get_settings
-from base.services.configuration.mixins import OAuthSettingsMixin
+from base.services.auth.oauth.apple_secret import build_apple_client_secret
+from base.services.auth.oauth.config import load_oauth_provider_configs
 from base.services.http import HttpRequestService
 from base.tools.errors import raise_error
-
-
-def _config() -> OAuthSettingsMixin:
-    """The service's OAuth settings."""
-    return cast(OAuthSettingsMixin, get_settings())
-
-
-def _split_providers(raw: str) -> list[str]:
-    return [p.strip().lower() for p in raw.split(",") if p.strip()]
-
-
-def _load_apple_private_key() -> str:
-    raw = _config().oauth_apple_private_key.strip()
-    if raw:
-        return raw.replace("\\n", "\n")
-    path = _config().oauth_apple_private_key_path.strip()
-    if path:
-        return Path(path).read_text(encoding="utf-8")
-    return ""
-
-
-def build_apple_client_secret(
-    *,
-    client_id: str,
-    team_id: str,
-    key_id: str,
-    private_key_pem: str,
-    ttl_seconds: int = 86400,
-) -> str:
-    now = int(time.time())
-    return encode(
-        {
-            "iss": team_id,
-            "iat": now,
-            "exp": now + ttl_seconds,
-            "aud": "https://appleid.apple.com",
-            "sub": client_id,
-        },
-        private_key_pem,
-        algorithm="ES256",
-        headers={"kid": key_id, "alg": "ES256"},
-    )
-
-
-def _resolve_apple_client_secret() -> str:
-    if _config().oauth_apple_client_secret:
-        return _config().oauth_apple_client_secret
-    private_key = _load_apple_private_key()
-    if not (
-        _config().oauth_apple_client_id
-        and _config().oauth_apple_team_id
-        and _config().oauth_apple_key_id
-        and private_key
-    ):
-        return ""
-    return build_apple_client_secret(
-        client_id=_config().oauth_apple_client_id,
-        team_id=_config().oauth_apple_team_id,
-        key_id=_config().oauth_apple_key_id,
-        private_key_pem=private_key,
-    )
-
-
-def load_oauth_provider_configs() -> dict[str, OAuthProviderConfig]:
-    enabled = set(_split_providers(_config().oauth_providers))
-    configs: dict[str, OAuthProviderConfig] = {}
-
-    google = OAuthProviderConfig(
-        name="google",
-        client_id=_config().oauth_google_client_id,
-        client_secret=_config().oauth_google_client_secret,
-        redirect_uri=_config().oauth_google_redirect_uri,
-        scopes=_config().oauth_google_scopes,
-        discovery_url=_config().oauth_google_discovery_url,
-        profile_style="oidc",
-    )
-    facebook = OAuthProviderConfig(
-        name="facebook",
-        client_id=_config().oauth_facebook_client_id,
-        client_secret=_config().oauth_facebook_client_secret,
-        redirect_uri=_config().oauth_facebook_redirect_uri,
-        scopes=_config().oauth_facebook_scopes,
-        authorize_url=_config().oauth_facebook_authorize_url,
-        token_url=_config().oauth_facebook_token_url,
-        userinfo_url=_config().oauth_facebook_userinfo_url,
-        profile_style="facebook",
-    )
-    microsoft = OAuthProviderConfig(
-        name="microsoft",
-        client_id=_config().oauth_microsoft_client_id,
-        client_secret=_config().oauth_microsoft_client_secret,
-        redirect_uri=_config().oauth_microsoft_redirect_uri,
-        scopes=_config().oauth_microsoft_scopes,
-        discovery_url=_config().oauth_microsoft_discovery_url,
-        profile_style="oidc",
-    )
-    github = OAuthProviderConfig(
-        name="github",
-        client_id=_config().oauth_github_client_id,
-        client_secret=_config().oauth_github_client_secret,
-        redirect_uri=_config().oauth_github_redirect_uri,
-        scopes=_config().oauth_github_scopes,
-        authorize_url=_config().oauth_github_authorize_url,
-        token_url=_config().oauth_github_token_url,
-        userinfo_url=_config().oauth_github_userinfo_url,
-        profile_style="github",
-    )
-    apple_secret = _resolve_apple_client_secret()
-    apple = OAuthProviderConfig(
-        name="apple",
-        client_id=_config().oauth_apple_client_id,
-        client_secret=apple_secret,
-        redirect_uri=_config().oauth_apple_redirect_uri,
-        scopes=_config().oauth_apple_scopes,
-        discovery_url=_config().oauth_apple_discovery_url,
-        profile_style="apple",
-        response_mode="form_post",
-        apple_team_id=_config().oauth_apple_team_id,
-        apple_key_id=_config().oauth_apple_key_id,
-        apple_private_key=_load_apple_private_key(),
-    )
-
-    for cfg in (google, facebook, microsoft, github, apple):
-        if cfg.name not in enabled:
-            continue
-        if not cfg.client_id or not cfg.redirect_uri:
-            continue
-        if cfg.name == "apple":
-            can_mint = bool(
-                cfg.apple_team_id and cfg.apple_key_id and cfg.apple_private_key
-            )
-            if not cfg.client_secret and not can_mint:
-                continue
-        elif not cfg.client_secret:
-            continue
-        configs[cfg.name] = cfg
-    return configs
 
 
 class OAuthProviderRegistry:

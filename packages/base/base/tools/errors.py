@@ -47,6 +47,26 @@ class MissingExtraError(ImportError):
         )
 
 
+class MissingSettingsMixinError(RuntimeError):
+    """Configuration enables something the settings do not carry.
+
+    Where a capability is split one mixin per provider, a service's settings
+    only declare the providers it composed. Enabling one it did not compose is
+    a configuration mistake rather than an empty value, and saying so names
+    the mixin to add instead of failing later on a missing attribute.
+    """
+
+    def __init__(self, selected: str, mixin: str, setting: str) -> None:
+        self.selected = selected
+        self.mixin = mixin
+        self.setting = setting
+        super().__init__(
+            f"{setting} enables {selected!r}, but this service's settings do not "
+            f"carry it. Add {mixin} to the settings class, or drop {selected!r} "
+            f"from {setting}."
+        )
+
+
 class UnsupportedBackendError(MissingExtraError):
     """Raised when configuration selects a backend this build cannot run.
 

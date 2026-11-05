@@ -22,6 +22,13 @@ from base.services.configuration.mixins.llm import LLMSettingsMixin
 from base.services.configuration.mixins.mongo import MongoSettingsMixin
 from base.services.configuration.mixins.mysql import MySQLSettingsMixin
 from base.services.configuration.mixins.oauth import OAuthSettingsMixin
+from base.services.configuration.mixins.oauth.apple import AppleOAuthSettingsMixin
+from base.services.configuration.mixins.oauth.facebook import FacebookOAuthSettingsMixin
+from base.services.configuration.mixins.oauth.github import GitHubOAuthSettingsMixin
+from base.services.configuration.mixins.oauth.google import GoogleOAuthSettingsMixin
+from base.services.configuration.mixins.oauth.microsoft import (
+    MicrosoftOAuthSettingsMixin,
+)
 from base.services.configuration.mixins.openai import (
     OpenAIEmbeddingSettingsMixin,
     OpenAILLMSettingsMixin,
@@ -37,29 +44,34 @@ from base.services.configuration.mixins.token_issuing import TokenIssuingMixin
 from base.services.configuration.mixins.token_verification import TokenVerificationMixin
 
 __all__ = [
-    "CohereSettingsMixin",
-    "RerankSettingsMixin",
-    "AzureSearchSettingsMixin",
-    "AzureBlobSettingsMixin",
-    "BrokerSettingsMixin",
-    "CosmosSettingsMixin",
-    "CredentialsSettingsMixin",
-    "IdpResourceServerMixin",
-    "KeyVaultSettingsMixin",
     "AnthropicSettingsMixin",
+    "AppleOAuthSettingsMixin",
+    "AzureBlobSettingsMixin",
     "AzureOpenAIEmbeddingSettingsMixin",
     "AzureOpenAILLMSettingsMixin",
     "AzureOpenAISettingsMixin",
+    "AzureSearchSettingsMixin",
+    "BrokerSettingsMixin",
+    "CohereSettingsMixin",
+    "CosmosSettingsMixin",
+    "CredentialsSettingsMixin",
+    "FacebookOAuthSettingsMixin",
+    "GitHubOAuthSettingsMixin",
+    "GoogleOAuthSettingsMixin",
+    "IdpResourceServerMixin",
+    "KeyVaultSettingsMixin",
     "LLMSettingsMixin",
-    "OpenAIEmbeddingSettingsMixin",
-    "OpenAILLMSettingsMixin",
+    "MicrosoftOAuthSettingsMixin",
     "MongoSettingsMixin",
     "MySQLSettingsMixin",
     "OAuthSettingsMixin",
+    "OpenAIEmbeddingSettingsMixin",
+    "OpenAILLMSettingsMixin",
     "PostgresSettingsMixin",
     "PromptSettingsMixin",
     "QdrantSettingsMixin",
     "RedisSettingsMixin",
+    "RerankSettingsMixin",
     "SQLSettingsMixin",
     "ServerSettingsMixin",
     "TokenIssuingMixin",
