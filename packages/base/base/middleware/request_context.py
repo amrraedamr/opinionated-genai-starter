@@ -4,7 +4,11 @@ from uuid import uuid4
 from fastapi import Request, Response
 
 from base.services.common.meta import Stored, scope_id
-from base.tools import correlation
+from base.tools.correlation import (
+    CORRELATION_HEADER,
+    TRACEPARENT_HEADER,
+    adopt_correlation_id,
+)
 
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -24,14 +28,14 @@ async def request_context(request: Request, call_next: CallNext) -> Response:
     """
     scope_id.set(uuid4())
     request_id = request.headers.get("X-Request-ID") or str(uuid4())
-    incoming = correlation.adopt(
-        request.headers.get(correlation.HEADER),
-        request.headers.get(correlation.TRACEPARENT),
+    incoming = adopt_correlation_id(
+        request.headers.get(CORRELATION_HEADER),
+        request.headers.get(TRACEPARENT_HEADER),
     )
     response: Response | None = None
     try:
         response = await call_next(request)
-        response.headers[correlation.HEADER] = str(incoming)
+        response.headers[CORRELATION_HEADER] = str(incoming)
         response.headers["X-Request-ID"] = request_id
         for header, value in SECURITY_HEADERS.items():
             response.headers.setdefault(header, value)

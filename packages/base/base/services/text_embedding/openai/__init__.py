@@ -19,7 +19,7 @@ from base.services.error_handling.embedding.openai import (
     OpenAIEmbeddingErrorHandler,
 )
 from base.services.text_embedding import AbstractTextEmbeddingService
-from base.tools import openai_clients
+from base.tools.openai_clients import create_openai_clients
 
 
 class OpenAIEmbeddingService(AbstractTextEmbeddingService, metaclass=KeyedSingletonABC):
@@ -64,7 +64,7 @@ class OpenAIEmbeddingService(AbstractTextEmbeddingService, metaclass=KeyedSingle
         return "openai"
 
     def _initialize_clients(self) -> tuple[OpenAI, AsyncOpenAI]:
-        return openai_clients.create_clients(
+        return create_openai_clients(
             api_key=self._config.api_key,
             api_host=self._config.api_host,
             api_type=self._config.api_type,

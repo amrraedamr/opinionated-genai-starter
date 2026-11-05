@@ -6,7 +6,7 @@ from base.models.definitions.errors import DatabaseErrors
 from base.services.common.meta import SingletonABC
 from base.services.messaging import add_event
 from base.services.store.sql import SQLStore
-from base.tools import correlation
+from base.tools.correlation import current_correlation_id
 from base.tools.errors import raise_error
 from contracts.events import Event
 from contracts.v1.identity import USER_REGISTERED, UserRegistered
@@ -34,7 +34,7 @@ class UserStore(SQLStore[UserDTO], metaclass=SingletonABC):
                         registered_at=user.created_at,
                     ),
                     producer="identity",
-                    correlation_id=correlation.current(),
+                    correlation_id=current_correlation_id(),
                 )
                 add_event(session, OutboxEventDTO, event)
                 await session.flush()

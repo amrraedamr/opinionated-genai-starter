@@ -21,8 +21,8 @@ from base.models.view_models.database import (
     SortingOrder,
     SortingParams,
 )
-from base.tools import pagination
 from base.tools.errors import ServiceHealthCheckError
+from base.tools.pagination import apaginate, paginate
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -218,7 +218,7 @@ class AbstractSQLService(ABC):
             )
             return self._extract_paginated_data(rows, return_all, has_subquery)
 
-        return pagination.paginate(total, page_params, fetch)
+        return paginate(total, page_params, fetch)
 
     async def apaginate(
         self,
@@ -240,7 +240,7 @@ class AbstractSQLService(ABC):
             )
             return self._extract_paginated_data(rows, return_all, has_subquery)
 
-        return await pagination.apaginate(total, page_params, afetch)
+        return await apaginate(total, page_params, afetch)
 
     @staticmethod
     def _extract_paginated_data(

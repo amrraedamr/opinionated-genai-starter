@@ -7,7 +7,7 @@ from base.models.view_models.database import FilteredPaginationParams, Paginated
 from base.services.common.meta import SingletonABC
 from base.services.messaging import add_event
 from base.services.store.sql import SQLStore
-from base.tools import correlation
+from base.tools.correlation import current_correlation_id
 from base.tools.database import SQLResultFormats
 from chat_api.models.orm.chat_history_message import ChatHistoryMessageDTO
 from chat_api.models.orm.conversation import ConversationDTO
@@ -187,7 +187,7 @@ class ConversationStore(SQLStore[ConversationDTO], metaclass=SingletonABC):
                     created_at=entity.created_at,
                 ),
                 producer="chat_api",
-                correlation_id=correlation.current(),
+                correlation_id=current_correlation_id(),
             )
             add_event(session, OutboxEventDTO, event)
             await session.flush()

@@ -37,7 +37,7 @@ def resolve_base_url(api_host: str | None, api_type: ProviderType) -> str | None
     return f"{base_url}/"
 
 
-def create_clients(
+def create_openai_clients(
     api_key: str | None,
     api_host: str | None,
     api_type: ProviderType,

@@ -87,7 +87,7 @@ from base.services.llm.openai.adapter import OpenAIMessageAdapter
 from base.services.logging.console import ConsoleLoggerService
 from base.services.tool_calling import Tool
 from base.services.usage import UsageTracker
-from base.tools import openai_clients
+from base.tools.openai_clients import create_openai_clients
 from base.tools.stream import StreamIterator
 
 _FINISH_REASON_MAP: dict[str, FinishReason] = {
@@ -198,7 +198,7 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
             )
 
     def _initialize_clients(self) -> tuple[OpenAI, AsyncOpenAI]:
-        return openai_clients.create_clients(
+        return create_openai_clients(
             api_key=self._config.api_key,
             api_host=self._config.api_host,
             api_type=self._config.api_type,
