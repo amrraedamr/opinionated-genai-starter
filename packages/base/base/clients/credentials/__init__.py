@@ -7,32 +7,11 @@ mints and caches a token for the service itself.
 """
 
 from collections.abc import AsyncGenerator, Generator
-from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
+from base.clients.credentials.protocol import OutboundAuth, TokenProvider
 from base.models.view_models.tokens import AccessToken
-
-
-@runtime_checkable
-class TokenProvider(Protocol):
-    """Hands out a currently valid outbound token, refreshing as needed."""
-
-    async def aget_token(self) -> AccessToken: ...
-
-
-@runtime_checkable
-class OutboundAuth(Protocol):
-    """Anything that can sign an outgoing request.
-
-    Structural on purpose. The OpenAI SDK ships on `httpx` and the Anthropic
-    SDK on `httpx2`, whose `Auth` types are unrelated and reject each other, so
-    naming either here would tie this module to one provider's dependency.
-    """
-
-    def sync_auth_flow(self, request: Any) -> Any: ...
-
-    def async_auth_flow(self, request: Any) -> Any: ...
 
 
 class StaticTokenProvider:
