@@ -41,12 +41,27 @@ _UNAUTHORIZED_CODES: frozenset[int] = frozenset({13, 18, 8000})
 """Mongo reports a rejected credential as an `OperationFailure` carrying a
 code: Unauthorized, AuthenticationFailed, and Atlas's own variant."""
 
+_RETRYABLE_CODES: frozenset[int] = frozenset({6, 7, 89, 134, 262, 9001})
+"""Codes the driver retries that reach us as a bare `OperationFailure`.
+
+HostUnreachable, HostNotFound, NetworkTimeout, ExceededTimeLimit,
+SocketException, and a read concern whose majority has not caught up yet. The
+driver raises a `ConnectionFailure` subclass for the rest of its retryable
+set, so only these need the code to be read; without it they land among the
+commands the server refused and are answered once instead of again.
+
+They read as `SERVER` because the server or the path to it is what failed,
+not the command.
+"""
+
 _FAILURE_MAP: dict[type[PyMongoError], FailureKind] = {
     # Order matters only for readability; the MRO walk resolves the subclass.
     NetworkTimeout: FailureKind.TIMEOUT,
     ServerSelectionTimeoutError: FailureKind.TIMEOUT,
     WaitQueueTimeoutError: FailureKind.TIMEOUT,
-    ExecutionTimeout: FailureKind.TIMEOUT,
+    # Alone among the timeouts, this one is the caller's own `maxTimeMS` spent
+    # rather than the transport giving up, so it is the request that failed.
+    ExecutionTimeout: FailureKind.BAD_REQUEST,
     DuplicateKeyError: FailureKind.CONFLICT,
     NotPrimaryError: FailureKind.CONNECTION,
     AutoReconnect: FailureKind.CONNECTION,
@@ -79,14 +94,23 @@ class MongoErrorHandler(AbstractErrorHandler[PyMongoError]):
         return PyMongoError
 
     def failure_kind(self, error: PyMongoError) -> FailureKind:
-        """Walks the MRO so a subclass resolves like its parent."""
+        """Resolves on the exception type first, then on the server's own code.
+
+        The type carries the verdict for anything the driver raised itself,
+        which is why it is read first. What the server refused arrives as one
+        `OperationFailure` whatever the reason, so the code is the only thing
+        separating a credential it rejected, or a host it could not reach,
+        from a command it genuinely would not run.
+        """
         for cls in type(error).__mro__:
             if cls in _FAILURE_MAP:
                 return _FAILURE_MAP[cls]
         if isinstance(error, OperationFailure):
-            # Everything else the server refused is the caller's fault.
             if error.code in _UNAUTHORIZED_CODES:
                 return FailureKind.AUTH
+            if error.code in _RETRYABLE_CODES:
+                return FailureKind.SERVER
+            # Everything else the server refused is the caller's fault.
             return FailureKind.BAD_REQUEST
         return FailureKind.UNKNOWN
 
