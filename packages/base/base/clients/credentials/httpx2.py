@@ -21,7 +21,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "anthropic", "httpx2", feature="httpx2 bearer auth"
     ) from exc
 
-from base.clients.credentials import TokenProvider
+from base.clients.credentials.protocol import TokenProvider
 
 
 class Httpx2BearerTokenAuth(httpx2.Auth):
