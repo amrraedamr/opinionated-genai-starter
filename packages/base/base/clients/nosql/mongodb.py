@@ -46,17 +46,25 @@ class MongoDBClient(metaclass=Singleton):
 
     @staticmethod
     def _build_connection_string() -> str:
+        """The URI, with credentials only when there are credentials.
+
+        A local MongoDB usually runs with authentication off, and the empty
+        `user:pass@` of an unconfigured one is not a URI the driver accepts,
+        so it is left out rather than spelled with empty strings.
+        """
         base_path: str = settings_for(SupportsMongoConfig).mongodb_base_path
         username: str = settings_for(SupportsMongoConfig).mongodb_username
         password: str = settings_for(SupportsMongoConfig).mongodb_password
         host: str = settings_for(SupportsMongoConfig).mongodb_host
         params: str = settings_for(SupportsMongoConfig).mongodb_params
 
-        return (
-            f"{base_path}://"
-            f"{urllib.parse.quote_plus(username)}:{urllib.parse.quote_plus(password)}"
-            f"@{host}/{params}"
+        credentials = (
+            f"{urllib.parse.quote_plus(username)}:"
+            f"{urllib.parse.quote_plus(password)}@"
+            if username or password
+            else ""
         )
+        return f"{base_path}://{credentials}{host}/{params}"
 
     def _get_common_kwargs(self) -> dict[str, Any]:
         return {
