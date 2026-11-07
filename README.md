@@ -36,7 +36,8 @@ services/
   identity/      users, registration, OAuth, token issuing      → identity_db
   chat_api/      conversations, messages, agents                → chat_api_db
   ingestion_worker/  consumes events, durable inbox               → worker_db
-tools/           scaffolder, boundary lint, affected detection, test runner
+tools/           scaffolder, boundary lint, affected detection
+tests/           unit, integration and live suites
 deploy/          compose stacks
 docker/          one parameterised image for every service
 ```

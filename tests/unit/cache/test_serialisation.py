@@ -1,0 +1,142 @@
+"""What survives a round trip through the cache, and what does not.
+
+Values go in through `serialize` and come back through `ExpansiveDecoder`, and
+the two are not inverses. Each case here states which of the two it is, so a
+change to either is visible rather than silent.
+"""
+
+import json
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+import pytest
+from pydantic import BaseModel
+
+from base.services.cache.memory import InMemoryCacheService
+
+
+class Payload(BaseModel):
+    name: str
+    count: int = 1
+
+
+async def test_a_datetime_returns_as_a_datetime(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    moment = datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
+    await memory_cache.aset("when", namespace, value=moment)
+    assert await memory_cache.aget("when", namespace) == moment
+
+
+async def test_a_uuid_returns_as_a_uuid(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    value = uuid4()
+    await memory_cache.aset("id", namespace, value=value)
+    assert await memory_cache.aget("id", namespace) == value
+
+
+async def test_a_datetime_nested_in_a_dict_returns_as_a_datetime(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    moment = datetime(2026, 3, 4, tzinfo=UTC)
+    await memory_cache.aset("nested", namespace, value={"at": moment, "n": 1})
+    assert await memory_cache.aget("nested", namespace) == {"at": moment, "n": 1}
+
+
+async def test_a_pydantic_model_returns_as_its_encoding_envelope(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    """Pins an asymmetry: `ExpansiveEncoder` writes `base_model`, nothing reads it.
+
+    `ExpansiveDecoder._decoders` registers `datetime`, `dto`, `app_model`,
+    `uuid` and `type` but not `base_model`, so a model stored here comes back
+    as the envelope the encoder wrote. `base/tools/deserializers.py:72`.
+    """
+    await memory_cache.aset("model", namespace, value=Payload(name="x", count=2))
+    assert await memory_cache.aget("model", namespace) == {
+        "_type": "base_model",
+        "_class": f"{Payload.__module__}.Payload",
+        "value": {"name": "x", "count": 2},
+    }
+
+
+async def test_a_value_the_encoder_cannot_reach_is_refused_on_write(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        await memory_cache.aset("bad", namespace, value={1, 2, 3})
+    assert await memory_cache.aget("bad", namespace) is None
+
+
+async def test_an_arbitrary_object_is_refused_on_write(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        await memory_cache.aset("bad", namespace, value=object())
+
+
+async def test_a_plain_string_cannot_be_read_back(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    """Pins a bug: `set` stores a string verbatim, `get` always JSON-decodes it.
+
+    `serialize` returns a `str` untouched rather than JSON-encoding it, while
+    `get` takes the `inspect.isclass(value_type)` branch for the default
+    `value_type=str` and calls `json.loads`. Anything that is not already
+    valid JSON raises. `base/tools/serializers.py:93`,
+    `base/services/cache/memory.py:72`.
+    """
+    await memory_cache.aset("greeting", namespace, value="hello")
+    with pytest.raises(json.JSONDecodeError):
+        await memory_cache.aget("greeting", namespace)
+
+
+async def test_a_string_that_is_valid_json_reads_back_as_the_decoded_type(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    await memory_cache.aset("numeric", namespace, value="123")
+    assert await memory_cache.aget("numeric", namespace) == 123
+
+
+async def test_a_non_class_value_type_is_applied_to_the_stored_text(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    """The only way to read a stored string back unchanged."""
+    await memory_cache.aset("greeting", namespace, value="hello")
+    assert (
+        await memory_cache.aget("greeting", namespace, value_type=str.upper) == "HELLO"
+    )
+
+
+async def test_a_class_value_type_is_ignored_in_favour_of_json_decoding(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    await memory_cache.aset("doc", namespace, value={"a": 1})
+    assert await memory_cache.aget("doc", namespace, value_type=int) == {"a": 1}
+
+
+async def test_unicode_and_emoji_survive_a_round_trip(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    value = {"greeting": "héllo wörld — 🎉🙂", "kanji": "日本語"}
+    await memory_cache.aset("i18n", namespace, value=value)
+    assert await memory_cache.aget("i18n", namespace) == value
+
+
+async def test_a_large_value_survives_a_round_trip(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    value = {"blob": "x" * 500_000, "items": list(range(5_000))}
+    await memory_cache.aset("big", namespace, value=value)
+    assert await memory_cache.aget("big", namespace) == value
+
+
+async def test_a_deeply_nested_structure_survives_a_round_trip(
+    memory_cache: InMemoryCacheService, namespace: UUID
+) -> None:
+    value: dict = {"level": 0}
+    for depth in range(1, 25):
+        value = {"level": depth, "child": value}
+    await memory_cache.aset("deep", namespace, value=value)
+    assert await memory_cache.aget("deep", namespace) == value

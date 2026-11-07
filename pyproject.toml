@@ -12,6 +12,9 @@ dev = [
     "pre-commit>=2.16.0",
     "pre-commit-hooks>=4.1.0",
     "ruff>=0.15.4,<0.16",
+    "pytest>=8.4.0,<9",
+    "pytest-asyncio>=1.0.0,<2",
+    "pytest-cov>=6.0.0,<8",
 ]
 
 [tool.ruff]
@@ -20,3 +23,15 @@ dev = [
 src = [".", "packages/base", "packages/contracts", "services/chat_api", "services/identity", "services/ingestion_worker"]
 lint.ignore = ["E501"]
 lint.extend-select = ["I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# Every async test gets its own loop, so a service cached as a singleton in one
+# test cannot hand a closed loop to the next.
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--strict-markers -q"
+markers = [
+    "integration: needs the containers in deploy/docker-compose.infra.yml",
+    "live: needs provider credentials in .env",
+]
