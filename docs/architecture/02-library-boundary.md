@@ -547,8 +547,13 @@ particular means the reply is truncated, which is worth branching on.
 `max_output_tokens` and `reasoning_effort` are neutral parameters on the seam. Each adapter
 spells them the way its provider wants: the Responses API takes `max_output_tokens` and a
 nested `reasoning` block, Chat Completions takes `max_completion_tokens` and a flat
-`reasoning_effort`, and Anthropic takes `max_tokens` with a thinking budget in tokens, as Gemini does
-through `thinking_config`.
+`reasoning_effort`, Anthropic takes an `output_config.effort` word, and Gemini takes a thinking
+budget in tokens through `thinking_config`.
+
+Anthropic used to take a budget too, and this library used to send one. Its newer models reject
+that spelling, so the effort word is what goes now — the two vocabularies happen to agree, so
+`ReasoningEffort` crosses unchanged and `NONE` becomes `thinking: {"type": "disabled"}`. A caller
+who still wants manual control passes `thinking` through kwargs, which the adapter leaves alone.
 `ModelConfigurations.supports_responses_api` picks the OpenAI surface, so a gateway that only
 serves Chat Completions needs no change at the call site.
 
@@ -614,8 +619,10 @@ field rather than a role, as Anthropic's are; and a tool result is matched to th
 answers by **function name** rather than by an id, so the id this library carries has to
 be resolved back to the name the model used before a result can be sent — and an id has
 to be invented for a call coming the other way, because Gemini sends none. Its structured
-output needs no such work: `response_schema` constrains decoding directly, where the
-Anthropic adapter forces a tool call and unwraps it.
+output needs no such work: `response_schema` constrains decoding directly, as Anthropic's
+`output_config.format` does. The Anthropic adapter used to offer the schema as a tool and
+require it be called, which was the documented approach before the API grew a format of its
+own, and which its newer models no longer accept.
 
 Its token accounting needed the same care Anthropic's did, in the opposite direction.
 Gemini reports `thoughts_token_count` alongside `candidates_token_count` rather than

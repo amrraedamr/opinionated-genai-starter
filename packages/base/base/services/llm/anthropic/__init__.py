@@ -79,14 +79,6 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
     DEFAULT_MAX_OUTPUT_TOKENS: int = 4096
     """Anthropic requires `max_tokens`, so a call that omits it gets this."""
 
-    DEFAULT_THINKING_BUDGETS: dict[ReasoningEffort, int] = {
-        ReasoningEffort.LOW: 1024,
-        ReasoningEffort.MEDIUM: 4096,
-        ReasoningEffort.HIGH: 16384,
-        ReasoningEffort.XHIGH: 32768,
-    }
-    """Anthropic budgets thinking in tokens where others take an effort label."""
-
     def __init__(
         self,
         config: ModelConfigurations | None = None,
@@ -394,14 +386,11 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         request = self._build_request(
             wire, system, max_output_tokens, reasoning_effort, **kwargs
         )
-        request["tools"] = [
-            {
-                "name": schema.__name__,
-                "description": f"Return the answer as {schema.__name__}.",
-                "input_schema": schema.model_json_schema(),
-            }
-        ]
-        request["tool_choice"] = {"type": "tool", "name": schema.__name__}
+        request["output_config"] = dict(request.get("output_config") or {})
+        request["output_config"]["format"] = {
+            "type": "json_schema",
+            "schema": schema.model_json_schema(),
+        }
         self._apply_cache_hint(
             request, cache_hint, prompt, messages=messages, schema=schema
         )
@@ -410,10 +399,16 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
     def _to_parsed_result[T: BaseModel](
         self, schema: type[T], message: Message
     ) -> ParsedResult[T]:
+        """Read the schema-constrained reply, which arrives as ordinary text.
+
+        Asking for a JSON output format constrains decoding, so the answer
+        comes back in a text block rather than as a tool call. Thinking, when
+        the model did any, arrives in its own block and is skipped here.
+        """
         for block in message.content:
-            if isinstance(block, ToolUseBlock) and block.name == schema.__name__:
+            if isinstance(block, TextBlock) and block.text.strip():
                 return ParsedResult[T](
-                    parsed=schema.model_validate(block.input),
+                    parsed=schema.model_validate_json(block.text),
                     usage=self._to_usage_counts(message),
                 )
         raise LLMError("Anthropic returned no structured output")
@@ -468,14 +463,20 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
             request["system"] = system
         if (
             reasoning_effort is not None
-            and reasoning_effort is not ReasoningEffort.NONE
             and "thinking" not in request
+            and "effort" not in request.get("output_config", {})
         ):
-            budget = self.DEFAULT_THINKING_BUDGETS.get(reasoning_effort)
-            if budget is not None:
-                # Thinking tokens come out of max_tokens, so the cap must clear it.
-                request["max_tokens"] = max(request["max_tokens"], budget + 1024)
-                request["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            # Anthropic now takes an effort word where it used to take a token
+            # budget, and the newer models reject the budget outright. The two
+            # vocabularies happen to agree, so the neutral value goes straight
+            # across; a caller wanting the old manual control can still pass
+            # `thinking` through kwargs, which is left alone here.
+            if reasoning_effort is ReasoningEffort.NONE:
+                request["thinking"] = {"type": "disabled"}
+            else:
+                request.setdefault("output_config", {})["effort"] = (
+                    reasoning_effort.value
+                )
         return request
 
     def _stream(
