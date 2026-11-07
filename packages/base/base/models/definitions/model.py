@@ -13,6 +13,18 @@ class ProviderType(StrEnum):
     LITELLM = "litellm"
 
 
+class CachePersistence(StrEnum):
+    """How long a provider should hold a cached prompt prefix.
+
+    Two levels because two is what the providers offering a choice expose:
+    Anthropic reads them as five minutes or an hour, OpenAI as its in-memory
+    tier or a day. Naming the durations here would pick one of those.
+    """
+
+    SHORT = "short"
+    LONG = "long"
+
+
 class ReasoningEffort(StrEnum):
     NONE = "none"
     LOW = "low"

@@ -1,4 +1,4 @@
-from base.models.definitions.model import ProviderType
+from base.models.definitions.model import CachePersistence, ProviderType
 from base.models.view_models import BaseModel
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import (
@@ -9,6 +9,31 @@ from base.services.configuration.protocols import (
     SupportsOpenAIEmbeddingConfig,
     SupportsOpenAILLMConfig,
 )
+
+
+class CacheHint(BaseModel):
+    """Says a prompt's instructions and tools are worth caching.
+
+    The hint marks the head of the prompt, which is the part that repeats:
+    the same instructions and the same tools go out on every call of a
+    conversation, while the messages after them never repeat. Where the
+    boundary falls is the only thing a caller has to decide, because it is
+    the only thing the providers agree on.
+
+    What each does with it differs. Anthropic caches nothing unless a request
+    marks where, so the hint becomes that mark. OpenAI and Gemini cache a
+    repeated prefix on their own, so the hint cannot turn caching on; it can
+    only improve the odds, which OpenAI exposes as a key that routes calls
+    sharing a prefix together, and Gemini does not expose at all.
+    """
+
+    persistence: CachePersistence = CachePersistence.SHORT
+    key: str | None = None
+    """Groups calls sharing this head, for providers that route on one.
+
+    Derived from the head itself when unset, which is usually what is wanted:
+    two calls cache together exactly when their heads match.
+    """
 
 
 class ModelConfigurations(BaseModel):

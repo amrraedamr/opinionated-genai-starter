@@ -38,7 +38,9 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("openai", "openai", feature="OpenAIService") from exc
 
+from base.models.definitions.message import MessageRole
 from base.models.definitions.model import (
+    CachePersistence,
     FinishReason,
     ProviderType,
     ReasoningEffort,
@@ -61,7 +63,7 @@ from base.models.view_models.llm_result import (
     LLMUsageCounts,
     ParsedResult,
 )
-from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.model import CacheHint, ModelConfigurations
 from base.models.view_models.openai_results import (
     CompletionResult,
     LLMPrompt,
@@ -87,6 +89,7 @@ from base.services.llm.openai.adapter import OpenAIMessageAdapter
 from base.services.logging.console import ConsoleLoggerService
 from base.services.tool_calling import Tool
 from base.services.usage import UsageTracker
+from base.tools.hashing import hash_args
 from base.tools.openai_clients import create_openai_clients
 from base.tools.stream import StreamIterator
 
@@ -97,6 +100,12 @@ _FINISH_REASON_MAP: dict[str, FinishReason] = {
     "length": FinishReason.LENGTH,
     "content_filter": FinishReason.CONTENT_FILTER,
 }
+
+_CACHE_RETENTION_MAP: dict[CachePersistence, str] = {
+    CachePersistence.SHORT: "in_memory",
+    CachePersistence.LONG: "24h",
+}
+"""OpenAI spells the two persistence levels as storage tiers."""
 
 
 class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
@@ -1014,6 +1023,69 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
             else:
                 kwargs.setdefault("reasoning_effort", reasoning_effort)
 
+    def _apply_cache_hint(
+        self,
+        request: dict[str, Any],
+        cache_hint: CacheHint | None,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None = None,
+        tools: Sequence[Tool[Any]] | None = None,
+        schema: type[BaseModel] | None = None,
+    ) -> None:
+        """Ask for the head to be cached, in the only terms OpenAI offers.
+
+        OpenAI caches a repeated prefix whether or not it is asked to, so
+        there is no breakpoint to place. What a key buys is routing: calls
+        carrying the same one are sent where that prefix is already warm,
+        which is the difference between a cache that could hit and one that
+        does.
+        """
+        if cache_hint is None:
+            return
+        request.setdefault(
+            "prompt_cache_key",
+            cache_hint.key
+            or self._head_fingerprint(prompt, tools, schema, messages),
+        )
+        request.setdefault(
+            "prompt_cache_retention", _CACHE_RETENTION_MAP[cache_hint.persistence]
+        )
+
+    @staticmethod
+    def _head_fingerprint(
+        prompt: RenderedPrompt | None,
+        tools: Sequence[Tool[Any]] | None,
+        schema: type[BaseModel] | None = None,
+        messages: Sequence[StoredMessage] | None = None,
+    ) -> str:
+        """Names the head, so calls repeating it agree on one key.
+
+        Taken from what the caller wrote rather than from the wire form, so
+        the two surfaces this service can speak derive the same key from the
+        same instructions and tools. Order is part of it because order is
+        part of the prefix the provider sees. A parse call carries no tools
+        but does carry a schema, which shapes the request the same way and so
+        counts the same.
+
+        Instructions can arrive as stored messages rather than on the prompt,
+        and those count too. What stays out is the conversation itself, which
+        grows every turn: keying on that would hand each turn a key of its
+        own and leave every prefix cold.
+        """
+        instructions = [item.content for item in prompt.instructions] if prompt else []
+        instructions += [
+            message.content or ""
+            for message in messages or ()
+            if message.role in (MessageRole.SYSTEM, MessageRole.DEVELOPER)
+        ]
+        schemas = (
+            [(tool.name, tool.description, tool.json_schema) for tool in tools]
+            if tools
+            else []
+        )
+        target = schema.model_json_schema() if schema is not None else None
+        return hash_args(instructions, schemas, target)[:32]
+
     def _to_llm_result(self, result: ResponseResult | CompletionResult) -> LLMResult:
         """Flatten either wire result into the neutral one."""
         tool_calls = result.tool_calls
@@ -1068,11 +1140,13 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs,
     ) -> LLMResult:
         self._reject_sync_call()
         stored = list(messages) if messages else None
         self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+        self._apply_cache_hint(kwargs, cache_hint, prompt, messages=stored, tools=tools)
 
         if self._supports_responses_api:
             if tools:
@@ -1106,10 +1180,12 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs,
     ) -> LLMResult:
         stored = list(messages) if messages else None
         self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+        self._apply_cache_hint(kwargs, cache_hint, prompt, messages=stored, tools=tools)
 
         if self._supports_responses_api:
             if tools:
@@ -1142,11 +1218,13 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs,
     ) -> ParsedResult[T]:
         self._reject_sync_call()
         stored = list(messages) if messages else None
         self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+        self._apply_cache_hint(kwargs, cache_hint, prompt, messages=stored, schema=schema)
 
         parsed: ParsedResponseResult[T] | ParsedCompletionResult[T]
         if self._supports_responses_api:
@@ -1179,10 +1257,12 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs,
     ) -> ParsedResult[T]:
         stored = list(messages) if messages else None
         self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
+        self._apply_cache_hint(kwargs, cache_hint, prompt, messages=stored, schema=schema)
 
         parsed: ParsedResponseResult[T] | ParsedCompletionResult[T]
         if self._supports_responses_api:

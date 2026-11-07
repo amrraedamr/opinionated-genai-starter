@@ -19,6 +19,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.clients.credentials import OutboundAuth
 from base.models.definitions.model import (
+    CachePersistence,
     FinishReason,
     ProviderType,
     ReasoningEffort,
@@ -37,7 +38,7 @@ from base.models.view_models.exceptions.llm import (
     LLMStreamError,
 )
 from base.models.view_models.llm_result import LLMResult, LLMUsageCounts, ParsedResult
-from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.model import CacheHint, ModelConfigurations
 from base.models.view_models.prompt import RenderedPrompt
 from base.models.view_models.streams import (
     StreamEnd,
@@ -64,6 +65,12 @@ _FINISH_REASON_MAP: dict[str, FinishReason] = {
     "max_tokens": FinishReason.LENGTH,
     "refusal": FinishReason.CONTENT_FILTER,
 }
+
+_CACHE_TTL_MAP: dict[CachePersistence, str] = {
+    CachePersistence.SHORT: "5m",
+    CachePersistence.LONG: "1h",
+}
+"""Anthropic spells the two persistence levels as durations."""
 
 
 class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
@@ -167,11 +174,18 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> LLMResult:
         self._reject_sync_call()
         wire, request = self._prepare_completion(
-            prompt, messages, tools, max_output_tokens, reasoning_effort, **kwargs
+            prompt,
+            messages,
+            tools,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -208,10 +222,17 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> LLMResult:
         wire, request = self._prepare_completion(
-            prompt, messages, tools, max_output_tokens, reasoning_effort, **kwargs
+            prompt,
+            messages,
+            tools,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -247,6 +268,7 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> ParsedResult[T]:
         """Anthropic has no structured-output mode, so this forces a tool call.
@@ -256,7 +278,13 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         """
         self._reject_sync_call()
         wire, request = self._prepare_parse(
-            schema, prompt, messages, max_output_tokens, reasoning_effort, **kwargs
+            schema,
+            prompt,
+            messages,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -287,6 +315,7 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> ParsedResult[T]:
         """Anthropic has no structured-output mode, so this forces a tool call.
@@ -295,7 +324,13 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         is the documented way to get a guaranteed shape back.
         """
         wire, request = self._prepare_parse(
-            schema, prompt, messages, max_output_tokens, reasoning_effort, **kwargs
+            schema,
+            prompt,
+            messages,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -327,6 +362,7 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         tools: Sequence[Tool[Any]] | None,
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         wire, system = AnthropicMessageAdapter.to_messages(
@@ -337,6 +373,9 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         )
         if tools:
             request["tools"] = AnthropicMessageAdapter.to_tools(tools)
+        self._apply_cache_hint(
+            request, cache_hint, prompt, messages=messages, tools=tools
+        )
         return wire, request
 
     def _prepare_parse[T: BaseModel](
@@ -346,6 +385,7 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         messages: Sequence[StoredMessage] | None,
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         wire, system = AnthropicMessageAdapter.to_messages(
@@ -362,6 +402,9 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
             }
         ]
         request["tool_choice"] = {"type": "tool", "name": schema.__name__}
+        self._apply_cache_hint(
+            request, cache_hint, prompt, messages=messages, schema=schema
+        )
         return wire, request
 
     def _to_parsed_result[T: BaseModel](
@@ -374,6 +417,38 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
                     usage=self._to_usage_counts(message),
                 )
         raise LLMError("Anthropic returned no structured output")
+
+    def _apply_cache_hint(
+        self,
+        request: dict[str, Any],
+        cache_hint: CacheHint | None,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None = None,
+        tools: Sequence[Tool[Any]] | None = None,
+        schema: type[BaseModel] | None = None,
+    ) -> None:
+        """Mark where the cached prefix ends, which is all Anthropic needs.
+
+        Anthropic caches nothing unless a request says where to stop, and the
+        prefix runs tools first and then the system block. One mark on the
+        system text therefore covers both, and the conversation after it stays
+        outside. With no instructions to mark, the tools are the whole of what
+        can be cached and the last of them carries it instead.
+
+        The mark is added to the text rather than replacing it: a hinted call
+        has to match the unhinted ones before it, which it cannot do if asking
+        to cache rewrites the thing being cached.
+        """
+        if cache_hint is None:
+            return
+        control = {"type": "ephemeral", "ttl": _CACHE_TTL_MAP[cache_hint.persistence]}
+        system = request.get("system")
+        if isinstance(system, str):
+            request["system"] = [
+                {"type": "text", "text": system, "cache_control": control}
+            ]
+        elif request.get("tools"):
+            request["tools"][-1]["cache_control"] = control
 
     def _build_request(
         self,

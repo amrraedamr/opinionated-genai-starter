@@ -29,7 +29,7 @@ from base.models.view_models.exceptions.llm import (
     LLMStreamError,
 )
 from base.models.view_models.llm_result import LLMResult, LLMUsageCounts, ParsedResult
-from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.model import CacheHint, ModelConfigurations
 from base.models.view_models.prompt import RenderedPrompt
 from base.models.view_models.streams import (
     StreamEnd,
@@ -140,10 +140,17 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> LLMResult:
         wire, request = self._prepare_completion(
-            prompt, messages, tools, max_output_tokens, reasoning_effort, **kwargs
+            prompt,
+            messages,
+            tools,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -180,10 +187,17 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> LLMResult:
         wire, request = self._prepare_completion(
-            prompt, messages, tools, max_output_tokens, reasoning_effort, **kwargs
+            prompt,
+            messages,
+            tools,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -221,10 +235,17 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> ParsedResult[T]:
         wire, request = self._prepare_parse(
-            schema, prompt, messages, max_output_tokens, reasoning_effort, **kwargs
+            schema,
+            prompt,
+            messages,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -257,10 +278,17 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
         label: str | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> ParsedResult[T]:
         wire, request = self._prepare_parse(
-            schema, prompt, messages, max_output_tokens, reasoning_effort, **kwargs
+            schema,
+            prompt,
+            messages,
+            max_output_tokens,
+            reasoning_effort,
+            cache_hint,
+            **kwargs,
         )
 
         t0 = time.perf_counter()
@@ -294,6 +322,7 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         tools: Sequence[Tool[Any]] | None,
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         wire, system = GeminiContentAdapter.to_contents(
@@ -304,6 +333,9 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         )
         if tools:
             config["tools"] = GeminiContentAdapter.to_tools(tools)
+        self._apply_cache_hint(
+            config, cache_hint, prompt, messages=messages, tools=tools
+        )
         return wire, {"model": self._model, "contents": wire, "config": config}
 
     def _prepare_parse[T: BaseModel](
@@ -313,6 +345,7 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         messages: Sequence[StoredMessage] | None,
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
+        cache_hint: CacheHint | None,
         **kwargs: Any,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         """Structured output is a response schema rather than a forced tool.
@@ -330,7 +363,38 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         config["response_schema"] = GeminiContentAdapter.to_schema(
             schema.model_json_schema()
         )
+        self._apply_cache_hint(
+            config, cache_hint, prompt, messages=messages, schema=schema
+        )
         return wire, {"model": self._model, "contents": wire, "config": config}
+
+    def _apply_cache_hint(
+        self,
+        request: dict[str, Any],
+        cache_hint: CacheHint | None,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None = None,
+        tools: Sequence[Tool[Any]] | None = None,
+        schema: type[BaseModel] | None = None,
+    ) -> None:
+        """Nothing to send: Gemini has no per-request cache control.
+
+        It caches a repeated prefix by itself on 2.5 and later, so there is
+        nothing to switch on, and it offers no routing key to raise the odds
+        with. Its other caching is a `CachedContent` resource with a create,
+        a TTL, a storage charge and a delete, which needs an owner that can
+        decide when it dies rather than a hint attached to one call.
+
+        A caller holding such a resource already has a way through, since
+        `**kwargs` reaches the config unaltered:
+
+            await service.acomplete(
+                prompt=prompt, cached_content="cachedContents/abc123"
+            )
+
+        Either way a cache read is reported as `cached_input_tokens`, so the
+        saving is visible whether or not anything was asked for.
+        """
 
     def _build_config(
         self,

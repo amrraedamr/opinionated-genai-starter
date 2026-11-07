@@ -552,6 +552,44 @@ through `thinking_config`.
 `ModelConfigurations.supports_responses_api` picks the OpenAI surface, so a gateway that only
 serves Chat Completions needs no change at the call site.
 
+`cache_hint` is the third neutral parameter, and the one where the providers disagree about
+more than spelling. Caching a prompt's head is worth real money on a long system prompt, but
+only Anthropic requires being asked: it caches nothing unless a request marks where the
+cacheable part ends, so the hint becomes a `cache_control` breakpoint on the system block, or
+on the last tool when there are no instructions to mark. OpenAI and Gemini cache a repeated
+prefix on their own, so a hint cannot switch caching on there. It can still help OpenAI,
+which exposes `prompt_cache_key` to route calls sharing a prefix to where that prefix is
+already warm, and `prompt_cache_retention` for how long to hold it. It helps Gemini not at
+all.
+
+Because those three answers differ so much, `_apply_cache_hint` is an abstract method rather
+than something each adapter happens to do. It takes the request the adapter is about to send
+plus the head itself, and every provider implements it — including the one with nothing to
+send. Gemini's implementation is empty on purpose and says why, which is the difference
+between a provider that has decided and one that forgot: a new adapter cannot be constructed
+without answering the question. A caller who does own a Gemini `CachedContent` resource still
+has a way through, because `**kwargs` reaches the config unaltered:
+
+```python
+await service.acomplete(prompt=prompt, cached_content="cachedContents/abc123")
+```
+
+`CachePersistence` has two levels because two is what the providers offering a choice expose:
+`SHORT` and `LONG` become `5m`/`1h` on Anthropic and `in_memory`/`24h` on OpenAI. Naming the
+durations in the neutral enum would have picked one provider's units.
+
+Gemini's other caching is a `CachedContent` resource with a create, a TTL, a storage charge
+and a delete. That is a different feature from a hint — it needs an owner that can decide when
+the cache dies — so the seam does not pretend to cover it.
+
+What actually decides whether any of this pays off is narrower than the marker: **the head has
+to serialise to the same bytes as last time**. A provider matches a prefix literally, so a set
+iterated in a new order or a timestamp in a system prompt costs the whole discount while
+leaving every request looking correct. The only symptom is a bill that does not fall, which is
+why `_head_fingerprint` is derived from what the caller wrote rather than from the wire form,
+and why the hint never rewrites the text it marks: the first hinted call has to match the
+unhinted ones before it.
+
 ### Where the LLM code lives
 
 `AuthenticatedLLM` installs whichever service `service_type` names, defaulting to
