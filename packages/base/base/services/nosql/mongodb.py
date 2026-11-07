@@ -38,7 +38,6 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         super().__init__()
         self._client: MongoDBClient = MongoDBClient()
         self._database_name: str = get_settings().mongodb_database
-        self._vector_size: int = get_settings().azure_openai_embedding_dimensions
         self._error_handler: MongoErrorHandler = MongoErrorHandler()
 
     def _get_database(self) -> Database[dict[str, Any]]:
@@ -387,9 +386,17 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     def create_collection_vector_index(
         self,
         collection: str,
+        dimensions: int,
         filter_fields: list[dict[str, str]] | None = None,
     ) -> None:
-        """Idempotently ensure the Atlas Search vector index exists with
+        """Build the Atlas vector index for vectors of `dimensions` width.
+
+        The width is the caller's to state: it belongs to whichever embedding
+        model produced the vectors, and a document store has no way to know
+        which one that was. `AbstractTextEmbeddingService.dimensions` is what
+        a caller usually passes.
+
+        Idempotently ensure the Atlas Search vector index exists with
         the given definition.
 
         Strategy:
@@ -407,7 +414,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             {
                 "type": "vector",
                 "path": "embedding",
-                "numDimensions": self._vector_size,
+                "numDimensions": dimensions,
                 "similarity": "cosine",
             }
         ]
@@ -440,6 +447,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
     async def acreate_collection_vector_index(
         self,
         collection: str,
+        dimensions: int,
         filter_fields: list[dict[str, str]] | None = None,
     ) -> None:
         """Async sibling of :meth:`create_collection_vector_index`."""
@@ -447,7 +455,7 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
             {
                 "type": "vector",
                 "path": "embedding",
-                "numDimensions": self._vector_size,
+                "numDimensions": dimensions,
                 "similarity": "cosine",
             }
         ]

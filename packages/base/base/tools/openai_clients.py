@@ -1,5 +1,7 @@
 """Construction of OpenAI-compatible clients, shared by every OpenAI-backed service."""
 
+from urllib.parse import urlsplit
+
 from httpx import Auth, Timeout
 
 from base.models.definitions.model import ProviderType
@@ -17,12 +19,27 @@ DEFAULT_TIMEOUT_CONNECT: float = 5.0
 UNUSED_API_KEY: str = "unused"
 """Satisfies the SDK's api_key requirement when `auth` supplies credentials."""
 
+AZURE_OPENAI_HOST_SUFFIXES: tuple[str, ...] = (
+    ".openai.azure.com",
+    ".cognitiveservices.azure.com",
+    ".services.ai.azure.com",
+)
+"""Hosts Azure itself serves, which reach the models under `/openai/v1`."""
+
 
 def resolve_base_url(api_host: str | None, api_type: ProviderType) -> str | None:
     """Normalize a configured host to the base URL the OpenAI SDK expects.
 
-    Azure OpenAI is only reachable through its `/openai/v1` surface, so a host
-    that omits it is completed here rather than in every caller's config.
+    Azure serves its models under `/openai/v1`, and a configured host that
+    names an Azure endpoint usually stops at the hostname, so the path is
+    completed here rather than in every caller's config.
+
+    That completion applies only to hosts Azure itself serves. A gateway or
+    proxy carrying Azure models publishes whatever path it likes, commonly
+    the plain `/v1` every OpenAI-compatible server uses, and appending to it
+    turns a working URL into one that answers 401. Anything that is not an
+    Azure hostname is therefore sent exactly as configured, including a
+    private endpoint behind a custom domain, which has to name its own path.
     """
     base_url = api_host or None
     if api_type != ProviderType.AZURE_OPENAI:
@@ -30,6 +47,10 @@ def resolve_base_url(api_host: str | None, api_type: ProviderType) -> str | None
 
     if not base_url:
         raise ProviderConfigError("api_host is required for Azure OpenAI")
+
+    host = (urlsplit(base_url).hostname or "").lower()
+    if not host.endswith(AZURE_OPENAI_HOST_SUFFIXES):
+        return base_url
 
     base_url = base_url.rstrip("/")
     if not base_url.endswith("/openai/v1"):
