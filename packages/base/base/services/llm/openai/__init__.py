@@ -129,12 +129,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     DEFAULT_TIMEOUT_TOTAL: float = 60.0
     DEFAULT_TIMEOUT_CONNECT: float = 5.0
 
-    DEFAULT_TEMPERATURE: float = 0.3
-    """Sampling temperature applied to every LLM call by default. Kept low
-    (but non-zero) so routing / extraction stages are stable across runs
-    while still allowing the answer agents some freedom to phrase
-    naturally. Per-call overrides via ``temperature=`` kwarg still win."""
-
     def __init__(
         self,
         config: ModelConfigurations | None = None,
@@ -182,15 +176,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         all subsequent requests.
         """
         return ExecutionContext()
-
-    def _apply_kwarg_defaults(self, kwargs: dict[str, object]) -> None:
-        """Inject service-wide kwarg defaults into a public-method's
-        ``**kwargs`` dict before it's forwarded to the OpenAI SDK.
-
-        Uses ``setdefault`` semantics so per-call overrides win.
-        Today: only ``temperature``.
-        """
-        kwargs.setdefault("temperature", self.DEFAULT_TEMPERATURE)
 
     def _reject_sync_call(self) -> None:
         """Refuse a sync call when credentials are acquired asynchronously.
@@ -251,7 +236,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         self._reject_sync_call()
         streaming: bool = bool(stream_iterator)
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: CompletionResult | None = None
@@ -303,7 +287,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     ) -> CompletionResult:
         streaming: bool = bool(stream_iterator)
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: CompletionResult | None = None
@@ -442,7 +425,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         self._reject_sync_call()
         streaming: bool = bool(stream_iterator)
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: ResponseResult | None = None
@@ -486,7 +468,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     ) -> ResponseResult:
         streaming: bool = bool(stream_iterator)
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: ResponseResult | None = None
@@ -694,7 +675,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     ) -> ParsedCompletionResult[T]:
         self._reject_sync_call()
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: ParsedCompletionResult[T] | None = None
@@ -744,7 +724,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         **kwargs,
     ) -> ParsedCompletionResult[T]:
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: ParsedCompletionResult[T] | None = None
@@ -799,7 +778,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     ) -> ParsedResponseResult[T]:
         self._reject_sync_call()
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: ParsedResponseResult[T] | None = None
@@ -849,7 +827,6 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         **kwargs,
     ) -> ParsedResponseResult[T]:
         label: str | None = kwargs.pop("label", None)
-        self._apply_kwarg_defaults(kwargs)
 
         t0 = time.perf_counter()
         result: ParsedResponseResult[T] | None = None

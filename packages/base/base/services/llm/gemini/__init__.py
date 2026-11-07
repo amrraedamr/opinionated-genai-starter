@@ -77,6 +77,7 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         ReasoningEffort.MEDIUM: 4096,
         ReasoningEffort.HIGH: 16384,
         ReasoningEffort.XHIGH: 24576,
+        ReasoningEffort.MAX: 32768,
     }
     """Gemini budgets thinking in tokens where others take an effort label."""
 
