@@ -31,6 +31,7 @@ class ReasoningEffort(StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     XHIGH = "xhigh"
+    MAX = "max"
 
 
 class FinishReason(StrEnum):
