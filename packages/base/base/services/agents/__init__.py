@@ -10,7 +10,7 @@ from base.models.view_models.chat_history import ChatHistoryConfig, StoredMessag
 from base.models.view_models.exceptions.llm import LLMError
 from base.models.view_models.flow import FlowAbortError
 from base.models.view_models.llm_result import LLMResult, ParsedResult
-from base.models.view_models.model import ModelConfigurations
+from base.models.view_models.model import CacheHint, ModelConfigurations
 from base.models.view_models.prompt import RenderedPrompt
 from base.models.view_models.streams import StreamEnd, StreamMessage
 from base.services.chat_history import ChatHistoryService
@@ -47,6 +47,11 @@ class AbstractAgent(metaclass=SingletonABC):
     PROMPT_KEY: ClassVar[str] = ""
     MAX_OUTPUT_TOKENS: ClassVar[int] = 1000
     REASONING_EFFORT: ClassVar[ReasoningEffort | None] = None
+    CACHE_HINT: ClassVar[CacheHint | None] = None
+    """Set it where an agent's instructions and tools are long enough to be
+    worth caching; an agent repeats both on every call, so the head is already
+    as stable as it can be."""
+
     HISTORY_LIMIT: ClassVar[int | None] = 40
 
     CHAT_HISTORY_STORE: ClassVar[type[ChatHistoryStore]] = InMemoryChatHistoryStore
@@ -182,17 +187,17 @@ class AbstractAgent(metaclass=SingletonABC):
     ) -> LLMResult:
         """Call the model with this agent's ClassVar defaults applied.
 
-        Explicit kwargs always win.
+        Explicit kwargs always win, which is why the defaults go in through
+        `setdefault`: naming them in the call as well would hand the service
+        the same keyword twice over and raise before it ever ran.
         """
         self._apply_stream_iterator(kwargs)
+        self._apply_defaults(kwargs, label)
 
         return await self._llm_service.acomplete(
             prompt=prompt,
             messages=messages,
             tools=tools,
-            max_output_tokens=self.MAX_OUTPUT_TOKENS,
-            reasoning_effort=self.REASONING_EFFORT,
-            label=label or type(self).__name__,
             **kwargs,
         )
 
@@ -209,15 +214,21 @@ class AbstractAgent(metaclass=SingletonABC):
 
         No stream iterator: a parsed call returns one object.
         """
+        self._apply_defaults(kwargs, label)
+
         return await self._llm_service.aparse(
             schema,
             prompt=prompt,
             messages=messages,
-            max_output_tokens=self.MAX_OUTPUT_TOKENS,
-            reasoning_effort=self.REASONING_EFFORT,
-            label=label or type(self).__name__,
             **kwargs,
         )
+
+    def _apply_defaults(self, kwargs: dict[str, Any], label: str | None) -> None:
+        """This agent's ClassVars, for every knob the caller left alone."""
+        kwargs.setdefault("max_output_tokens", self.MAX_OUTPUT_TOKENS)
+        kwargs.setdefault("reasoning_effort", self.REASONING_EFFORT)
+        kwargs.setdefault("cache_hint", self.CACHE_HINT)
+        kwargs.setdefault("label", label or type(self).__name__)
 
     def _apply_stream_iterator(self, kwargs: dict[str, Any]) -> None:
         ctx = self._execution_context
