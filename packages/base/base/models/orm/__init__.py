@@ -7,11 +7,11 @@ from typing import Self
 from base.tools.errors import MissingExtraError
 
 try:
-    from sqlalchemy import DateTime
     from sqlalchemy.orm import MappedAsDataclass, MappedColumn, mapped_column
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="ORM mixins") from exc
 
+from base.models.orm.types import UtcDateTime
 from base.tools.misc import _make_json_serializable
 
 
@@ -42,18 +42,18 @@ class SerializableMixin:
 
 class TimestampMixin(MappedAsDataclass):
     created_at: MappedColumn[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         insert_default=lambda: datetime.now(UTC),
         init=False,
     )
     updated_at: MappedColumn[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         insert_default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
         init=False,
     )
     deleted_at: MappedColumn[datetime | None] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime,
         default=None,
         nullable=True,
         init=False,
@@ -66,4 +66,4 @@ class TimestampMixin(MappedAsDataclass):
         self.deleted_at = None
 
 
-__all__ = ["SerializableMixin", "TimestampMixin"]
+__all__ = ["SerializableMixin", "TimestampMixin", "UtcDateTime"]

@@ -271,6 +271,11 @@ class AbstractCacheService(ABC):
             "WRONGTYPE Operation against a key holding the wrong kind of value"
         )
 
+    @classmethod
+    def _history_key(cls, channel: str) -> str:
+        """Where a channel's replay buffer lives, composed as the reader reads it."""
+        return cls._get_key(f"{channel}:history")
+
     @staticmethod
     def _resolve_channel(channel: CacheChannels | str) -> str:
         return channel.value if isinstance(channel, CacheChannels) else channel

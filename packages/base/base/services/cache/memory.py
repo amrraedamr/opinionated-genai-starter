@@ -320,8 +320,9 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         self, channel: CacheChannels | str, message: str, ttl_seconds: int = 86400
     ) -> int:
         ch = self._resolve_channel(channel)
-        # Persist to history list
-        history_key = f"{ch}:history"
+        # Through `_get_key` like every other key here: the reader composes it
+        # the same way, and a raw key could never be found again.
+        history_key = self._history_key(ch)
         with self._lock:
             entry = self._get_entry(self._lists, history_key)
             if entry is not None:

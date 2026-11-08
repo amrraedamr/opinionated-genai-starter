@@ -102,19 +102,20 @@ async def test_publishing_with_no_subscriber_reaches_nobody(
     try:
         assert await redis_cache.apublish(channel, "nobody home") == 0
     finally:
-        await RedisClient().async_client.delete(f"{channel}:history")
+        await RedisClient().async_client.delete(RedisCacheService._history_key(channel))
 
 
 async def test_published_messages_are_kept_as_channel_history(
     redis_cache: RedisCacheService, unique: str
 ) -> None:
+    """Read back through the service: a raw key would pass while replay stayed broken."""
     channel = f"test-channel-{unique}"
+    history_key = RedisCacheService._history_key(channel)
     try:
         await redis_cache.apublish_batch(channel, ["one", "two"])
-        history = await RedisClient().async_client.lrange(f"{channel}:history", 0, -1)
-        assert history == ["one", "two"]
+        assert await redis_cache.aget_list_raw(f"{channel}:history") == ["one", "two"]
     finally:
-        await RedisClient().async_client.delete(f"{channel}:history")
+        await RedisClient().async_client.delete(history_key)
 
 
 async def test_the_service_names_itself(redis_cache: RedisCacheService) -> None:
