@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated, Generic, TypeVar
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from base.models.definitions.database import SortingOrder
 from base.models.view_models import BaseModel
@@ -21,7 +21,13 @@ class PaginatedResult(BaseModel, Generic[T]):
 
 
 class PaginationParams(BaseModel):
-    """Request query params for paginated API."""
+    """Request query params for paginated API.
+
+    Unknown fields are refused: a misspelled page size that is quietly ignored
+    reads as a page of the default size rather than as a mistake.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     page: Annotated[int, Field(ge=1)] = 1
     size: Annotated[int, Field(ge=1, le=100)] = 10

@@ -1,9 +1,11 @@
 """Transport selection, shared by every service that publishes or consumes events."""
 
-from base.models.definitions.broker import BrokerBackend
+from base.models.definitions.backends import BackendSetting
+from base.models.definitions.broker import BrokerBackend, installed_brokers
 from base.services.broker import AbstractBroker
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsBrokerConfig
+from base.tools.errors import UnsupportedBackendError
 
 
 def build_broker(config: SupportsBrokerConfig | None = None) -> AbstractBroker:
@@ -17,7 +19,26 @@ def build_broker(config: SupportsBrokerConfig | None = None) -> AbstractBroker:
     cleanly, report healthy and deliver nothing between containers.
     """
     settings = config or settings_for(SupportsBrokerConfig)
-    backend = BrokerBackend(settings.broker)
+    installed = ", ".join(member.value for member in installed_brokers())
+
+    try:
+        backend = BrokerBackend(settings.broker)
+    except ValueError as exc:
+        raise ValueError(
+            f"{BackendSetting.BROKER}={settings.broker!r} is not a transport "
+            f"this library knows. "
+            f"This build supports: {installed or 'none'}."
+        ) from exc
+
+    if not backend.is_installed:
+        raise UnsupportedBackendError(
+            backend=backend.value,
+            extra=backend.extra,
+            distribution=backend.distribution,
+            missing=backend.missing_imports,
+            available=[member.value for member in installed_brokers()],
+            setting=BackendSetting.BROKER,
+        )
 
     match backend:
         case BrokerBackend.REDIS:

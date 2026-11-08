@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+from base.models.definitions.tokens import TokenType
 from base.models.view_models import BaseModel
 
 
@@ -14,5 +15,5 @@ class Principal(BaseModel):
     roles: frozenset[str] = frozenset()
     scopes: frozenset[str] = frozenset()
     issuer: str | None = None
-    token_type: str | None = None
+    token_type: TokenType | None = None
     claims: dict = {}

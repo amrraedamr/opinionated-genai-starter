@@ -1,20 +1,17 @@
 """What a real Qdrant accepts as a point id, and what a point carries.
 
-Over gRPC a point id must be a UUID or an unsigned integer. `VectorRecord.id`
-is typed `str`, so a UUID string is the only id a caller of this service can
-actually use: a numeric string is parsed as a UUID and refused, and so is any
-other word. That is pinned here rather than assumed, together with the
-`metadata` to `payload` rename the adapter owns.
+Over gRPC a point id must be a UUID or an unsigned integer, which the neutral
+`VectorRecord.id` is not required to be. The adapter translates: a UUID and a
+digit string are used as given, and anything else becomes a stable UUID with
+the caller's own id kept beside the metadata. Every id a caller can write is
+therefore an id they read back, which is what these tests walk, together with
+the `metadata` to `payload` rename the adapter owns.
 """
 
 import uuid
 
 import pytest
 
-from base.models.view_models.exceptions.vector_search import (
-    VectorSearchError,
-    VectorSearchUnexpectedError,
-)
 from base.models.view_models.vector_search import VectorRecord
 from base.services.vector_search.qdrant import QdrantVectorSearchService
 
@@ -30,48 +27,59 @@ async def test_a_uuid_is_accepted_as_a_point_id(
     assert await qdrant.acount(collection) == 1
 
 
-@pytest.mark.parametrize("bad", ["v1", "12345", "", "not-a-uuid", "0"])
-async def test_an_id_that_is_not_a_uuid_is_refused(
-    qdrant: QdrantVectorSearchService, collection: str, bad: str
+@pytest.mark.parametrize("record_id", ["v1", "12345", "not-a-uuid", "0", "doc/42"])
+async def test_an_id_that_is_not_a_uuid_round_trips(
+    qdrant: QdrantVectorSearchService, collection: str, record_id: str
 ) -> None:
-    """Pins the limit: with a string-only id field, only UUIDs are reachable."""
-    with pytest.raises(VectorSearchError) as caught:
-        await qdrant.aupsert(collection, [VectorRecord(id=bad, vector=[1.0, 0.0, 0.0])])
-    assert "UUID" in str(caught.value)
+    """The adapter translates, so the id a caller writes is the id they read."""
+    await qdrant.aupsert(
+        collection, [VectorRecord(id=record_id, vector=[1.0, 0.0, 0.0])]
+    )
+    assert (await qdrant.aget(collection, [record_id]))[0].id == record_id
 
 
-async def test_an_invalid_id_surfaces_as_an_unexpected_error(
+async def test_a_translated_id_does_not_leak_into_the_metadata(
     qdrant: QdrantVectorSearchService, collection: str
 ) -> None:
-    """gRPC raises its own error type, which the Qdrant handler does not know."""
-    with pytest.raises(VectorSearchUnexpectedError):
-        await qdrant.aupsert(
-            collection, [VectorRecord(id="v1", vector=[1.0, 0.0, 0.0])]
-        )
+    await qdrant.aupsert(
+        collection,
+        [VectorRecord(id="doc-1", vector=[1.0, 0.0, 0.0], metadata={"n": 1})],
+    )
+    assert (await qdrant.aget(collection, ["doc-1"]))[0].metadata == {"n": 1}
 
 
-async def test_an_invalid_id_leaves_the_collection_untouched(
+async def test_two_unlike_ids_stay_two_points(
     qdrant: QdrantVectorSearchService, collection: str
 ) -> None:
-    with pytest.raises(VectorSearchError):
-        await qdrant.aupsert(
-            collection, [VectorRecord(id="v1", vector=[1.0, 0.0, 0.0])]
-        )
+    await qdrant.aupsert(
+        collection,
+        [
+            VectorRecord(id="doc-1", vector=[1.0, 0.0, 0.0]),
+            VectorRecord(id="doc-2", vector=[0.0, 1.0, 0.0]),
+        ],
+    )
+    assert await qdrant.acount(collection) == 2
+
+
+async def test_a_translated_id_can_be_deleted_by_the_id_it_went_in_with(
+    qdrant: QdrantVectorSearchService, collection: str
+) -> None:
+    await qdrant.aupsert(collection, [VectorRecord(id="doc-1", vector=[1.0, 0.0, 0.0])])
+    await qdrant.adelete(collection, ["doc-1"])
     assert await qdrant.acount(collection) == 0
 
 
-async def test_one_bad_id_rejects_the_whole_batch(
+async def test_a_mixed_batch_of_id_shapes_is_written_whole(
     qdrant: QdrantVectorSearchService, collection: str, point_id: str
 ) -> None:
-    with pytest.raises(VectorSearchError):
-        await qdrant.aupsert(
-            collection,
-            [
-                VectorRecord(id=point_id, vector=[1.0, 0.0, 0.0]),
-                VectorRecord(id="v1", vector=[0.0, 1.0, 0.0]),
-            ],
-        )
-    assert await qdrant.acount(collection) == 0
+    await qdrant.aupsert(
+        collection,
+        [
+            VectorRecord(id=point_id, vector=[1.0, 0.0, 0.0]),
+            VectorRecord(id="v1", vector=[0.0, 1.0, 0.0]),
+        ],
+    )
+    assert await qdrant.acount(collection) == 2
 
 
 # Records and metadata
@@ -247,11 +255,11 @@ def test_the_sync_path_deletes_a_point(
     assert qdrant.count(collection) == 0
 
 
-def test_the_sync_path_refuses_the_same_bad_ids(
+def test_the_sync_path_translates_the_same_ids(
     qdrant: QdrantVectorSearchService, collection: str
 ) -> None:
-    with pytest.raises(VectorSearchError):
-        qdrant.upsert(collection, [VectorRecord(id="v1", vector=[1.0, 0.0, 0.0])])
+    qdrant.upsert(collection, [VectorRecord(id="v1", vector=[1.0, 0.0, 0.0])])
+    assert qdrant.get(collection, ["v1"])[0].id == "v1"
 
 
 # Scroll

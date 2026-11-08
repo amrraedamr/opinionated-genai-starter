@@ -115,18 +115,12 @@ def test_update_from_dict_of_nothing_changes_nothing(plain_model: type[Any]) -> 
     assert row.name == "a"
 
 
-def test_clone_refuses_a_timestamped_model_with_its_default_exclusions(
+def test_clone_copies_a_timestamped_model_with_its_default_exclusions(
     plain_model: type[Any],
 ) -> None:
-    """A defect, pinned as it stands.
-
-    `clone` excludes only `id`, so the three timestamp columns stay in the
-    dict it passes to `__init__`. They are declared `init=False`, so no model
-    carrying `TimestampMixin` — which is every model in this workspace — can
-    be cloned without naming all four exclusions by hand.
-    """
-    with pytest.raises(TypeError, match="unexpected keyword argument 'created_at'"):
-        plain_model(name="a").clone()
+    """Generated columns are `init=False`, so `clone` must not offer them back."""
+    copy = plain_model(name="a").clone()
+    assert copy.name == "a"
 
 
 def test_clone_copies_a_row_when_every_generated_column_is_excluded(

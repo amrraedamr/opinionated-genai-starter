@@ -142,7 +142,9 @@ class SQLStore(AbstractStore[TEntity]):
         }
 
     def _apply(self, existing: TEntity, entity: TEntity) -> TEntity:
-        existing.update_from_dict(self._sanitize_update_data(entity.to_dict()))
+        """Copy the patch's mapped columns, keeping each one's column type."""
+        patch = {name: getattr(entity, name) for name in self._column_names}
+        existing.update_from_dict(self._sanitize_update_data(patch))
         return existing
 
     def _edit(

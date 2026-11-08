@@ -141,12 +141,18 @@ def test_a_limit_larger_than_the_history_returns_all_of_it(
     assert len(store.get(conversation, limit=99)) == 3
 
 
-def test_a_limit_of_zero_returns_everything(
+def test_a_limit_of_zero_returns_nothing(
     store: InMemoryChatHistoryStore, conversation: ConversationId
 ) -> None:
-    """A defect, pinned as it stands: `items[-0:]` is the whole list."""
     seed(store, conversation, 3)
-    assert len(store.get(conversation, limit=0)) == 3
+    assert store.get(conversation, limit=0) == []
+
+
+def test_a_negative_limit_returns_nothing(
+    store: InMemoryChatHistoryStore, conversation: ConversationId
+) -> None:
+    seed(store, conversation, 3)
+    assert store.get(conversation, limit=-1) == []
 
 
 def test_a_parent_with_no_items_reads_as_empty(

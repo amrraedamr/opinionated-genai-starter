@@ -24,9 +24,9 @@ def test_the_page_size_field_is_called_size() -> None:
     assert "page_size" not in PaginationParams.model_fields
 
 
-def test_an_unknown_page_size_argument_is_ignored_rather_than_refused() -> None:
-    """Pins the trap: `page_size=20` silently leaves the default in place."""
-    assert PaginationParams(page_size=20).size == 10  # type: ignore[call-arg]
+def test_an_unknown_page_size_argument_is_refused() -> None:
+    with pytest.raises(ValueError):
+        PaginationParams(page_size=20)  # type: ignore[call-arg]
 
 
 def test_a_page_number_below_one_is_refused() -> None:

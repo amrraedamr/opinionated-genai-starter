@@ -30,6 +30,7 @@ import os
 import sys
 from enum import StrEnum
 
+from base.models.definitions.backends import BackendSetting
 from base.models.definitions.broker import BrokerBackend, installed_brokers
 from base.models.definitions.database import SQLBackend, installed_backends
 from base.models.definitions.environment import Environment
@@ -69,13 +70,13 @@ def check_sql() -> list[str]:
     if importlib.util.find_spec("sqlalchemy") is None:
         return []
 
-    configured = os.environ.get("SQL_BACKEND") or _default(
+    configured = os.environ.get(BackendSetting.SQL) or _default(
         SQLSettingsMixin, "sql_backend"
     )
     try:
         backend = SQLBackend(configured)
     except ValueError:
-        return [_unknown_value("SQL_BACKEND", configured, SQLBackend)]
+        return [_unknown_value(BackendSetting.SQL, configured, SQLBackend)]
 
     if backend.is_installed:
         supported = ", ".join(member.value for member in installed_backends())
@@ -90,6 +91,7 @@ def check_sql() -> list[str]:
                 distribution=backend.distribution,
                 missing=backend.missing_imports,
                 available=[member.value for member in installed_backends()],
+                setting=BackendSetting.SQL,
             )
         )
     ]
@@ -103,11 +105,13 @@ def check_broker() -> list[str]:
     cleanly, passes its readiness probe, and delivers nothing between
     containers.
     """
-    configured = os.environ.get("BROKER") or _default(BrokerSettingsMixin, "broker")
+    configured = os.environ.get(BackendSetting.BROKER) or _default(
+        BrokerSettingsMixin, "broker"
+    )
     try:
         backend = BrokerBackend(configured)
     except ValueError:
-        return [_unknown_value("BROKER", configured, BrokerBackend)]
+        return [_unknown_value(BackendSetting.BROKER, configured, BrokerBackend)]
 
     if not backend.is_installed:
         return [

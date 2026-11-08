@@ -32,8 +32,13 @@ def test_a_plain_structure_serialises_as_ordinary_json() -> None:
     assert json.loads(serialize({"a": [1, True, None]})) == {"a": [1, True, None]}
 
 
-def test_a_string_is_passed_through_rather_than_quoted() -> None:
-    assert serialize("already a string") == "already a string"
+def test_a_string_is_quoted_so_it_reads_back_as_a_string() -> None:
+    assert serialize("already a string") == '"already a string"'
+    assert deserialize(serialize("already a string")) == "already a string"
+
+
+def test_a_string_holding_json_reads_back_as_that_string() -> None:
+    assert deserialize(serialize('{"a": 1}')) == '{"a": 1}'
 
 
 def test_a_datetime_is_tagged_so_it_can_be_read_back() -> None:

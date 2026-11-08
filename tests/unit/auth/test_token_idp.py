@@ -219,6 +219,29 @@ def test_a_first_party_token_still_verifies_while_the_idp_is_enabled(
     assert principal.token_type == "access"
 
 
+def test_an_idp_token_is_refused_where_a_refresh_token_is_wanted(
+    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+) -> None:
+    """An IdP bearer token is an access token, whatever the caller asked for."""
+    _idp_settings(make_settings, keys)
+    client = FakeJWKSClient(key=other_keys.public_pem)
+    token = _idp_token(other_keys.private_pem)
+
+    with pytest.raises(ErrorsException):
+        _verifier_with(keys, client).verify(token, expected_type="refresh")
+
+
+def test_an_idp_token_is_still_accepted_where_an_access_token_is_wanted(
+    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+) -> None:
+    _idp_settings(make_settings, keys)
+    client = FakeJWKSClient(key=other_keys.public_pem)
+    token = _idp_token(other_keys.private_pem)
+
+    principal = _verifier_with(keys, client).verify(token, expected_type="access")
+    assert principal.token_type == "access"
+
+
 def test_a_token_from_another_issuer_is_not_taken_for_an_idp_token(
     make_settings: Any, keys: KeyPair, other_keys: KeyPair
 ) -> None:

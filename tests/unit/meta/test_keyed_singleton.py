@@ -63,16 +63,17 @@ def test_different_constructor_arguments_derive_different_keys() -> None:
     assert Pool("postgres://a") is not Pool("postgres://b")
 
 
-def test_the_derived_key_is_the_hash_of_the_arguments() -> None:
+def test_the_derived_key_is_the_hash_of_the_bound_arguments() -> None:
     instance = Pool("postgres://a", 5)
-    assert Pool.get(hash_args("postgres://a", 5)) is instance
+    assert Pool.get(hash_args(dsn="postgres://a", pool_size=5)) is instance
 
 
-def test_passing_an_argument_by_keyword_derives_a_different_key_than_by_position() -> (
-    None
-):
-    """Pinned, not endorsed: the hash is taken over args and kwargs separately."""
-    assert Pool("postgres://a") is not Pool(dsn="postgres://a")
+def test_passing_an_argument_by_keyword_derives_the_same_key_as_by_position() -> None:
+    assert Pool("postgres://a") is Pool(dsn="postgres://a")
+
+
+def test_relying_on_a_default_keys_the_same_as_passing_it() -> None:
+    assert Pool("postgres://a") is Pool("postgres://a", 1)
 
 
 def test_two_keyed_classes_sharing_a_key_do_not_share_an_instance() -> None:

@@ -122,19 +122,19 @@ async def test_every_failure_belongs_to_the_document_store_family(
         await mongo.afind_many(collection, {"n": {"$bogus": 1}})
 
 
-async def test_an_empty_batch_is_reported_as_an_unexpected_error(
+async def test_an_empty_batch_writes_nothing_and_says_so(
     mongo: MongoDBService, collection: str
 ) -> None:
-    """Pins current behaviour: the driver's `TypeError` is not a `PyMongoError`."""
-    with pytest.raises(NoSqlUnexpectedError, match="non-empty list"):
-        await mongo.ainsert_many(collection, [])
+    """Inserting no documents is a no-op, not a driver `TypeError`."""
+    assert await mongo.ainsert_many(collection, []) == []
+    assert await mongo.acount(collection, {}) == 0
 
 
-def test_an_empty_batch_is_reported_the_same_way_on_the_sync_path(
+def test_an_empty_batch_writes_nothing_on_the_sync_path(
     mongo: MongoDBService, collection: str
 ) -> None:
-    with pytest.raises(NoSqlUnexpectedError, match="non-empty list"):
-        mongo.insert_many(collection, [])
+    assert mongo.insert_many(collection, []) == []
+    assert mongo.count(collection, {}) == 0
 
 
 # Non-idempotent updates

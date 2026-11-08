@@ -91,8 +91,5 @@ class ExpansiveEncoder(JSONEncoder):
 
 
 def serialize(obj: Any, **kwargs: Any) -> str:
-    return (
-        json.dumps(obj, cls=ExpansiveEncoder, **kwargs)
-        if not isinstance(obj, str)
-        else obj
-    )
+    """JSON-encode any value, a string included, so reading is the exact inverse."""
+    return json.dumps(obj, cls=ExpansiveEncoder, **kwargs)

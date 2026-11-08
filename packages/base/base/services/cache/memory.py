@@ -9,11 +9,13 @@ from typing import Any, ClassVar
 from uuid import UUID
 
 from base.models.definitions.cache import CacheChannels, CacheKeys
+from base.models.view_models.exceptions.cache import (
+    CacheBadRequestError,
+)
 from base.services.cache import AbstractCacheService
 from base.services.common.meta import SingletonABC
 from base.tools.deserializers import ExpansiveDecoder
 from base.tools.misc import generic_deep_deserialize, parse_json_pairs
-from base.tools.serializers import serialize
 
 
 class _TTLEntry:
@@ -54,6 +56,13 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
             return None
         return entry
 
+    # Redis parity guards
+
+    def _check_no_type_clash(self, store: dict[str, _TTLEntry], key: str) -> None:
+        """A key already held by the other store is the clash Redis reports."""
+        if self._get_entry(store, key) is not None:
+            self._refuse_type_clash()
+
     # Basic Get/Set
 
     def get(
@@ -68,9 +77,10 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         if entry is None:
             return None
         raw: str = entry.value
+        value = json.loads(raw, cls=ExpansiveDecoder)
         if inspect.isclass(value_type) or value_type is dict:
-            return json.loads(raw, cls=ExpansiveDecoder)
-        return value_type(raw)
+            return value
+        return value_type(value)
 
     async def aget(
         self,
@@ -87,9 +97,12 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         value: Any = None,
         ttl_seconds: int | None = None,
     ) -> None:
+        self._check_ttl(ttl_seconds)
+        encoded = self._encode(value)
         composite = self._get_key(key, namespace)
         with self._lock:
-            self._store[composite] = _TTLEntry(serialize(value), ttl_seconds)
+            self._check_no_type_clash(self._hashsets, composite)
+            self._store[composite] = _TTLEntry(encoded, ttl_seconds)
 
     async def aset(
         self,
@@ -118,11 +131,9 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         composite = self._get_key(key, namespace)
         with self._lock:
             entry = self._get_entry(self._hashsets, composite)
-        if entry is None:
-            return None
-        mapping: dict[str, str] = entry.value
+        mapping: dict[str, str] = entry.value if entry is not None else {}
         result: list[str | None] = [mapping.get(k) for k in hashset_keys]
-        if not result or len(result) != len(hashset_keys):
+        if not result:
             return None
         return parse_json_pairs(hashset_keys, result)
 
@@ -161,8 +172,16 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
     ) -> None:
         if hashset is None:
             return
+        if not hashset:
+            raise CacheBadRequestError("wrong number of arguments: no key value pairs")
+        for field, value in hashset.items():
+            if not isinstance(value, (str, int, float, bytes)):
+                raise CacheBadRequestError(
+                    f"Invalid input of type {type(value).__name__} for field {field!r}"
+                )
         composite = self._get_key(key, namespace)
         with self._lock:
+            self._check_no_type_clash(self._store, composite)
             entry = self._get_entry(self._hashsets, composite)
             if entry is not None:
                 entry.value.update(hashset)
@@ -205,7 +224,7 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         ttl_seconds: int = 600,
     ) -> None:
         composite = self._get_key(key, namespace)
-        serialized = serialize(value)
+        serialized = self._encode(value)
         with self._lock:
             entry = self._get_entry(self._lists, composite)
             if entry is not None:

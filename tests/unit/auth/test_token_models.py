@@ -10,6 +10,7 @@ import pytest
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ValidationError
 
+from base.models.definitions.tokens import TokenType
 from base.models.view_models import BaseModel as CamelisingBaseModel
 from base.services.auth.models import (
     AccessToken,
@@ -141,3 +142,25 @@ def test_the_auth_package_re_exports_the_shared_token_types() -> None:
     assert RefreshToken is shared.RefreshToken
     assert TokenPair is shared.TokenPair
     assert TokenResponse is shared.TokenResponse
+
+
+# The carrier and the claim
+
+
+def test_the_carrier_types_are_erased_to_plain_strings_at_runtime() -> None:
+    """`AccessToken` names which string you hold; it is not a value to compare."""
+    assert AccessToken("abc") == "abc"
+    assert type(AccessToken("abc")) is str
+    assert AccessToken("abc") == RefreshToken("abc")
+
+
+def test_the_claim_vocabulary_is_a_separate_runtime_value() -> None:
+    """`TokenType` is what goes inside the token, which the carrier cannot say."""
+    assert TokenType.ACCESS == "access"
+    assert TokenType.ACCESS != TokenType.REFRESH
+
+
+def test_the_oauth_scheme_is_not_the_claim_vocabulary() -> None:
+    """`TokenResponse.token_type` is RFC 6749's scheme, so it stays a plain string."""
+    assert TokenResponse(access_token=AccessToken("a")).token_type == "Bearer"
+    assert "Bearer" not in set(TokenType)

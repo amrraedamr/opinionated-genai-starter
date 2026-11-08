@@ -1,4 +1,5 @@
 import contextvars
+import inspect
 import logging
 from abc import ABCMeta
 from typing import Any, ClassVar, TypeVar, cast
@@ -130,9 +131,22 @@ class KeyedSingleton(type):
 
     _keyed_instances: ClassVar[dict[tuple[type, str], Any]] = {}
 
+    @staticmethod
+    def _derive_key(cls: type, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+        """Hash the arguments as `__init__` binds them, so by name keys as by position."""
+        try:
+            signature = inspect.signature(cls.__init__)
+            bound = signature.bind(None, *args, **kwargs)
+            bound.apply_defaults()
+            arguments = dict(bound.arguments)
+            arguments.pop(next(iter(signature.parameters)), None)
+            return hash_args(**arguments)
+        except (TypeError, ValueError):
+            return hash_args(*args, **kwargs)
+
     def __call__(cls: type[T], *args: Any, _key: str = "", **kwargs: Any) -> T:
         if not _key:
-            _key = hash_args(*args, **kwargs)
+            _key = KeyedSingleton._derive_key(cls, args, kwargs)
 
         lookup = (cls, _key)
 

@@ -2,9 +2,9 @@
 
 Every call here is a translation that has no server to check it: an OData
 filter string, a `VectorizedQuery`, a document whose metadata has been
-flattened to JSON. The adapter sends `search_text=None` on a similarity
-search, so the backend's own hybrid ranking is never asked for — that is
-pinned rather than assumed.
+flattened to JSON. A vector-only call carries no text to rank and sends none;
+the lexical call sends the query so a caller fusing the two gets the backend's
+own ranking on each side.
 """
 
 import json
@@ -236,19 +236,44 @@ def test_a_search_caps_the_result_count_as_well_as_the_neighbours(
     assert search_client.call("search")["top"] == 4
 
 
-def test_a_similarity_search_never_asks_for_lexical_ranking(
+def test_a_similarity_search_asks_only_for_vector_ranking(
     service: AzureAISearchService, search_client: RecordingSearchClient
 ) -> None:
-    """Azure would fuse text and vector hits; the adapter does not use that."""
+    """A vector-only call carries no text to rank, so none is sent."""
     service.search("chunks", [0.1])
     assert search_client.call("search")["search_text"] is None
 
 
-def test_the_backend_is_not_offered_as_a_lexical_one(
+def test_the_backend_is_offered_as_a_lexical_one(
     service: AzureAISearchService,
 ) -> None:
-    """The guard for the test above: callers are told there is no text search."""
-    assert not isinstance(service, SupportsLexicalSearch)
+    assert isinstance(service, SupportsLexicalSearch)
+
+
+def test_a_lexical_search_sends_the_query_as_the_search_text(
+    service: AzureAISearchService, search_client: RecordingSearchClient
+) -> None:
+    service.lexical_search("chunks", "a cat sat", limit=3)
+    sent = search_client.call("search")
+    assert sent["search_text"] == "a cat sat"
+    assert sent["top"] == 3
+
+
+def test_a_lexical_search_carries_the_filter_too(
+    service: AzureAISearchService, search_client: RecordingSearchClient
+) -> None:
+    service.lexical_search("chunks", "a cat sat", filters={"tenant": "acme"})
+    assert search_client.call("search")["filter"] == "tenant eq 'acme'"
+
+
+def test_a_lexical_search_reads_the_documents_the_backend_returns(
+    service: AzureAISearchService, search_client: RecordingSearchClient
+) -> None:
+    search_client.documents = [
+        {"id": "a", "metadata": json.dumps({"n": 1}), "@search.score": 2.5}
+    ]
+    results = service.lexical_search("chunks", "a cat sat")
+    assert [(r.id, r.score, r.metadata) for r in results] == [("a", 2.5, {"n": 1})]
 
 
 def test_a_search_without_filters_sends_no_filter(

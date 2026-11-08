@@ -79,23 +79,19 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        started: list[Capability] = []
-        try:
-            async with AsyncExitStack() as stack:
-                for hook in lifespan_hooks:
-                    await stack.enter_async_context(hook(app))
-                for capability in capabilities:
-                    await capability.astartup(app)
-                    started.append(capability)
-                yield
-        finally:
-            for capability in reversed(started):
-                try:
-                    await capability.ashutdown(app)
-                except Exception:
-                    logger.exception(
-                        "Capability failed to shut down: %s", capability.name
-                    )
+        async def shutdown(capability: Capability) -> None:
+            try:
+                await capability.ashutdown(app)
+            except Exception:
+                logger.exception("Capability failed to shut down: %s", capability.name)
+
+        async with AsyncExitStack() as stack:
+            for hook in lifespan_hooks:
+                await stack.enter_async_context(hook(app))
+            for capability in capabilities:
+                await capability.astartup(app)
+                stack.push_async_callback(shutdown, capability)
+            yield
 
     app = FastAPI(title=title, version=version, lifespan=lifespan)
 

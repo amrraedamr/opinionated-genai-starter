@@ -86,6 +86,13 @@ class InMemoryChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
 
     # Get
 
+    @staticmethod
+    def _tail(items: list[StoredMessage], limit: int | None) -> list[StoredMessage]:
+        """Keep the last `limit` items; a limit of zero or less keeps none."""
+        if limit is None or limit >= len(items):
+            return items
+        return items[-limit:] if limit > 0 else []
+
     def _get(
         self,
         parent_id: ConversationId,
@@ -94,9 +101,7 @@ class InMemoryChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
     ) -> list[StoredMessage]:
         with self._sync_lock_for(parent_id):
             items = list(self._data.get(parent_id, ()))
-        if limit is not None and len(items) > limit:
-            items = items[-limit:]
-        return items
+        return self._tail(items, limit)
 
     async def _aget(
         self,
@@ -107,9 +112,7 @@ class InMemoryChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
         lock = await self._async_lock_for(parent_id)
         async with lock:
             items = list(self._data.get(parent_id, ()))
-        if limit is not None and len(items) > limit:
-            items = items[-limit:]
-        return items
+        return self._tail(items, limit)
 
     # Count
 

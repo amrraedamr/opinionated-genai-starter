@@ -2,38 +2,42 @@
 
 Everything the Redis service also promises is pinned by the contract suite in
 `tests/integration/cache`. What is left here is what only this backend can
-show cheaply: the TTL arithmetic, the pub/sub fan-out and the places where it
-answers differently from Redis.
+show cheaply: the TTL arithmetic, the pub/sub fan-out and the refusals it
+mirrors from Redis so a caller meets the same answer on either one.
 """
 
 import asyncio
 import time
 from uuid import UUID
 
+import pytest
+
+from base.models.view_models.exceptions.cache import CacheBadRequestError
 from base.services.cache.memory import InMemoryCacheService
 
 
-async def test_a_zero_ttl_entry_is_already_expired(
+async def test_a_zero_ttl_is_refused(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Redis refuses `ex=0`; in-process treats it as expired on arrival."""
-    await memory_cache.aset("doomed", namespace, value={"a": 1}, ttl_seconds=0)
-    assert await memory_cache.aget("doomed", namespace) is None
+    """Redis refuses `ex=0`, so this backend refuses it too."""
+    with pytest.raises(CacheBadRequestError, match="invalid expire time"):
+        await memory_cache.aset("doomed", namespace, value={"a": 1}, ttl_seconds=0)
 
 
 async def test_an_expired_entry_is_dropped_from_the_store(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    await memory_cache.aset("doomed", namespace, value={"a": 1}, ttl_seconds=0)
+    await memory_cache.aset("doomed", namespace, value={"a": 1}, ttl_seconds=0.2)  # type: ignore[arg-type]
+    time.sleep(0.3)
     assert await memory_cache.aget("doomed", namespace) is None
     assert memory_cache._get_key("doomed", namespace) not in memory_cache._store
 
 
-async def test_a_negative_ttl_entry_is_already_expired(
+async def test_a_negative_ttl_is_refused(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    await memory_cache.aset("doomed", namespace, value={"a": 1}, ttl_seconds=-5)
-    assert await memory_cache.aget("doomed", namespace) is None
+    with pytest.raises(CacheBadRequestError, match="invalid expire time"):
+        await memory_cache.aset("doomed", namespace, value={"a": 1}, ttl_seconds=-5)
 
 
 async def test_a_short_ttl_expires_once_the_boundary_passes(
@@ -54,12 +58,12 @@ async def test_setting_again_replaces_the_expiry(
     assert await memory_cache.aget("renewed", namespace) == {"a": 2}
 
 
-async def test_an_empty_hashset_stores_nothing(
+async def test_an_empty_hashset_is_refused(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Redis refuses `hset` with no pairs; in-process accepts and keeps nothing."""
-    await memory_cache.aset_hashset("empty", namespace, hashset={})
-    assert await memory_cache.aget_hashset_all("empty", namespace) is None
+    """Redis refuses `hset` with no pairs, so this backend refuses it too."""
+    with pytest.raises(CacheBadRequestError, match="no key value pairs"):
+        await memory_cache.aset_hashset("empty", namespace, hashset={})
 
 
 async def test_a_hashset_of_none_is_a_no_op(
@@ -69,19 +73,21 @@ async def test_a_hashset_of_none_is_a_no_op(
     assert await memory_cache.aget_hashset_all("absent", namespace) is None
 
 
-async def test_pairs_from_a_missing_hashset_are_none(
+async def test_pairs_from_a_missing_hashset_are_a_mapping_of_nones(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Redis answers `{field: None}` for the same call. The two disagree."""
-    assert await memory_cache.aget_hashset_pairs("absent", namespace, "field") is None
+    """The same answer Redis gives: one entry per field asked for."""
+    assert await memory_cache.aget_hashset_pairs("absent", namespace, "field") == {
+        "field": None
+    }
 
 
-async def test_a_hashset_value_that_is_not_a_string_is_kept_as_given(
+async def test_a_hashset_value_that_is_not_a_scalar_is_refused(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Redis refuses a dict field value. In-process stores the object itself."""
-    await memory_cache.aset_hashset("rich", namespace, hashset={"f": {"a": 1}})
-    assert await memory_cache.aget_hashset_all("rich", namespace) == {"f": {"a": 1}}
+    """Redis refuses a dict field value, so this backend refuses it too."""
+    with pytest.raises(CacheBadRequestError, match="Invalid input of type"):
+        await memory_cache.aset_hashset("rich", namespace, hashset={"f": {"a": 1}})
 
 
 async def test_a_hashset_ttl_expires_the_whole_hash(
@@ -101,14 +107,13 @@ async def test_setting_a_hashset_twice_merges_the_fields(
     assert await memory_cache.aget_hashset_all("merged", namespace) == {"a": 1, "b": 2}
 
 
-async def test_a_hashset_and_a_value_can_share_one_key(
+async def test_a_hashset_cannot_share_a_key_with_a_value(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Separate stores, so neither sees the other. Redis refuses the second write."""
+    """One key, one type, as Redis enforces."""
     await memory_cache.aset("mixed", namespace, value={"a": 1})
-    await memory_cache.aset_hashset("mixed", namespace, hashset={"f": "1"})
-    assert await memory_cache.aget("mixed", namespace) == {"a": 1}
-    assert await memory_cache.aget_hashset_all("mixed", namespace) == {"f": 1}
+    with pytest.raises(CacheBadRequestError, match="WRONGTYPE"):
+        await memory_cache.aset_hashset("mixed", namespace, hashset={"f": "1"})
 
 
 async def test_an_expired_list_reads_as_empty(

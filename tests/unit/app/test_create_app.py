@@ -314,7 +314,7 @@ def test_capabilities_start_in_order_and_stop_in_reverse(
     assert log == ["start:db", "start:broker", "stop:broker", "stop:db"]
 
 
-def test_lifespan_hooks_run_before_any_capability_starts(
+def test_lifespan_hooks_run_before_any_capability_starts_and_unwind_after(
     server_settings: Any,
 ) -> None:
     log: list[str] = []
@@ -334,9 +334,9 @@ def test_lifespan_hooks_run_before_any_capability_starts(
     with TestClient(app):
         pass
 
-    # Capability shutdown runs in the `finally` outside the exit stack, so a
-    # hook unwinds before the capabilities it started alongside.
-    assert log == ["hook:enter", "start:db", "hook:exit", "stop:db"]
+    # Strict LIFO: a hook entered before a capability started unwinds after it
+    # stopped, so a capability still has whatever the hook was holding open.
+    assert log == ["hook:enter", "start:db", "stop:db", "hook:exit"]
 
 
 def test_a_capability_that_fails_to_start_stops_the_ones_already_started(

@@ -54,9 +54,8 @@ def test_qdrant_does_not_satisfy_the_protocol() -> None:
     assert not issubclass(QdrantVectorSearchService, SupportsLexicalSearch)
 
 
-def test_azure_ai_search_does_not_satisfy_the_protocol() -> None:
-    """Pins a gap: the backend has full-text, the adapter does not expose it."""
-    assert not issubclass(AzureAISearchService, SupportsLexicalSearch)
+def test_azure_ai_search_satisfies_the_protocol() -> None:
+    assert issubclass(AzureAISearchService, SupportsLexicalSearch)
 
 
 def test_a_qdrant_instance_is_not_a_lexical_backend(make_settings: Any) -> None:
@@ -64,13 +63,13 @@ def test_a_qdrant_instance_is_not_a_lexical_backend(make_settings: Any) -> None:
     assert not isinstance(QdrantVectorSearchService(), SupportsLexicalSearch)
 
 
-def test_an_azure_instance_is_not_a_lexical_backend(make_settings: Any) -> None:
+def test_an_azure_instance_is_a_lexical_backend(make_settings: Any) -> None:
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="https://x.search.windows.net",
         azure_search_api_key="k",
     )
-    assert not isinstance(AzureAISearchService(), SupportsLexicalSearch)
+    assert isinstance(AzureAISearchService(), SupportsLexicalSearch)
 
 
 def test_anything_with_the_method_satisfies_the_protocol() -> None:

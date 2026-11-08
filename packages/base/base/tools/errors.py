@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from enum import Enum
 from typing import Never
 
+from base.models.definitions.backends import BackendSetting
+
 
 class ErrorsException(Exception):
     def __init__(
@@ -102,18 +104,20 @@ class UnsupportedBackendError(MissingExtraError):
         distribution: str,
         missing: Sequence[str],
         available: Sequence[str],
+        setting: BackendSetting,
     ) -> None:
         self.backend = backend
         self.extra = extra
         self.distribution = distribution
         self.missing = tuple(missing)
         self.available = tuple(available)
+        self.setting = setting
         supported = ", ".join(available) if available else "none"
         ImportError.__init__(
             self,
-            f"SQL_BACKEND={backend!r} needs {', '.join(missing)}, which this build "
+            f"{setting}={backend!r} needs {', '.join(missing)}, which this build "
             f"does not install. This build supports: {supported}. Either set "
-            f"SQL_BACKEND to one of those, or deploy an image built with "
+            f"{setting} to one of those, or deploy an image built with "
             f'"base[{extra}]" (installs {distribution}).',
         )
 

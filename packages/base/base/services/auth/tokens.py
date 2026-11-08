@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from base.models.definitions.errors import AuthErrors
+from base.models.definitions.tokens import TokenType
 from base.services.auth.models import AccessToken, Principal, RefreshToken, TokenPair
 from base.services.common.meta import Singleton
 from base.services.configuration import settings_for
@@ -47,11 +48,11 @@ class TokenIssuer(metaclass=Singleton):
 
     def issue_access(self, claims: dict[str, Any]) -> AccessToken:
         expiry = self._config.access_token_expiry_seconds
-        return AccessToken(self._sign({**claims, "type": "access"}, expiry))
+        return AccessToken(self._sign({**claims, "type": TokenType.ACCESS}, expiry))
 
     def issue_refresh(self, claims: dict[str, Any]) -> RefreshToken:
         expiry = self._config.refresh_token_expiry_seconds
-        return RefreshToken(self._sign({**claims, "type": "refresh"}, expiry))
+        return RefreshToken(self._sign({**claims, "type": TokenType.REFRESH}, expiry))
 
     def sign_payload(self, payload: dict[str, Any], *, ttl_seconds: int) -> str:
         """Sign an arbitrary short-lived payload, such as an OAuth state."""
@@ -132,13 +133,15 @@ class TokenVerifier(metaclass=Singleton):
 
     # Public
 
-    def verify(self, token: str, *, expected_type: str = "access") -> Principal:
+    def verify(
+        self, token: str, *, expected_type: TokenType = TokenType.ACCESS
+    ) -> Principal:
         """Verify any supported token and return the caller it asserts."""
         if self._idp_enabled and self._is_idp_token(token):
-            return self._verify_idp(token)
+            return self._verify_idp(token, expected_type=expected_type)
         return self._verify_local(token, expected_type=expected_type)
 
-    def decode_local(self, token: str, *, expected_type: str) -> dict[str, Any]:
+    def decode_local(self, token: str, *, expected_type: TokenType) -> dict[str, Any]:
         """Verify a first-party token and return its raw claims."""
         try:
             payload: dict[str, Any] = decode(
@@ -201,7 +204,9 @@ class TokenVerifier(metaclass=Singleton):
         issuer = unverified.get("iss")
         return isinstance(issuer, str) and issuer == idp.idp_issuer
 
-    def _verify_idp(self, token: str) -> Principal:
+    def _verify_idp(
+        self, token: str, *, expected_type: TokenType = TokenType.ACCESS
+    ) -> Principal:
         idp = self._idp
         if self._jwks_client is None or idp is None:
             raise_error(AuthErrors.IDP_NOT_CONFIGURED)
@@ -224,6 +229,11 @@ class TokenVerifier(metaclass=Singleton):
             # the key set hands back a key object where an HMAC wants a string.
             raise_error(AuthErrors.USER_DECODE_FAILED)
 
+        # An IdP bearer token is an access token and nothing else, so a caller
+        # asking for another type is refused rather than handed this one.
+        if expected_type != TokenType.ACCESS:
+            raise_error(AuthErrors.USER_TOKEN_INCOMPLETE)
+
         subject = str(payload.get("sub") or "")
         email = str(payload.get(idp.idp_email_claim) or "")
         if not subject or not email:
@@ -235,6 +245,6 @@ class TokenVerifier(metaclass=Singleton):
             roles=frozenset(payload.get("roles", []) or []),
             scopes=frozenset((payload.get("scope") or "").split()),
             issuer=idp.idp_issuer,
-            token_type="access",
+            token_type=TokenType.ACCESS,
             claims=payload,
         )

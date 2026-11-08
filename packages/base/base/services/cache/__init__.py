@@ -1,9 +1,14 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, Never
 from uuid import UUID, uuid5
 
 from base.models.definitions.cache import CacheChannels, CacheKeys
+from base.models.view_models.exceptions.cache import (
+    CacheBadRequestError,
+    CacheUnexpectedError,
+)
+from base.tools.serializers import serialize
 
 
 class AbstractCacheService(ABC):
@@ -244,6 +249,27 @@ class AbstractCacheService(ABC):
         """Returns the name of the cache service."""
 
     # Internals
+
+    @staticmethod
+    def _check_ttl(ttl_seconds: int | None) -> None:
+        """Refuse an expiry that is not in the future, as Redis itself does."""
+        if ttl_seconds is not None and ttl_seconds <= 0:
+            raise CacheBadRequestError("invalid expire time")
+
+    @staticmethod
+    def _encode(value: Any) -> str:
+        """Encode a value for storage, reporting a refusal as a cache error."""
+        try:
+            return serialize(value)
+        except TypeError as exc:
+            raise CacheUnexpectedError(str(exc), provider_error=exc) from exc
+
+    @staticmethod
+    def _refuse_type_clash() -> Never:
+        """One key holds one kind of value, whichever backend is behind this."""
+        raise CacheBadRequestError(
+            "WRONGTYPE Operation against a key holding the wrong kind of value"
+        )
 
     @staticmethod
     def _resolve_channel(channel: CacheChannels | str) -> str:
