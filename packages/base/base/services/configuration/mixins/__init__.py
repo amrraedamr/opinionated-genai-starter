@@ -42,6 +42,7 @@ from base.services.configuration.mixins.server import ServerSettingsMixin
 from base.services.configuration.mixins.sql import SQLSettingsMixin
 from base.services.configuration.mixins.sql.mysql import MySQLSettingsMixin
 from base.services.configuration.mixins.sql.postgres import PostgresSettingsMixin
+from base.services.configuration.mixins.tenancy import TenancySettingsMixin
 from base.services.configuration.mixins.token_issuing import TokenIssuingSettingsMixin
 from base.services.configuration.mixins.token_verification import (
     TokenVerificationSettingsMixin,
@@ -83,6 +84,7 @@ __all__ = [
     "RerankSettingsMixin",
     "SQLSettingsMixin",
     "ServerSettingsMixin",
+    "TenancySettingsMixin",
     "TokenIssuingSettingsMixin",
     "TokenVerificationSettingsMixin",
 ]

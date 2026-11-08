@@ -5,12 +5,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from base.models.definitions.errors import AuthErrors
+from base.models.definitions.tenancy import TenantId
 from base.models.definitions.tokens import TokenType
 from base.services.auth.models import AccessToken, Principal, RefreshToken, TokenPair
 from base.services.common.meta import Singleton
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import (
     SupportsIdpConfig,
+    SupportsTenancyConfig,
     SupportsTokenIssuingConfig,
     SupportsTokenVerificationConfig,
 )
@@ -97,6 +99,25 @@ class TokenVerifier(metaclass=Singleton):
         idp = self._idp
         return bool(idp and idp.idp_resource_server_enabled)
 
+    # Tenancy
+
+    @property
+    def _tenancy(self) -> SupportsTenancyConfig | None:
+        config = self._config
+        return (
+            cast(SupportsTenancyConfig, config)
+            if isinstance(config, SupportsTenancyConfig)
+            else None
+        )
+
+    def _tenant_of(self, payload: dict[str, Any]) -> TenantId | None:
+        """The tenant a token names, read only where this service opted in."""
+        tenancy = self._tenancy
+        if tenancy is None or not tenancy.tenancy_enabled:
+            return None
+        value = payload.get(tenancy.tenant_claim)
+        return TenantId(str(value)) if value else None
+
     def _init_idp(self) -> None:
         idp = self._idp
         if idp is None:  # pragma: no cover
@@ -180,6 +201,7 @@ class TokenVerifier(metaclass=Singleton):
         return Principal(
             subject=subject,
             user_id=parse_uuid(subject),
+            tenant_id=self._tenant_of(payload),
             email=payload.get("email"),
             roles=frozenset(payload.get("roles", []) or []),
             scopes=frozenset((payload.get("scope") or "").split()),
@@ -241,6 +263,7 @@ class TokenVerifier(metaclass=Singleton):
         return Principal(
             subject=subject,
             user_id=parse_uuid(subject),
+            tenant_id=self._tenant_of(payload),
             email=email,
             roles=frozenset(payload.get("roles", []) or []),
             scopes=frozenset((payload.get("scope") or "").split()),

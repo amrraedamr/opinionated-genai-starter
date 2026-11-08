@@ -2,6 +2,7 @@
 
 from uuid import UUID
 
+from base.models.definitions.tenancy import TenantId
 from base.models.definitions.tokens import TokenType
 from base.models.view_models import BaseModel
 
@@ -11,6 +12,7 @@ class Principal(BaseModel):
 
     subject: str
     user_id: UUID | None = None
+    tenant_id: TenantId | None = None
     email: str | None = None
     roles: frozenset[str] = frozenset()
     scopes: frozenset[str] = frozenset()

@@ -16,12 +16,15 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="SqlStore") from exc
 
-from base.models.orm import TimestampMixin
+from base.models.definitions.errors import TenancyErrors
+from base.models.orm import TenantScopedMixin, TimestampMixin
 from base.models.view_models.database import FilteredPaginationParams, PaginatedResult
 from base.models.view_models.exceptions.sql import SQLConflictError
 from base.services.sql.service import SQLService
 from base.services.store import AbstractStore
 from base.tools.database import SQLResultFormats
+from base.tools.errors import raise_error
+from base.tools.tenancy import TenantContext
 
 TEntity = TypeVar("TEntity", bound=TimestampMixin)
 
@@ -36,9 +39,10 @@ class SQLStore(AbstractStore[TEntity]):
     in this workspace provides, for `to_dict` and `update_from_dict`.
     """
 
-    #: Columns `edit` never overwrites, whatever the caller sends.
+    #: Columns `edit` never overwrites, whatever the caller sends. `tenant_id`
+    #: is here so an edit cannot move a row into somebody else's tenant.
     protected_fields: ClassVar[frozenset[str]] = frozenset(
-        {"id", "created_at", "updated_at", "deleted_at"}
+        {"id", "created_at", "updated_at", "deleted_at", "tenant_id"}
     )
     #: Columns `get_all_paged` matches `FilteredPaginationParams.search` against.
     search_fields: ClassVar[tuple[str, ...]] = ()
@@ -51,13 +55,44 @@ class SQLStore(AbstractStore[TEntity]):
     def _duplicate_error_types(self) -> tuple[type[BaseException], ...]:
         return (SQLConflictError,)
 
+    # Tenancy
+
+    @cached_property
+    def _tenant_scoped(self) -> bool:
+        """Whether this store's model opted into separation by customer."""
+        return issubclass(self._model, TenantScopedMixin)
+
+    def _tenant(self) -> str:
+        """The tenant to act for, refusing rather than acting for nobody.
+
+        A scoped query with no tenant would read `tenant_id IS NULL` and answer
+        with rows belonging to no one, which reads like an empty result rather
+        than the mistake it is.
+        """
+        tenant = TenantContext.get()
+        if tenant is None:
+            raise_error(TenancyErrors.TENANT_NOT_IN_CONTEXT)
+        return tenant
+
+    def _stamp(self, entities: list[TEntity]) -> list[TEntity]:
+        """Mark rows as this tenant's before they are written."""
+        if not self._tenant_scoped:
+            return entities
+        tenant = self._tenant()
+        for entity in entities:
+            entity.tenant_id = tenant  # type: ignore[attr-defined]
+        return entities
+
     # Query building
 
     def _active(self, *conditions: ColumnElement[bool]) -> Select[tuple[TEntity]]:
-        """The base query, narrowed to rows that are not soft-deleted."""
-        return self._base_select_query.where(
+        """The base query, narrowed to active rows and, where scoped, one tenant."""
+        query = self._base_select_query.where(
             *conditions, self._model.deleted_at.is_(None)
         )
+        if self._tenant_scoped:
+            query = query.where(self._column("tenant_id") == self._tenant())
+        return query
 
     def _column(self, name: str) -> Any:
         return getattr(self._model, name)
@@ -116,16 +151,16 @@ class SQLStore(AbstractStore[TEntity]):
     # Add
 
     def _add(self, entity: TEntity) -> TEntity:
-        return self._sql_service.upsert_row(entity)
+        return self._sql_service.upsert_row(self._stamp([entity])[0])
 
     async def _aadd(self, entity: TEntity) -> TEntity:
-        return await self._sql_service.aupsert_row(entity)
+        return await self._sql_service.aupsert_row(self._stamp([entity])[0])
 
     def _add_many(self, entities: list[TEntity]) -> list[TEntity]:
-        return self._sql_service.upsert_rows(entities)
+        return self._sql_service.upsert_rows(self._stamp(entities))
 
     async def _aadd_many(self, entities: list[TEntity]) -> list[TEntity]:
-        return await self._sql_service.aupsert_rows(entities)
+        return await self._sql_service.aupsert_rows(self._stamp(entities))
 
     # Edit
 
