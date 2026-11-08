@@ -35,6 +35,52 @@ def service() -> GeminiService:
     return bare
 
 
+def chunk(text: str) -> genai_types.GenerateContentResponse:
+    """One streamed piece, carrying only its text."""
+    return response(genai_types.Part(text=text))
+
+
+class _StubClient:
+    """Only needs to answer the attribute lookups the streamer makes."""
+
+    class _Models:
+        def generate_content_stream(self, **_: Any) -> Any: ...
+
+    def __init__(self) -> None:
+        self.models = self._Models()
+        self.aio = self
+
+
+class _PassThroughHandler:
+    """Stands in for the error handler, yielding a canned stream."""
+
+    def __init__(self, chunks: list[Any]) -> None:
+        self._chunks = chunks
+
+    async def arun(self, _call: Any, **_: Any) -> Any:
+        async def stream() -> Any:
+            for item in self._chunks:
+                yield item
+
+        return stream()
+
+    def run(self, _call: Any, **_: Any) -> Any:
+        return iter(self._chunks)
+
+
+class _FailingHandler:
+    """The same, for a stream that never starts."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def arun(self, _call: Any, **_: Any) -> Any:
+        raise self._error
+
+    def run(self, _call: Any, **_: Any) -> Any:
+        raise self._error
+
+
 def response(
     *parts: genai_types.Part,
     finish: genai_types.FinishReason | None = genai_types.FinishReason.STOP,
@@ -257,33 +303,71 @@ def test_a_stream_that_produced_nothing_is_refused() -> None:
         service()._to_result_from_chunks([])
 
 
-def test_a_stream_error_currently_drops_the_message_it_was_given() -> None:
-    """Product bug: `StreamError` has no `message` field, so the text is lost."""
+def test_a_stream_error_carries_the_message_it_was_given() -> None:
+    """`StreamError` names the field `text`; `message` was silently dropped."""
     error = GeminiService._build_stream_error(RuntimeError("boom"))
 
-    assert error.text is None
+    assert error.text == "boom"
     assert error.detail == {
         "exception_type": "RuntimeError",
         "exception_module": "builtins",
     }
 
 
-def test_the_stream_iterator_has_no_put_method_for_the_streamer_to_call() -> None:
-    """Product bug: `GeminiService._stream` calls `stream_iterator.put`."""
+async def test_streaming_emits_the_frames_a_consumer_waits_for() -> None:
+    """Start, one frame per chunk, then end — the same sequence as the others.
+
+    Nothing streamed before this: the streamer called a method the iterator
+    does not have, so it failed on the first chunk.
+    """
+    from base.models.view_models.streams import StreamEnd, StreamMessage, StreamStart
     from base.tools.stream import StreamIterator
 
-    assert not hasattr(StreamIterator, "put")
-    assert hasattr(StreamIterator, "send")
+    sent: list[Any] = []
+
+    class Recorder(StreamIterator):
+        def send(self, value: Any) -> None:
+            sent.append(value)
+
+        async def asend(self, value: Any) -> None:
+            sent.append(value)
+
+    svc = service()
+    svc._client = _StubClient()
+    svc._error_handler = _PassThroughHandler([chunk("héllo "), chunk("🌍")])
+
+    result = await GeminiService._astream(svc, {"model": "m"}, Recorder())
+
+    assert isinstance(sent[0], StreamStart)
+    assert isinstance(sent[-1], StreamEnd)
+    assert [f.data for f in sent if isinstance(f, StreamMessage)] == ["héllo ", "🌍"]
+    assert result.content == "héllo 🌍"
 
 
-def test_a_stream_message_cannot_be_built_the_way_the_streamer_builds_it() -> None:
-    """Product bug: `GeminiService._stream` passes `content=` where `data=` is."""
-    from pydantic import ValidationError
+async def test_a_stream_that_fails_tells_the_consumer_why() -> None:
+    """The error frame has to reach the consumer, and carry its text."""
+    from base.models.view_models.streams import StreamEnd, StreamError
+    from base.tools.stream import StreamIterator
 
-    from base.models.view_models.streams import StreamMessage
+    sent: list[Any] = []
 
-    with pytest.raises(ValidationError, match="data"):
-        StreamMessage(content="chunk")  # type: ignore[call-arg]
+    class Recorder(StreamIterator):
+        def send(self, value: Any) -> None:
+            sent.append(value)
+
+        async def asend(self, value: Any) -> None:
+            sent.append(value)
+
+    svc = service()
+    svc._client = _StubClient()
+    svc._error_handler = _FailingHandler(RuntimeError("upstream went away"))
+
+    with pytest.raises(RuntimeError):
+        await GeminiService._astream(svc, {"model": "m"}, Recorder())
+
+    errors = [f for f in sent if isinstance(f, StreamError)]
+    assert errors and errors[0].text == "upstream went away"
+    assert isinstance(sent[-1], StreamEnd)
 
 
 def test_unicode_and_emoji_survive_the_result() -> None:

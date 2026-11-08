@@ -36,6 +36,13 @@ class StoredToolCall(BaseModel):
     type: Literal["function"] = "function"
     function: StoredToolCallFunction
 
+    provider_signature: str | None = None
+    """An opaque token the provider wants echoed when the call is replayed.
+
+    Gemini refuses a function call sent back without the signature it issued
+    with. Base64 rather than bytes so the value survives JSON storage.
+    """
+
 
 # Message
 

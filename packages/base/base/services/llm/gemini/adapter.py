@@ -131,14 +131,17 @@ class GeminiContentAdapter:
             if content:
                 blocks.append({"text": content})
             for call in message.tool_calls or []:
-                blocks.append(
-                    {
-                        "function_call": {
-                            "name": call.function.name,
-                            "args": cls._decode_arguments(call.function.arguments),
-                        }
+                block: dict[str, Any] = {
+                    "function_call": {
+                        "name": call.function.name,
+                        "args": cls._decode_arguments(call.function.arguments),
                     }
-                )
+                }
+                # Gemini refuses a replayed call that arrives without the
+                # signature it issued with.
+                if call.provider_signature:
+                    block["thought_signature"] = call.provider_signature
+                blocks.append(block)
             return {"role": _ROLE_MAP[message.role], "parts": blocks}
 
         raise ValueError(f"Unsupported stored message role: {message.role}")

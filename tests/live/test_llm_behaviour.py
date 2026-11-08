@@ -282,12 +282,6 @@ async def test_a_cache_hint_never_changes_the_answer(make_settings: Any) -> None
     assert "tokyo" in hinted.content.lower()
 
 
-@pytest.mark.xfail(
-    reason="Gemini 3.x refuses a replayed functionCall that carries no "
-    "thought_signature, and neither StoredToolCall nor the Gemini adapter "
-    "keeps one, so multi-turn tool calling cannot work there",
-    strict=False,
-)
 async def test_a_tool_call_round_trips_through_a_second_turn(
     make_settings: Any,
 ) -> None:
@@ -435,12 +429,6 @@ async def test_a_rejected_credential_becomes_a_domain_error(
         await OpenAIService(config).acomplete(prompt=ask("hello"), max_output_tokens=64)
 
 
-@pytest.mark.xfail(
-    reason="this gateway accepts Anthropic's output_config.format without "
-    "enforcing it, so the reply comes back as fenced markdown and "
-    "model_validate_json rejects it",
-    strict=False,
-)
 async def test_structured_output_returns_the_schema(make_settings: Any) -> None:
     """Every provider must parse into the model the caller asked for."""
     configure_all(make_settings)
