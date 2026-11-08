@@ -2,6 +2,7 @@
 
 import json
 import time
+from base64 import b64encode
 from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
@@ -427,7 +428,7 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
     def _stream(
         self, request: dict[str, Any], stream_iterator: StreamIterator
     ) -> LLMResult:
-        stream_iterator.put(StreamStart())
+        stream_iterator.send(StreamStart())
         chunks: list[Any] = []
         try:
             stream = self._error_handler.run(
@@ -437,18 +438,18 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
                 chunks.append(chunk)
                 text = getattr(chunk, "text", None)
                 if text:
-                    stream_iterator.put(StreamMessage(content=text))
+                    stream_iterator.send(StreamMessage(data=text))
         except Exception as exc:
-            stream_iterator.put(self._build_stream_error(exc))
+            stream_iterator.send(self._build_stream_error(exc))
             raise
         finally:
-            stream_iterator.put(StreamEnd())
+            stream_iterator.send(StreamEnd())
         return self._to_result_from_chunks(chunks)
 
     async def _astream(
         self, request: dict[str, Any], stream_iterator: StreamIterator
     ) -> LLMResult:
-        stream_iterator.put(StreamStart())
+        await stream_iterator.asend(StreamStart())
         chunks: list[Any] = []
         try:
             stream = await self._error_handler.arun(
@@ -458,18 +459,18 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
                 chunks.append(chunk)
                 text = getattr(chunk, "text", None)
                 if text:
-                    stream_iterator.put(StreamMessage(content=text))
+                    await stream_iterator.asend(StreamMessage(data=text))
         except Exception as exc:
-            stream_iterator.put(self._build_stream_error(exc))
+            await stream_iterator.asend(self._build_stream_error(exc))
             raise
         finally:
-            stream_iterator.put(StreamEnd())
+            await stream_iterator.asend(StreamEnd())
         return self._to_result_from_chunks(chunks)
 
     @staticmethod
     def _build_stream_error(error: Exception) -> StreamError:
         return StreamError(
-            message=str(error),
+            text=str(error),
             detail={
                 "exception_type": type(error).__name__,
                 "exception_module": type(error).__module__,
@@ -499,6 +500,7 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
                             name=call.name or "",
                             arguments=json.dumps(dict(call.args or {})),
                         ),
+                        provider_signature=self._signature_of(part),
                     )
                 )
             elif getattr(part, "text", None):
@@ -567,6 +569,14 @@ class GeminiService(AbstractLLMService, metaclass=KeyedSingletonABC):
         if reason is None:
             return ""
         return getattr(reason, "name", None) or str(reason)
+
+    @staticmethod
+    def _signature_of(part: Any) -> str | None:
+        """The thought signature this part carries, as text."""
+        raw = getattr(part, "thought_signature", None)
+        if not raw:
+            return None
+        return b64encode(raw).decode() if isinstance(raw, bytes) else str(raw)
 
     @staticmethod
     def _parts(candidate: Any) -> list[Any]:

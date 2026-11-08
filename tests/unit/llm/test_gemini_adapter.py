@@ -11,8 +11,10 @@ no id is given an invented one.
 import json
 import uuid
 from typing import Any
+from uuid import UUID
 
 import pytest
+from google.genai import types as genai_types
 
 from base.models.definitions.message import MessageRole
 from base.models.view_models import BaseModel
@@ -30,6 +32,23 @@ from base.models.view_models.prompt import (
 from base.services.llm.gemini import GeminiService
 from base.services.llm.gemini.adapter import _ROLE_MAP, GeminiContentAdapter
 from tests.fakes import build_prompt, build_tool, stored_message
+
+
+def _service() -> GeminiService:
+    bare = object.__new__(GeminiService)
+    bare._model = "gemini-test"
+    return bare
+
+
+def _response(*parts: genai_types.Part) -> genai_types.GenerateContentResponse:
+    return genai_types.GenerateContentResponse(
+        candidates=[
+            genai_types.Candidate(
+                content=genai_types.Content(role="model", parts=list(parts)),
+                finish_reason=genai_types.FinishReason.STOP,
+            )
+        ]
+    )
 
 CONVERSATION = uuid.UUID(int=1)
 
@@ -549,3 +568,77 @@ def test_unicode_and_emoji_survive_the_adapter() -> None:
     )
 
     assert contents[0]["parts"] == [{"text": text}]
+
+
+# Gemini 3.x refuses a replayed function call that carries no thought
+# signature: "Function call is missing a thought_signature in functionCall
+# parts. This is required for tools to work correctly." Nothing in the
+# neutral shape kept one, so a second turn could never be sent.
+
+
+def test_a_tool_call_keeps_the_signature_the_provider_issued() -> None:
+    """Read off the reply, so it can be handed back on the next turn."""
+    part = genai_types.Part(
+        function_call=genai_types.FunctionCall(name="get_weather", args={"city": "Oslo"})
+    )
+    part.thought_signature = b"opaque-token"
+
+    result = GeminiService._to_result(_service(), _response(part))
+
+    assert result.tool_calls
+    assert result.tool_calls[0].provider_signature == "b3BhcXVlLXRva2Vu"
+
+
+def test_a_tool_call_without_a_signature_keeps_none() -> None:
+    part = genai_types.Part(
+        function_call=genai_types.FunctionCall(name="get_weather", args={})
+    )
+    result = GeminiService._to_result(_service(), _response(part))
+
+    assert result.tool_calls
+    assert result.tool_calls[0].provider_signature is None
+
+
+def test_a_replayed_call_carries_its_signature_back() -> None:
+    """The part sent on the next turn has to repeat what the model issued."""
+    message = StoredMessage(
+        conversation_id=UUID(int=3),
+        sequence=1,
+        role=MessageRole.ASSISTANT,
+        content="",
+        tool_calls=[
+            StoredToolCall(
+                id="c1",
+                function=StoredToolCallFunction(
+                    name="get_weather", arguments='{"city": "Oslo"}'
+                ),
+                provider_signature="b3BhcXVlLXRva2Vu",
+            )
+        ],
+    )
+
+    wire, _ = GeminiContentAdapter.to_contents(messages=[message])
+
+    part = wire[0]["parts"][0]
+    assert part["function_call"]["name"] == "get_weather"
+    assert part["thought_signature"] == "b3BhcXVlLXRva2Vu"
+
+
+def test_a_replayed_call_without_a_signature_sends_no_field() -> None:
+    """An older model issues none, and must not be sent an empty one."""
+    message = StoredMessage(
+        conversation_id=UUID(int=3),
+        sequence=1,
+        role=MessageRole.ASSISTANT,
+        content="",
+        tool_calls=[
+            StoredToolCall(
+                id="c1",
+                function=StoredToolCallFunction(name="get_weather", arguments="{}"),
+            )
+        ],
+    )
+
+    wire, _ = GeminiContentAdapter.to_contents(messages=[message])
+
+    assert "thought_signature" not in wire[0]["parts"][0]

@@ -1,6 +1,7 @@
 """Anthropic behind the neutral LLM seam."""
 
 import json
+import re
 import time
 from collections.abc import Sequence
 from typing import Any, cast
@@ -65,6 +66,17 @@ _FINISH_REASON_MAP: dict[str, FinishReason] = {
     "max_tokens": FinishReason.LENGTH,
     "refusal": FinishReason.CONTENT_FILTER,
 }
+
+_FENCED_JSON = re.compile(
+    r"```(?:json)?\s*(?P<body>.*?)\s*```", re.DOTALL | re.IGNORECASE
+)
+"""A JSON object written the way a model writes one in prose.
+
+Asking for a schema constrains the reply, but a gateway may accept the
+request without passing the constraint on, and the model then answers in
+markdown. The schema was asked for either way, so it is read either way.
+"""
+
 
 _CACHE_TTL_MAP: dict[CachePersistence, str] = {
     CachePersistence.SHORT: "5m",
@@ -396,6 +408,12 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         )
         return wire, request
 
+    @staticmethod
+    def _unfenced(text: str) -> str:
+        """The JSON inside a markdown fence, or the text unchanged."""
+        match = _FENCED_JSON.search(text)
+        return match.group("body") if match else text
+
     def _to_parsed_result[T: BaseModel](
         self, schema: type[T], message: Message
     ) -> ParsedResult[T]:
@@ -408,7 +426,7 @@ class AnthropicService(AbstractLLMService, metaclass=KeyedSingletonABC):
         for block in message.content:
             if isinstance(block, TextBlock) and block.text.strip():
                 return ParsedResult[T](
-                    parsed=schema.model_validate_json(block.text),
+                    parsed=schema.model_validate_json(self._unfenced(block.text)),
                     usage=self._to_usage_counts(message),
                 )
         raise LLMError("Anthropic returned no structured output")

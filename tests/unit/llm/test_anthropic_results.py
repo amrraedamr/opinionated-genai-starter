@@ -218,3 +218,45 @@ def test_unicode_and_emoji_survive_the_result() -> None:
     result = service()._to_result(message(text("héllo 🌍 café")))
 
     assert result.content == "héllo 🌍 café"
+
+
+# A gateway may accept `output_config.format` without enforcing it, and the
+# model then answers with the JSON fenced the way it would write it in prose.
+# The schema was asked for either way, so the answer is read either way.
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '```json\n{"text": "Paris"}\n```',
+        '```\n{"text": "Paris"}\n```',
+        '```JSON\r\n{"text": "Paris"}\r\n```',
+        '  ```json\n{"text": "Paris"}\n```  ',
+        '{"text": "Paris"}',
+    ],
+)
+def test_a_schema_is_read_whether_or_not_the_reply_is_fenced(body: str) -> None:
+    parsed = AnthropicService._to_parsed_result(
+        service(), Answer, message(text(body))
+    )
+
+    assert parsed.parsed.text == "Paris"
+
+
+def test_prose_around_the_fence_does_not_defeat_it() -> None:
+    """Some models introduce the block before writing it."""
+    body = 'Here is the answer:\n```json\n{"text": "Paris"}\n```'
+
+    parsed = AnthropicService._to_parsed_result(service(), Answer, message(text(body)))
+
+    assert parsed.parsed.text == "Paris"
+
+
+def test_a_reply_that_is_not_json_at_all_still_fails() -> None:
+    """Tolerating a fence must not turn a wrong answer into a silent one."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        AnthropicService._to_parsed_result(
+            service(), Answer, message(text("I cannot."))
+        )
