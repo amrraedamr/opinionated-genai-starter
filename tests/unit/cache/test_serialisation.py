@@ -44,21 +44,20 @@ async def test_a_datetime_nested_in_a_dict_returns_as_a_datetime(
     assert await memory_cache.aget("nested", namespace) == {"at": moment, "n": 1}
 
 
-async def test_a_pydantic_model_returns_as_its_encoding_envelope(
+async def test_a_pydantic_model_comes_back_as_itself(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Pins an asymmetry: `ExpansiveEncoder` writes `base_model`, nothing reads it.
+    """The encoder writes `base_model`, so the decoder has to read it.
 
-    `ExpansiveDecoder._decoders` registers `datetime`, `dto`, `app_model`,
-    `uuid` and `type` but not `base_model`, so a model stored here comes back
-    as the envelope the encoder wrote. `base/tools/deserializers.py:72`.
+    It used to register every other tag, and a model stored here came back
+    as the envelope rather than the model.
     """
     await memory_cache.aset("model", namespace, value=Payload(name="x", count=2))
-    assert await memory_cache.aget("model", namespace) == {
-        "_type": "base_model",
-        "_class": f"{Payload.__module__}.Payload",
-        "value": {"name": "x", "count": 2},
-    }
+
+    restored = await memory_cache.aget("model", namespace)
+    assert isinstance(restored, Payload)
+    assert restored.name == "x"
+    assert restored.count == 2
 
 
 async def test_a_value_the_encoder_cannot_reach_is_refused_on_write(

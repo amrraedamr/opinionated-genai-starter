@@ -459,31 +459,47 @@ def test_no_filter_sends_no_filter(service: AzureAISearchService) -> None:
     assert service._build_filter({}) is None
 
 
-def test_a_boolean_inside_a_list_is_not_lower_cased(
+def test_a_boolean_is_rendered_the_way_odata_spells_one(
     service: AzureAISearchService,
 ) -> None:
-    """Pins a bug: `eq True` is Python, not OData, and Azure rejects it."""
-    assert service._build_filter({"active": [True]}) == "(active eq True)"
-
-
-def test_a_none_value_drops_out_of_the_filter_entirely(
-    service: AzureAISearchService,
-) -> None:
-    """Pins a bug: an unmatched type widens the query instead of narrowing it."""
-    assert service._build_filter({"tenant": None}) is None
-
-
-def test_a_none_alongside_a_real_condition_keeps_only_the_real_one(
-    service: AzureAISearchService,
-) -> None:
-    assert (
-        service._build_filter({"tenant": "acme", "deleted": None}) == "tenant eq 'acme'"
+    """`True` is Python; Azure rejects it. The list branch used to emit it."""
+    assert service._build_filter({"active": True}) == "active eq true"
+    assert service._build_filter({"active": [True, False]}) == (
+        "(active eq true or active eq false)"
     )
 
 
-def test_a_quote_in_a_value_is_not_escaped(service: AzureAISearchService) -> None:
-    """Pins a bug: a value closes the literal and the rest is read as OData."""
-    assert service._build_filter({"name": "O'Hara"}) == "name eq 'O'Hara'"
+def test_a_none_value_narrows_rather_than_disappears(
+    service: AzureAISearchService,
+) -> None:
+    """A dropped condition widens the query, which is the dangerous direction.
+
+    Asking for `tenant is null` and being handed every tenant is worse than
+    an error, because it looks like a result.
+    """
+    assert service._build_filter({"tenant": None}) == "tenant eq null"
+
+
+def test_a_none_alongside_a_real_condition_keeps_both(
+    service: AzureAISearchService,
+) -> None:
+    assert service._build_filter({"tenant": "acme", "deleted": None}) == (
+        "tenant eq 'acme' and deleted eq null"
+    )
+
+
+def test_a_quote_in_a_value_is_escaped(service: AzureAISearchService) -> None:
+    """OData doubles a quote inside a literal; leaving it broke the filter."""
+    assert service._build_filter({"name": "O'Hara"}) == "name eq 'O''Hara'"
+    assert service._build_filter({"name": ["O'Hara"]}) == "(name eq 'O''Hara')"
+
+
+def test_a_type_the_builder_cannot_render_is_refused(
+    service: AzureAISearchService,
+) -> None:
+    """Silently dropping it returned everything instead of nothing."""
+    with pytest.raises(TypeError):
+        service._build_filter({"when": object()})
 
 
 # Document translation
