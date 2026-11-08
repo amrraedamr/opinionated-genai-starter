@@ -100,6 +100,9 @@ class SqlChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
         *,
         limit: int | None = None,
     ) -> list[StoredMessage]:
+        if limit is not None and limit <= 0:
+            # SQL reads a negative LIMIT as no limit at all.
+            return []
         if limit is None:
             query = self._base_select_query.where(
                 ChatHistoryMessageDTO.conversation_id == parent_id
@@ -126,6 +129,9 @@ class SqlChatHistoryStore(ChatHistoryStore, metaclass=SingletonABC):
         *,
         limit: int | None = None,
     ) -> list[StoredMessage]:
+        if limit is not None and limit <= 0:
+            # SQL reads a negative LIMIT as no limit at all.
+            return []
         if limit is None:
             query = self._base_select_query.where(
                 ChatHistoryMessageDTO.conversation_id == parent_id

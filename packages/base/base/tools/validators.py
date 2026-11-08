@@ -2,7 +2,9 @@ import re
 
 
 def validate_name(name: str) -> str:
-    if not re.match(r"^[A-Za-z]+(?:[-'][A-Za-z]+)*$", name):
+    # `fullmatch` rather than `match`: `$` also matches before a trailing
+    # newline, so an anchored `match` accepts "Amr\n".
+    if not re.fullmatch(r"[A-Za-z]+(?:[-'][A-Za-z]+)*", name):
         raise ValueError(
             "Name must contain only letters, hyphens, or apostrophes, and cannot start or end with a hyphen or apostrophe."
         )
@@ -10,7 +12,7 @@ def validate_name(name: str) -> str:
 
 
 def validate_password(password: str) -> str:
-    violations = []
+    violations: list[str] = []
     if len(password) < 8:
         violations.append("Password must be at least 8 characters long.")
     if not re.search(r"[A-Z]", password):

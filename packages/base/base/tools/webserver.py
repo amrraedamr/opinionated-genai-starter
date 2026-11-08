@@ -66,7 +66,7 @@ def run_gunicorn(
 ) -> None:
     settings = settings or settings_for(SupportsServerConfig)
 
-    # Runs pre-fork under `preload: True`. Create engines, pools and clients
+    # Runs pre-fork under `preload_app`. Create engines, pools and clients
     # in a capability's `startup()`, which runs per worker post-fork.
     app = _import_app(app_path)
 
@@ -96,7 +96,7 @@ def run_gunicorn(
         "bind": f"{host}:{port}",
         "workers": min(multiprocessing.cpu_count() + 1, settings.max_gunicorn_workers),
         "worker_class": "uvicorn.workers.UvicornWorker",
-        "preload": True,
+        "preload_app": True,
         "timeout": 500,
         "graceful_timeout": 300,
     }

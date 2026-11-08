@@ -36,6 +36,7 @@ server = [
     "fastapi>=0.133.1,<0.134",
     "uvicorn[standard]>=0.41.0,<0.42",
     "gunicorn>=25.1.0,<26",
+    "python-multipart>=0.0.33,<0.1",
 ]
 sql = [
     "sqlalchemy>=2.0.47,<3",

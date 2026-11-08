@@ -1,12 +1,11 @@
 """User-bound authentication."""
 
-import uuid
-
 from base.models.definitions.errors import AuthErrors
 from base.models.definitions.tokens import TokenType
 from base.services.auth import Principal, TokenIssuer, TokenPair, TokenVerifier
 from base.services.common.meta import Singleton
 from base.tools.errors import raise_error
+from base.tools.misc import parse_uuid
 from identity.models.orm.user import UserDTO
 from identity.models.view_models.auth import RefreshToken
 from identity.services.auth.oauth import OAuthService
@@ -33,8 +32,10 @@ class AuthService(metaclass=Singleton):
         payload = self._verifier.decode_local(
             refresh_token, expected_type=TokenType.REFRESH
         )
-        user_id = payload.get("user_id", "")
-        user = await self._user_store.aget(uuid.UUID(user_id))
+        user_id = parse_uuid(payload.get("user_id"))
+        if user_id is None:
+            raise_error(AuthErrors.USER_TOKEN_INCOMPLETE)
+        user = await self._user_store.aget(user_id)
         return self.generate_token_pair(user)
 
     # Resolving

@@ -7,7 +7,9 @@ name: genai-infra
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # pgvector's image, not plain Postgres: PgVectorSearchService installs the
+    # extension itself but cannot conjure it into an image that lacks it.
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: local
       POSTGRES_PASSWORD: local
@@ -24,7 +26,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
@@ -51,7 +53,7 @@ services:
       retries: 20
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.20.0
     ports:
       # 6333 is the REST API; 6334 is gRPC, which the client prefers by default.
       - "6333:6333"

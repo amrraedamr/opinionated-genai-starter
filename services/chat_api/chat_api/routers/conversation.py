@@ -11,7 +11,7 @@ from base.models.view_models.chat_history import ChatHistoryConfig, Conversation
 from base.models.view_models.execution_context import FlowVariables
 from base.models.view_models.flow import FlowAbortError
 from base.models.view_models.streams import StreamError
-from base.services.auth import Principal, principal_dependency
+from base.services.auth import user_id_dependency
 from base.services.background_tasks.in_memory import InMemoryBackgroundTaskService
 from base.services.chat_history import ChatHistoryService
 from base.services.common.meta import Stored, scope_id
@@ -44,20 +44,18 @@ router = APIRouter(prefix="/conversations", tags=["Conversations"])
 @router.post("", response_model=BaseResponse[CreateConversationResponse])
 async def create_conversation(
     request: CreateConversationRequest,
-    principal: Principal = principal_dependency,
+    user_id: UUID = user_id_dependency,
 ) -> BaseResponse[CreateConversationResponse]:
-    created = await ConversationStore().acreate_for_user(principal.user_id, request)
+    created = await ConversationStore().acreate_for_user(user_id, request)
     return BaseResponse(data=CreateConversationResponse(conversation_id=created.id))
 
 
 @router.get("/{conversation_id}", response_model=BaseResponse[GetConversationResponse])
 async def get_conversation(
     conversation_id: UUID,
-    principal: Principal = principal_dependency,
+    user_id: UUID = user_id_dependency,
 ) -> BaseResponse[GetConversationResponse]:
-    conversation = await ConversationStore().aget_for_user(
-        principal.user_id, conversation_id
-    )
+    conversation = await ConversationStore().aget_for_user(user_id, conversation_id)
     if conversation is None:
         raise_error(DatabaseErrors.RECORD_NOT_FOUND)
     assert conversation is not None
@@ -79,10 +77,10 @@ async def get_conversation(
 async def edit_conversation(
     conversation_id: UUID,
     request: EditConversationRequest,
-    principal: Principal = principal_dependency,
+    user_id: UUID = user_id_dependency,
 ) -> BaseResponse[EditConversationResponse]:
     updated = await ConversationStore().aedit_for_user(
-        principal.user_id,
+        user_id,
         conversation_id,
         request,
     )
@@ -97,11 +95,9 @@ async def edit_conversation(
 )
 async def delete_conversation(
     conversation_id: UUID,
-    principal: Principal = principal_dependency,
+    user_id: UUID = user_id_dependency,
 ) -> BaseResponse[DeleteConversationResponse]:
-    deleted = await ConversationStore().adelete_for_user(
-        principal.user_id, conversation_id
-    )
+    deleted = await ConversationStore().adelete_for_user(user_id, conversation_id)
     if not deleted:
         raise_error(DatabaseErrors.RECORD_NOT_FOUND)
 
@@ -116,7 +112,7 @@ async def send_message(
     request: SendChatRequest,
     streaming: bool = False,
     debug: bool = False,
-    principal: Principal = principal_dependency,
+    user_id: UUID = user_id_dependency,
 ) -> BaseResponse[SendChatResponse] | EventSourceResponse:
     execution_context = ExecutionContext()
     if debug:
@@ -127,9 +123,7 @@ async def send_message(
     chat_history_service = ChatHistoryService(ChatHistoryConfig(), SqlChatHistoryStore)
     logger = ConsoleLoggerService()
 
-    conversation = await ConversationStore().aget_for_user(
-        principal.user_id, conversation_id
-    )
+    conversation = await ConversationStore().aget_for_user(user_id, conversation_id)
     if conversation is None:
         raise_error(DatabaseErrors.RECORD_NOT_FOUND)
     assert conversation is not None
@@ -213,11 +207,9 @@ async def send_message(
 )
 async def get_messages(
     conversation_id: UUID,
-    principal: Principal = principal_dependency,
+    user_id: UUID = user_id_dependency,
 ) -> BaseResponse[ListChatResponse]:
-    conversation = await ConversationStore().aget_for_user(
-        principal.user_id, conversation_id
-    )
+    conversation = await ConversationStore().aget_for_user(user_id, conversation_id)
     if conversation is None:
         raise_error(DatabaseErrors.RECORD_NOT_FOUND)
     assert conversation is not None
