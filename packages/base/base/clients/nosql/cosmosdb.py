@@ -117,12 +117,8 @@ class CosmosDBClient(metaclass=Singleton):
             return False
 
     def close(self) -> None:
-        """Close sync client and credential.
-
-        Sync CosmosClient has no public close() — dropping the reference
-        lets GC clean up the underlying requests.Session.
-        """
-        close_all(self._credential)
+        """Close sync client and credential."""
+        close_all(self._sync_client, self._credential)
         self._sync_client = None
         self._credential = None
 

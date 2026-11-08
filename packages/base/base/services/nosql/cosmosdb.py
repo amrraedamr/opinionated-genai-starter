@@ -26,7 +26,13 @@ from base.tools.pagination import apaginate, paginate
 
 
 class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
-    """Azure Cosmos DB (SQL API) service with both sync and async support."""
+    """Azure Cosmos DB (SQL API) service with both sync and async support.
+
+    No query here names a partition key, so every one fans out, which the SDK
+    already does by default. Saying so with `enable_cross_partition_query` is
+    not the same thing: the async `query_items` never pops it out of its
+    keywords, so it reaches the HTTP layer and the call dies with a TypeError.
+    """
 
     def __init__(self) -> None:
         self._client: CosmosDBClient = CosmosDBClient()
@@ -73,13 +79,17 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
     def _build_select_clause(
         projection: dict[str, Any] | None,
     ) -> str:
-        """Convert a projection dict to a Cosmos SQL SELECT clause."""
+        """Convert a projection dict to a Cosmos SQL SELECT clause.
+
+        `VALUE` is what makes the whole document the row: `SELECT c FROM c`
+        returns `{"c": {...}}`, one level deeper than every caller expects.
+        """
         if not projection:
-            return "c"
+            return "VALUE c"
 
         include_fields = [k for k, v in projection.items() if v]
         if not include_fields:
-            return "c"
+            return "VALUE c"
 
         return ", ".join(f"c.{field}" for field in include_fields)
 
@@ -109,8 +119,8 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> dict[str, Any] | None:
         container = self._get_container(collection)
 
-        # Fast path: direct read by id
-        if "id" in filter and len(filter) == 1:
+        # Fast path: direct read by id, which cannot project
+        if "id" in filter and len(filter) == 1 and not projection:
             try:
                 return container.read_item(
                     item=filter["id"], partition_key=filter["id"]
@@ -128,7 +138,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             container.query_items(
                 query=query,
                 parameters=params or None,
-                enable_cross_partition_query=True,
             )
         )
         return items[0] if items else None
@@ -142,7 +151,7 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
     ) -> dict[str, Any] | None:
         container = self._aget_container(collection)
 
-        if "id" in filter and len(filter) == 1:
+        if "id" in filter and len(filter) == 1 and not projection:
             try:
                 return await container.read_item(
                     item=filter["id"], partition_key=filter["id"]
@@ -160,7 +169,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         async for item in container.query_items(
             query=query,
             parameters=params or None,
-            enable_cross_partition_query=True,
         ):
             items.append(item)
             break
@@ -198,7 +206,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             container.query_items(
                 query=query,
                 parameters=params or None,
-                enable_cross_partition_query=True,
             )
         )
 
@@ -233,7 +240,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         async for item in container.query_items(
             query=query,
             parameters=params or None,
-            enable_cross_partition_query=True,
         ):
             items.append(item)
 
@@ -414,6 +420,8 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             if not upsert:
                 return 0
             replacement.setdefault("id", filter.get("id"))
+        else:
+            replacement.setdefault("id", document["id"])
 
         container = self._get_container(collection)
         container.upsert_item(body=replacement)
@@ -432,6 +440,8 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             if not upsert:
                 return 0
             replacement.setdefault("id", filter.get("id"))
+        else:
+            replacement.setdefault("id", document["id"])
 
         container = self._aget_container(collection)
         await container.upsert_item(body=replacement)
@@ -519,7 +529,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             container.query_items(
                 query=query,
                 parameters=params or None,
-                enable_cross_partition_query=True,
             )
         )
         return int(results[0]) if results else 0
@@ -540,7 +549,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         async for item in container.query_items(
             query=query,
             parameters=params or None,
-            enable_cross_partition_query=True,
         ):
             results.append(item)
 
@@ -563,7 +571,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             container.query_items(
                 query=query,
                 parameters=params or None,
-                enable_cross_partition_query=True,
             )
         )
 
@@ -584,7 +591,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
         async for item in container.query_items(
             query=query,
             parameters=params or None,
-            enable_cross_partition_query=True,
         ):
             items.append(item)
 
@@ -616,7 +622,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
                 container.query_items(
                     query=query,
                     parameters=params,
-                    enable_cross_partition_query=True,
                 )
             )
             results.extend(items)
@@ -641,7 +646,6 @@ class CosmosDBService(AbstractNoSQLService, metaclass=SingletonABC):
             async for item in container.query_items(
                 query=query,
                 parameters=params,
-                enable_cross_partition_query=True,
             ):
                 results.append(item)
         return results

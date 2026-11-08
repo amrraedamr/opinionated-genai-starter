@@ -7,7 +7,7 @@ is deliberately *not* retry-decorated is a generator, and that is pinned too.
 
 import inspect
 from collections.abc import AsyncIterator, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -97,6 +97,7 @@ class FakeContainerClient:
     def __init__(self, blobs: list[Any] | None = None) -> None:
         self.blobs = blobs or []
         self.prefixes: list[str | None] = []
+        self.includes: list[list[str] | None] = []
         self.created = 0
         self.exists_value = True
 
@@ -106,8 +107,11 @@ class FakeContainerClient:
     def create_container(self) -> None:
         self.created += 1
 
-    def list_blobs(self, name_starts_with: str | None = None) -> Iterator[Any]:
+    def list_blobs(
+        self, name_starts_with: str | None = None, include: list[str] | None = None
+    ) -> Iterator[Any]:
         self.prefixes.append(name_starts_with)
+        self.includes.append(include)
         yield from self.blobs
 
 
@@ -136,9 +140,10 @@ class FakeServiceClient:
 class FakeClientHolder:
     """Stands in for `AzureBlobClient`, which owns both SDK clients."""
 
-    def __init__(self, service_client: Any) -> None:
+    def __init__(self, service_client: Any, account_key: str = "") -> None:
         self.sync_client = service_client
         self.async_client = service_client
+        self.account_key = account_key
         self.closed = 0
         self.aclosed = 0
 
@@ -363,11 +368,15 @@ def test_every_single_shot_method_is_retry_decorated() -> None:
         assert hasattr(getattr(AzureBlobService, name), "__wrapped__"), name
 
 
-def test_a_failure_while_listing_escapes_untranslated(make_settings: Any) -> None:
-    """The consequence of not decorating a generator, pinned as it stands."""
+def test_a_failure_while_listing_is_translated_even_without_the_decorator(
+    make_settings: Any,
+) -> None:
+    """A generator cannot be retried, but it can still translate."""
 
     class Exploding:
-        def list_blobs(self, name_starts_with: str | None = None) -> Iterator[Any]:
+        def list_blobs(
+            self, name_starts_with: str | None = None, include: list[str] | None = None
+        ) -> Iterator[Any]:
             raise ResourceNotFoundError("no such container")
 
     service, _ = build(make_settings)
@@ -375,8 +384,17 @@ def test_a_failure_while_listing_escapes_untranslated(make_settings: Any) -> Non
         FakeServiceClient(FakeBlobClient(), Exploding())  # type: ignore[arg-type]
     )
     generator = service.list_blobs("missing")
-    with pytest.raises(ResourceNotFoundError):
+    with pytest.raises(BlobNotFoundError):
         list(generator)
+
+
+def test_listing_asks_azure_for_the_metadata_it_otherwise_leaves_out(
+    make_settings: Any,
+) -> None:
+    container = FakeContainerClient()
+    service, _ = build(make_settings, container=container)
+    list(service.list_blobs("reports"))
+    assert container.includes == [["metadata"]]
 
 
 @pytest.mark.parametrize(
@@ -552,9 +570,13 @@ class AsyncFakeContainerClient:
     def __init__(self, blobs: list[Any] | None = None) -> None:
         self.blobs = blobs or []
         self.prefixes: list[str | None] = []
+        self.includes: list[list[str] | None] = []
 
-    def list_blobs(self, name_starts_with: str | None = None) -> AsyncIterator[Any]:
+    def list_blobs(
+        self, name_starts_with: str | None = None, include: list[str] | None = None
+    ) -> AsyncIterator[Any]:
         self.prefixes.append(name_starts_with)
+        self.includes.append(include)
 
         async def gen() -> AsyncIterator[Any]:
             for blob in self.blobs:
@@ -641,3 +663,156 @@ async def test_an_async_sdk_error_becomes_a_blob_error(make_settings: Any) -> No
     with pytest.raises(BlobNotFoundError) as caught:
         await service.adownload("reports", "q1.pdf")
     assert caught.value.provider_error is error
+
+
+async def test_a_failure_while_listing_asynchronously_is_translated_too(
+    make_settings: Any,
+) -> None:
+    class Exploding:
+        def list_blobs(
+            self, name_starts_with: str | None = None, include: list[str] | None = None
+        ) -> AsyncIterator[Any]:
+            raise ResourceNotFoundError("no such container")
+
+    service, _ = build_async(make_settings, container=Exploding())
+    with pytest.raises(BlobNotFoundError):
+        [blob async for blob in service.alist_blobs("missing")]
+
+
+async def test_listing_asynchronously_asks_for_the_metadata_too(
+    make_settings: Any,
+) -> None:
+    container = AsyncFakeContainerClient()
+    service, _ = build_async(make_settings, container=container)
+    [blob async for blob in service.alist_blobs("reports")]
+    assert container.includes == [["metadata"]]
+
+
+# Signed URLs
+#
+# A user delegation key is minted by Entra ID, so the identity branch is the
+# one no emulator can reach and only a fake can show.
+
+
+class SigningServiceClient:
+    """The two attributes a SAS URL is built from, and the key it may mint."""
+
+    account_name = "account"
+    url = "https://account.blob.core.windows.net/"
+
+    def __init__(self) -> None:
+        self.delegations = 0
+
+    def get_user_delegation_key(self, **kwargs: Any) -> str:
+        self.delegations += 1
+        return "delegation-key"
+
+
+class AsyncSigningServiceClient(SigningServiceClient):
+    async def get_user_delegation_key(self, **kwargs: Any) -> str:  # type: ignore[override]
+        self.delegations += 1
+        return "delegation-key"
+
+
+def build_signing(
+    make_settings: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    account_key: str,
+    client: SigningServiceClient | None = None,
+) -> tuple[AzureBlobService, SigningServiceClient, dict[str, Any]]:
+    """A service whose SAS is recorded rather than computed."""
+    make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
+    signed: dict[str, Any] = {}
+
+    def fake_sas(**kwargs: Any) -> str:
+        signed.update(kwargs)
+        return "sas"
+
+    monkeypatch.setattr("base.services.blob.azure_blob.generate_blob_sas", fake_sas)
+    service_client = client or SigningServiceClient()
+    service = AzureBlobService()
+    service._client = FakeClientHolder(service_client, account_key)  # type: ignore[assignment]
+    return service, service_client, signed
+
+
+def test_a_shared_key_signs_the_token_itself(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, client, signed = build_signing(make_settings, monkeypatch, "the-key")
+    service.generate_url("reports", "q1.pdf")
+    assert signed["account_key"] == "the-key"
+    assert "user_delegation_key" not in signed
+    assert client.delegations == 0
+
+
+def test_an_identity_mints_a_user_delegation_key_instead(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, client, signed = build_signing(make_settings, monkeypatch, "")
+    service.generate_url("reports", "q1.pdf")
+    assert signed["user_delegation_key"] == "delegation-key"
+    assert "account_key" not in signed
+    assert client.delegations == 1
+
+
+def test_the_token_grants_a_read_and_expires_when_it_was_told_to(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, _, signed = build_signing(make_settings, monkeypatch, "the-key")
+    service.generate_url("reports", "q1.pdf", expiry_seconds=60)
+    assert signed["permission"].read is True
+    assert signed["expiry"] - datetime.now(UTC) <= timedelta(seconds=60)
+
+
+def test_a_url_escapes_a_blob_name_the_token_signs_unescaped(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The signature is over the name as stored; the address must be escaped."""
+    service, _, signed = build_signing(make_settings, monkeypatch, "the-key")
+    url = service.generate_url("reports", "with space#and?.pdf")
+    assert signed["blob_name"] == "with space#and?.pdf"
+    assert url == (
+        "https://account.blob.core.windows.net/reports/with%20space%23and%3F.pdf?sas"
+    )
+
+
+def test_a_url_keeps_the_slashes_a_nested_name_is_addressed_by(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, _, _ = build_signing(make_settings, monkeypatch, "the-key")
+    url = service.generate_url("reports", "2026/q1.pdf")
+    assert url.endswith("/reports/2026/q1.pdf?sas")
+
+
+async def test_a_shared_key_signs_the_token_itself_asynchronously(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, client, signed = build_signing(
+        make_settings, monkeypatch, "the-key", AsyncSigningServiceClient()
+    )
+    assert await service.agenerate_url("reports", "q1.pdf") == (
+        "https://account.blob.core.windows.net/reports/q1.pdf?sas"
+    )
+    assert signed["account_key"] == "the-key"
+    assert client.delegations == 0
+
+
+async def test_an_identity_mints_a_user_delegation_key_asynchronously(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, client, signed = build_signing(
+        make_settings, monkeypatch, "", AsyncSigningServiceClient()
+    )
+    await service.agenerate_url("reports", "q1.pdf")
+    assert signed["user_delegation_key"] == "delegation-key"
+    assert client.delegations == 1
+
+
+async def test_the_async_url_escapes_the_blob_name_too(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, _, _ = build_signing(
+        make_settings, monkeypatch, "the-key", AsyncSigningServiceClient()
+    )
+    url = await service.agenerate_url("reports", "with space.pdf")
+    assert url.endswith("/reports/with%20space.pdf?sas")

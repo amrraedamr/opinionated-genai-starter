@@ -51,7 +51,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "oauth_apple_scopes": "name email",
         "oauth_apple_redirect_uri": "",
     },
-    "AzureBlobSettingsMixin": {"azure_blob_account_url": ""},
+    "AzureBlobSettingsMixin": {
+        "azure_blob_account_url": "",
+        "azure_blob_account_key": "",
+    },
     "AzureOpenAIEmbeddingSettingsMixin": {
         "azure_openai_api_version": "",
         "azure_openai_embedding_endpoint": "",

@@ -3,8 +3,8 @@
 Cosmos has no `update`, no `replace` and no multi-document delete: every write
 is a read followed by `upsert_item` or `delete_item`. That translation is the
 part most likely to drift, so the item calls it makes and the counts it
-returns are pinned here. No Cosmos account is reachable, so this is the only
-level at which the behaviour can be covered.
+returns are pinned here, against doubles rather than a server. What a real
+emulator does with those calls is covered by `tests/integration/nosql`.
 """
 
 from typing import Any
@@ -178,6 +178,23 @@ def test_an_upserting_replace_takes_its_id_from_the_filter(
     container.missing = True
     assert service.replace_one("users", {"id": "a"}, {"n": 1}, upsert=True) == 1
     assert container.call("upsert_item")["body"] == {"n": 1, "id": "a"}
+
+
+def test_a_replacement_without_an_id_keeps_the_one_it_replaced(
+    service: CosmosDBService, container: FakeContainer
+) -> None:
+    """Without it the upsert is a new document, or a 400 with no id at all."""
+    container.results = [{"id": "a", "old": True}]
+    assert service.replace_one("users", {"old": True}, {"n": 1}) == 1
+    assert container.call("upsert_item")["body"] == {"n": 1, "id": "a"}
+
+
+def test_a_replacement_with_an_id_keeps_its_own(
+    service: CosmosDBService, container: FakeContainer
+) -> None:
+    container.results = [{"id": "a"}]
+    service.replace_one("users", {"id": "a"}, {"id": "b", "n": 1})
+    assert container.call("upsert_item")["body"]["id"] == "b"
 
 
 # Delete
