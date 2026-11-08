@@ -7,7 +7,7 @@ than SQLAlchemy's. A recorder stands in for `SQLService`, so both the sync
 and the async path are walked without a container.
 """
 
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 
@@ -92,15 +92,15 @@ class RecordingSQL:
         return Result(self.rows, self.scalar)
 
     @contextmanager
-    def _get_session(self) -> Iterator["Session"]:
+    def _get_session(self) -> Generator["Session"]:
         yield Session(self)
 
     @asynccontextmanager
-    async def _aget_session(self) -> AsyncIterator["AsyncSession"]:
+    async def _aget_session(self) -> AsyncGenerator["AsyncSession"]:
         yield AsyncSession(self)
 
     @contextmanager
-    def transaction(self) -> Iterator["Session"]:
+    def transaction(self) -> Generator["Session"]:
         try:
             with self._get_session() as session:
                 yield session
@@ -108,7 +108,7 @@ class RecordingSQL:
             raise SQLErrorHandler().as_domain_error(exc) from exc
 
     @asynccontextmanager
-    async def atransaction(self) -> AsyncIterator["AsyncSession"]:
+    async def atransaction(self) -> AsyncGenerator["AsyncSession"]:
         try:
             async with self._aget_session() as session:
                 yield session

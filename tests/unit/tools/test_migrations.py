@@ -7,7 +7,7 @@ down the offline or the online path. The URLs themselves are pinned in
 `tests/unit/sql/test_migrations.py`.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
 
@@ -37,7 +37,7 @@ class FakeContext:
         self.configured.append(kwargs)
 
     @contextmanager
-    def begin_transaction(self) -> Iterator[None]:
+    def begin_transaction(self) -> Generator[None]:
         self.transactions += 1
         yield
 
