@@ -75,6 +75,7 @@ class ExpansiveDecoder(JSONDecoder):
         "datetime": decode_datetime,
         "dto": decode_class_by_depopulation,
         "app_model": decode_class_by_depopulation,
+        "base_model": decode_class_by_depopulation,
         "uuid": decode_uuid,
         "type": decode_type,
     }

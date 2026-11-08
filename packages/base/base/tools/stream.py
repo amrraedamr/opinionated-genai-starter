@@ -90,14 +90,23 @@ class StreamIterator:
         await self._queue.put(value)
 
     async def aend(self, end_stream_model: StreamEnd | None = None) -> None:
-        self._end = True
+        """Close the stream, delivering `end_stream_model` as its last frame.
+
+        The frame is queued rather than the flag set, because the iterator
+        closes the stream itself on reading a terminal frame; setting the
+        flag here would put the frame behind a door already shut.
+        """
         if end_stream_model:
             await self.asend(end_stream_model)
+        else:
+            self._end = True
 
     async def aerror(self, error_stream_model: StreamError | None = None) -> None:
-        self._end = True
+        """Close the stream, delivering `error_stream_model` as its last frame."""
         if error_stream_model:
             await self.asend(error_stream_model)
+        else:
+            self._end = True
 
     # Sync
 
@@ -107,11 +116,15 @@ class StreamIterator:
         self._queue.put_nowait(value)
 
     def end(self, end_stream_model: StreamEnd | None = None) -> None:
-        self._end = True
+        """Close the stream, delivering `end_stream_model` as its last frame."""
         if end_stream_model:
             self.send(end_stream_model)
+        else:
+            self._end = True
 
     def error(self, error_stream_model: StreamError | None = None) -> None:
-        self._end = True
+        """Close the stream, delivering `error_stream_model` as its last frame."""
         if error_stream_model:
             self.send(error_stream_model)
+        else:
+            self._end = True

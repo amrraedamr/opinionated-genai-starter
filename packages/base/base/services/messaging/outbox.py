@@ -25,6 +25,15 @@ from contracts.events import Event
 MAX_BACKOFF_SECONDS = 60
 
 
+DEFAULT_MAX_ATTEMPTS: int = 10
+"""Attempts before a row is left alone.
+
+A broker that refuses one event forever would otherwise take a slot in every
+batch for as long as the service runs. The row keeps its error so whoever
+investigates can replay it.
+"""
+
+
 class OutboxDispatcher:
     def __init__(
         self,
@@ -33,11 +42,13 @@ class OutboxDispatcher:
         *,
         poll_seconds: float = 0.5,
         batch_size: int = 50,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     ) -> None:
         self._broker = broker
         self._model = model
         self._poll_seconds = poll_seconds
         self._batch_size = batch_size
+        self._max_attempts = max_attempts
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._logger = ConsoleLoggerService()
@@ -90,6 +101,9 @@ class OutboxDispatcher:
                         .where(
                             self._model.published_at.is_(None),
                             self._model.available_at <= now,
+                            # A row that has used its attempts stays in the
+                            # table with its error, and stops being claimed.
+                            self._model.attempts < self._max_attempts,
                         )
                         .order_by(self._model.occurred_at)
                         .limit(self._batch_size)
@@ -108,7 +122,15 @@ class OutboxDispatcher:
                     row.available_at = datetime.now(UTC) + timedelta(
                         seconds=min(2 ** max(row.attempts - 1, 0), MAX_BACKOFF_SECONDS)
                     )
-                    self._logger.exception("Outbox publication failed for %s", row.id)
+                    if row.attempts >= self._max_attempts:
+                        self._logger.error(
+                            f"Outbox row {row.id} parked after {row.attempts} "
+                            f"attempts; it will not be retried: {row.last_error}"
+                        )
+                    else:
+                        self._logger.exception(
+                            "Outbox publication failed for %s", row.id
+                        )
             await session.flush()
             return len(rows)
 

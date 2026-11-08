@@ -68,12 +68,26 @@ def test_a_pydantic_model_is_tagged_with_its_class_and_its_values() -> None:
     assert encoded["value"] == {"name": "x", "count": 2}
 
 
-def test_a_pydantic_model_does_not_survive_the_round_trip() -> None:
-    """Pinned, not endorsed: the encoder writes `base_model`, and the decoder
-    only knows `dto` and `app_model`. See the report."""
+def test_a_pydantic_model_survives_the_round_trip() -> None:
+    """The encoder tags `base_model`; the decoder has to know the tag.
+
+    Anything that stores a model through this pair — the cache above all —
+    read back a tagged dict rather than the model it wrote.
+    """
     restored = deserialize(serialize(Payload(name="x", count=2)))
-    assert not isinstance(restored, Payload)
-    assert restored["_type"] == "base_model"
+    assert isinstance(restored, Payload)
+    assert restored.name == "x"
+    assert restored.count == 2
+
+
+def test_a_nested_model_survives_too() -> None:
+    """A model inside a container is decoded on the way past."""
+    payload = {"items": [Payload(name="a", count=1)], "when": datetime(2030, 1, 1)}
+    restored = deserialize(serialize(payload))
+
+    assert isinstance(restored["items"][0], Payload)
+    assert restored["items"][0].name == "a"
+    assert restored["when"] == datetime(2030, 1, 1)
 
 
 def test_a_type_this_encoder_does_not_know_is_refused() -> None:

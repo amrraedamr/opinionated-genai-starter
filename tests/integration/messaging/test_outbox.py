@@ -212,34 +212,66 @@ async def test_the_backoff_never_exceeds_the_cap(messaging_tables: Any) -> None:
 
     await make_available(service, published)
     before = datetime.now(UTC)
-    await OutboxDispatcher(FailingBroker(), OutboxEventRow).adispatch_once()  # type: ignore[arg-type]
+    # A limit above the attempts already made, so the row is still claimed
+    # and the backoff is what is under test here.
+    await OutboxDispatcher(
+        FailingBroker(),  # type: ignore[arg-type]
+        OutboxEventRow,
+        max_attempts=100,
+    ).adispatch_once()
     row = await stored(service, published)
     assert round((row.available_at - before).total_seconds()) == 60
 
 
-async def test_a_row_is_never_abandoned_however_often_it_fails(
+async def test_a_row_that_cannot_be_published_is_eventually_parked(
     messaging_tables: Any,
 ) -> None:
-    """Pins a gap: the outbox has no attempt limit and no parking.
+    """A permanently unpublishable event stops being claimed.
 
-    `adispatch_once` grows the backoff and records the error, but nothing ever
-    takes a row out of the queue, so a permanently unpublishable event is
-    retried every sixty seconds for as long as the service runs. There is no
-    dead letter table and no terminal state on this side of the broker.
-    `base/services/messaging/outbox.py:101`.
+    It used to be retried for as long as the service ran, so one poisonous
+    row consumed a slot in every batch forever. It stays in the table with
+    its error for replay; it is simply no longer picked up.
     """
     service = messaging_tables
     published = event()
     async with service.atransaction() as session:
         add_event(session, OutboxEventRow, published)
 
-    dispatcher = OutboxDispatcher(FailingBroker(), OutboxEventRow)  # type: ignore[arg-type]
-    for _ in range(12):
+    dispatcher = OutboxDispatcher(
+        FailingBroker(),  # type: ignore[arg-type]
+        OutboxEventRow,
+        max_attempts=3,
+    )
+    for _ in range(3):
         await make_available(service, published)
         assert await dispatcher.adispatch_once() == 1
+
+    await make_available(service, published)
+    assert await dispatcher.adispatch_once() == 0
+
     row = await stored(service, published)
-    assert row.attempts == 12
+    assert row.attempts == 3
     assert row.published_at is None
+    assert row.last_error, "the reason has to survive for whoever replays it"
+
+
+async def test_a_row_below_the_limit_is_still_claimed(
+    messaging_tables: Any,
+) -> None:
+    """Parking must not start early."""
+    service = messaging_tables
+    published = event()
+    async with service.atransaction() as session:
+        add_event(session, OutboxEventRow, published)
+
+    dispatcher = OutboxDispatcher(
+        FailingBroker(),  # type: ignore[arg-type]
+        OutboxEventRow,
+        max_attempts=5,
+    )
+    for _ in range(4):
+        await make_available(service, published)
+        assert await dispatcher.adispatch_once() == 1
 
 
 async def test_a_row_recovers_once_the_broker_returns(messaging_tables: Any) -> None:

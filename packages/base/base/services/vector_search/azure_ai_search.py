@@ -458,14 +458,13 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
             metadata=metadata,
         )
 
-    @staticmethod
-    def _build_filter(filters: dict[str, Any] | None) -> str | None:
-        """Convert simple ``{field: value}`` dict to an OData filter string.
+    @classmethod
+    def _build_filter(cls, filters: dict[str, Any] | None) -> str | None:
+        """A `{field: value}` mapping as an OData filter.
 
-        - String values: ``field eq 'value'``
-        - Numeric values: ``field eq value``
-        - Boolean values: ``field eq true/false``
-        - List values: ``(field eq 'a' or field eq 'b')``
+        A list becomes an `or` over its members. Every value goes through
+        one renderer, so the two branches cannot disagree about how a
+        boolean or a quote is written.
         """
         if not filters:
             return None
@@ -473,14 +472,32 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
         for key, value in filters.items():
             if isinstance(value, list):
                 conditions = " or ".join(
-                    f"{key} eq '{v}'" if isinstance(v, str) else f"{key} eq {v}"
-                    for v in value
+                    f"{key} eq {cls._literal(item)}" for item in value
                 )
                 parts.append(f"({conditions})")
-            elif isinstance(value, str):
-                parts.append(f"{key} eq '{value}'")
-            elif isinstance(value, bool):
-                parts.append(f"{key} eq {'true' if value else 'false'}")
-            elif isinstance(value, (int, float)):
-                parts.append(f"{key} eq {value}")
+            else:
+                parts.append(f"{key} eq {cls._literal(value)}")
         return " and ".join(parts) if parts else None
+
+    @staticmethod
+    def _literal(value: Any) -> str:
+        """One value, spelled the way OData spells it.
+
+        A type with no spelling is refused rather than dropped: a condition
+        that disappears widens the query, and a caller reads the result as an
+        answer rather than as a mistake.
+        """
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, str):
+            # OData escapes a quote inside a literal by doubling it.
+            escaped = value.replace("'", "''")
+            return f"'{escaped}'"
+        if isinstance(value, (int, float)):
+            return str(value)
+        raise TypeError(
+            f"{type(value).__name__} has no OData literal; "
+            f"pass a string, number, boolean or None"
+        )

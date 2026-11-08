@@ -138,31 +138,42 @@ async def test_ending_the_stream_stops_it_even_with_nothing_queued() -> None:
     assert await drain(iterator) == []
 
 
-async def test_a_final_frame_passed_to_aend_is_never_delivered() -> None:
-    """Pinned, not endorsed: `aend` sets `_end` before queueing, and
-    `__anext__` checks `_end` first. See the report."""
+async def test_a_final_frame_passed_to_aend_is_delivered() -> None:
+    """The frame has to be queued before the stream is marked closed.
+
+    `__anext__` checks the flag first, so setting it ahead of the queue made
+    the parameter dead: a consumer never saw the frame it was handed.
+    """
     iterator = StreamIterator()
     await iterator.aend(StreamEnd(id="last"))
-    assert await drain(iterator) == []
-    assert iterator._queue is not None and iterator._queue.qsize() == 1
+    assert len(await drain(iterator)) == 1
 
 
-async def test_a_final_frame_passed_to_aerror_is_never_delivered() -> None:
-    """Pinned, not endorsed. Same ordering as `aend`."""
+async def test_a_final_frame_passed_to_aerror_is_delivered() -> None:
+    """The failing case matters more: this is how a consumer learns why."""
     iterator = StreamIterator()
     await iterator.aerror(StreamError(text="failed"))
-    assert await drain(iterator) == []
+    assert len(await drain(iterator)) == 1
 
 
-def test_the_sync_terminators_drop_their_final_frame_the_same_way() -> None:
-    """Pinned, not endorsed: `end` and `error` share the ordering."""
+async def test_the_sync_terminators_deliver_their_final_frame_too() -> None:
+    """The frame closes the stream when it is read, not when it is sent."""
     ended = StreamIterator()
     ended.end(StreamEnd())
+    assert len(await drain(ended)) == 1
     assert ended._end is True
 
     errored = StreamIterator()
     errored.error(StreamError(text="x"))
+    assert len(await drain(errored)) == 1
     assert errored._end is True
+
+
+async def test_a_terminator_with_no_frame_just_closes() -> None:
+    iterator = StreamIterator()
+    iterator.end()
+    assert await drain(iterator) == []
+    assert iterator._end is True
 
 
 async def test_a_terminal_frame_sent_through_send_is_delivered() -> None:
