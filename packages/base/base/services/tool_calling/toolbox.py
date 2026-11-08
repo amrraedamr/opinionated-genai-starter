@@ -1,13 +1,15 @@
 """Tool declarations and the dispatch behind them."""
 
+import json
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import ValidationError
 
 from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredToolCall
+from base.tools.errors import MissingExtraError
 from base.tools.serializers import serialize
 
 
@@ -20,32 +22,100 @@ class Tool[T: BaseModel]:
     """One callable an LLM may invoke, described by its argument model.
 
     `parameters` is both the schema the model is shown and the validator the
-    model's arguments are checked against, so the two cannot drift apart.
+    model's arguments are checked against, so the two cannot drift apart. A
+    tool described elsewhere, such as by an MCP server, has raw JSON Schema and
+    no model; `from_json_schema` builds one, so adapters see a single type.
     """
 
     name: str
     description: str
-    parameters: type[T]
-    handler: Callable[[T], Awaitable[Any]]
+    parameters: type[T] | None
+    handler: Callable[[Any], Awaitable[Any]]
+    schema: dict[str, Any] | None = field(default=None)
+
+    def __post_init__(self) -> None:
+        if (self.parameters is None) == (self.schema is None):
+            raise ToolError(
+                f"{self.name} needs exactly one of a parameters model or a JSON Schema"
+            )
+
+    @classmethod
+    def from_json_schema(
+        cls,
+        *,
+        name: str,
+        description: str,
+        schema: dict[str, Any],
+        handler: Callable[[dict[str, Any]], Awaitable[Any]],
+    ) -> "Tool[Any]":
+        """A tool whose arguments are described by raw JSON Schema rather than a model."""
+        cls._schema_validator(schema)
+        return cls(
+            name=name,
+            description=description,
+            parameters=None,
+            handler=handler,
+            schema=schema,
+        )
 
     @property
     def json_schema(self) -> dict[str, Any]:
-        """The argument model as JSON Schema. Adapters reshape it per provider."""
+        """The argument schema as JSON Schema. Adapters reshape it per provider."""
+        if self.schema is not None:
+            return self.schema
+        assert self.parameters is not None
         return self.parameters.model_json_schema()
 
     async def ainvoke(self, arguments: str) -> str:
         """Validate JSON `arguments`, run the handler, and render the result.
 
-        Raises `ToolError` when the arguments do not fit `parameters`. The
+        Raises `ToolError` when the arguments do not fit the declared schema. The
         caller decides whether that goes back to the model or aborts the turn.
         """
-        try:
-            parsed = self.parameters.model_validate_json(arguments)
-        except ValidationError as exc:
-            raise ToolError(f"{self.name} rejected its arguments: {exc}") from exc
-
+        parsed = self._parse(arguments)
         result = await self.handler(parsed)
         return result if isinstance(result, str) else serialize(result)
+
+    def _parse(self, arguments: str) -> Any:
+        if self.parameters is not None:
+            try:
+                return self.parameters.model_validate_json(arguments)
+            except ValidationError as exc:
+                raise ToolError(f"{self.name} rejected its arguments: {exc}") from exc
+        return self._parse_against_schema(arguments)
+
+    def _parse_against_schema(self, arguments: str) -> dict[str, Any]:
+        try:
+            decoded = json.loads(arguments or "{}")
+        except json.JSONDecodeError as exc:
+            raise ToolError(f"{self.name} rejected its arguments: {exc}") from exc
+        if not isinstance(decoded, dict):
+            raise ToolError(f"{self.name} rejected its arguments: not an object")
+        assert self.schema is not None
+        errors = sorted(
+            self._schema_validator(self.schema).iter_errors(decoded),
+            key=lambda error: list(error.path),
+        )
+        if errors:
+            detail = "; ".join(error.message for error in errors)
+            raise ToolError(f"{self.name} rejected its arguments: {detail}")
+        return decoded
+
+    @staticmethod
+    def _schema_validator(schema: dict[str, Any]) -> Any:
+        """A validator for `schema`, refusing a schema that is itself malformed."""
+        try:
+            from jsonschema import SchemaError, validators
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            raise MissingExtraError(
+                "tools", "jsonschema", feature="Tool.from_json_schema"
+            ) from exc
+        validator_class = validators.validator_for(schema)
+        try:
+            validator_class.check_schema(schema)
+        except SchemaError as exc:
+            raise ToolError(f"invalid JSON Schema: {exc.message}") from exc
+        return validator_class(schema)
 
 
 class Toolbox:
