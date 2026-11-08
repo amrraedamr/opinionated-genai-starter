@@ -19,6 +19,11 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.services.common.meta import NonInitialize
 
 
+def constant_time_equals(left: str, right: str) -> bool:
+    """Compare two secrets without letting the time taken say how far they match."""
+    return secrets.compare_digest(left.encode(), right.encode())
+
+
 def b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
 

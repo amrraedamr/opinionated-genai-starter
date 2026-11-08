@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from base.models.definitions.environment import Environment
 from base.services.common.meta import SingletonSettings
 
 
@@ -12,5 +13,6 @@ class CoreSettings(BaseSettings, metaclass=SingletonSettings):
     )
 
     service_name: str
-    environment: str = "local"
+    environment: Environment = Environment.LOCAL
+
     log_level: str = "INFO"

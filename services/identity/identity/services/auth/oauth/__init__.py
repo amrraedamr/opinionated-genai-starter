@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from base.models.definitions.errors import AuthErrors
 from base.services.auth import TokenIssuer, TokenPair, TokenVerifier
 from base.services.auth.oauth import OAuthProfile, OAuthProviderRegistry
+from base.services.auth.oauth.flow import OAuthFlowStore
 from base.services.common.meta import Singleton
 from base.tools.errors import InvalidSignedPayload, raise_error
 from base.tools.security import pkce_pair
@@ -21,28 +22,34 @@ class OAuthService(metaclass=Singleton):
         self._identity_store = UserIdentityStore()
         self._issuer = TokenIssuer()
         self._verifier = TokenVerifier()
+        self._flows = OAuthFlowStore()
 
     def enabled_providers(self) -> list[str]:
         return self._registry.enabled_names()
 
-    async def abuild_authorize_redirect(self, provider: str) -> str:
+    async def abuild_authorize_redirect(self, provider: str) -> tuple[str, str]:
+        """The authorize URL, and the nonce the browser must send back.
+
+        The nonce belongs in a cookie. Without it the callback cannot be
+        completed, which is what stops a flow begun in one browser from being
+        finished in another.
+        """
         cfg = self._registry.get(provider)
         authorize_url, _, _ = await self._registry.aresolve_endpoints(cfg)
         code_verifier, code_challenge = pkce_pair()
-        state = self._sign_state(
-            {
-                "type": "oauth_state",
-                "provider": cfg.name,
-                "code_verifier": code_verifier,
-            },
+        flow = await self._flows.abegin(
+            cfg.name,
+            code_verifier,
+            code_challenge,
             settings.oauth_state_ttl_seconds,
         )
-        return self._registry.build_authorize_url(
+        url = self._registry.build_authorize_url(
             authorize_url,
             cfg,
-            state=state,
+            state=flow.state_id,
             code_challenge=code_challenge,
         )
+        return url, flow.nonce
 
     async def ahandle_callback(
         self,
@@ -50,16 +57,16 @@ class OAuthService(metaclass=Singleton):
         *,
         code: str,
         state: str,
+        nonce: str | None,
         apple_user_json: str | None = None,
     ) -> str:
-        """Complete OAuth; return opaque exchange code for the SPA."""
+        """Complete OAuth; return opaque exchange code for the SPA.
+
+        `nonce` is the cookie this browser was given when the flow began. A
+        callback that cannot produce it is refused, whoever minted the state.
+        """
         cfg = self._registry.get(provider)
-        state_payload = self._decode_signed(state, expected_type="oauth_state")
-        if state_payload.get("provider") != cfg.name:
-            raise_error(AuthErrors.OAUTH_STATE_INVALID)
-        code_verifier = str(state_payload.get("code_verifier") or "")
-        if not code_verifier:
-            raise_error(AuthErrors.OAUTH_STATE_INVALID)
+        code_verifier = await self._flows.aconsume(cfg.name, state, nonce)
 
         _, token_url, userinfo_url = await self._registry.aresolve_endpoints(cfg)
         token_payload = await self._registry.aexchange_code(

@@ -20,12 +20,12 @@ try:
     from jwt import (
         DecodeError,
         ExpiredSignatureError,
-        InvalidAlgorithmError,
+        InvalidTokenError,
         PyJWKClient,
         decode,
         encode,
     )
-    from jwt.exceptions import PyJWKClientError, PyJWKError
+    from jwt.exceptions import PyJWTError
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError(
         "auth", "pyjwt", feature="token issuing/verification"
@@ -146,10 +146,10 @@ class TokenVerifier(metaclass=Singleton):
                 key=self._public_key,
                 algorithms=["RS256"],
             )
-        except (DecodeError, InvalidAlgorithmError):
-            raise_error(AuthErrors.USER_DECODE_FAILED)
         except ExpiredSignatureError:
             raise_error(AuthErrors.USER_TOKEN_EXPIRED)
+        except InvalidTokenError:
+            raise_error(AuthErrors.USER_DECODE_FAILED)
         if payload.get("type") != expected_type:
             raise_error(AuthErrors.USER_TOKEN_INCOMPLETE)
         return payload
@@ -164,7 +164,7 @@ class TokenVerifier(metaclass=Singleton):
             return decode(token, key=self._public_key, algorithms=["RS256"])
         except ExpiredSignatureError as exc:
             raise InvalidSignedPayload(expired=True) from exc
-        except (DecodeError, InvalidAlgorithmError) as exc:
+        except InvalidTokenError as exc:
             raise InvalidSignedPayload(expired=False) from exc
 
     # Local
@@ -217,13 +217,11 @@ class TokenVerifier(metaclass=Singleton):
             )
         except ExpiredSignatureError:
             raise_error(AuthErrors.USER_TOKEN_EXPIRED)
-        except (
-            DecodeError,
-            InvalidAlgorithmError,
-            PyJWKClientError,
-            PyJWKError,
-            ValueError,
-        ):
+        except (PyJWTError, TypeError, ValueError):
+            # PyJWTError rather than its branches: a broken key set raises
+            # PyJWKSetError, which descends from neither the token nor the key
+            # family. TypeError is what a forged HS256 token produces, because
+            # the key set hands back a key object where an HMAC wants a string.
             raise_error(AuthErrors.USER_DECODE_FAILED)
 
         subject = str(payload.get("sub") or "")

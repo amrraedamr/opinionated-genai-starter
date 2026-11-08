@@ -41,15 +41,16 @@ def test_an_enum_key_composes_as_its_value() -> None:
     assert get_key(CacheKeys.TEST) == get_key(CacheKeys.TEST.value)
 
 
-def test_a_namespace_that_is_not_a_uuid_discards_the_key() -> None:
-    """Pins a bug: every key under a non-UUID namespace is the same entry.
+def test_a_namespace_that_is_not_a_uuid_still_qualifies_the_key() -> None:
+    """A namespace narrows a key; it never replaces it.
 
-    `_get_key` falls back to returning the namespace itself when `UUID(...)`
-    rejects it, so `get("a", "tenant")` and `get("b", "tenant")` read and write
-    one shared value. `base/services/cache/__init__.py:236`.
+    Returning the namespace itself made every entry under a plain-text
+    namespace one shared value, so two different keys read and wrote each
+    other. Anything using a name rather than an id for its namespace had a
+    single-entry cache without being told.
     """
-    assert get_key("alpha", "tenant") == "tenant"
-    assert get_key("beta", "tenant") == "tenant"
+    assert get_key("alpha", "tenant") != get_key("beta", "tenant")
+    assert get_key("alpha", "tenant") != "tenant"
 
 
 def test_two_non_uuid_namespaces_still_differ_from_each_other() -> None:

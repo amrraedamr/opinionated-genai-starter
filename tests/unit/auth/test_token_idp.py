@@ -12,12 +12,7 @@ from typing import Any
 
 import jwt
 import pytest
-from jwt.exceptions import (
-    InvalidAudienceError,
-    InvalidIssuerError,
-    MissingRequiredClaimError,
-    PyJWKClientError,
-)
+from jwt.exceptions import ExpiredSignatureError, PyJWKClientError
 
 import base.services.http as http_module
 from base.models.definitions.errors import AuthErrors
@@ -246,40 +241,41 @@ def test_a_malformed_token_is_not_taken_for_an_idp_token(
     assert verifier._is_idp_token("not-a-token") is False
 
 
-def test_the_idp_path_lets_an_issuer_mismatch_escape_unmapped(
+def test_a_token_from_another_issuer_is_refused(
     make_settings: Any, keys: KeyPair, other_keys: KeyPair
 ) -> None:
-    """Current behaviour, and a bug: `InvalidIssuerError` is not a `DecodeError`.
+    """A rejected claim is this library's error, not PyJWT's.
 
-    `_verify_idp` maps `(DecodeError, InvalidAlgorithmError, PyJWKClientError,
-    PyJWKError, ValueError)` to `USER_DECODE_FAILED`, and PyJWT's issuer,
-    audience and missing-claim errors descend from `InvalidTokenError`
-    instead. They reach the caller raw rather than as a 401.
+    Issuer, audience and missing-claim failures descend from
+    `InvalidTokenError` rather than `DecodeError`, so naming `DecodeError`
+    let them reach the caller raw — a 500 where a 401 was meant.
     """
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
     foreign = _idp_token(other_keys.private_pem, issuer="https://somewhere-else")
 
-    with pytest.raises(InvalidIssuerError):
+    with pytest.raises(ErrorsException) as caught:
         verifier._verify_idp(foreign)
+    assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED
 
 
-def test_the_idp_path_lets_an_audience_mismatch_escape_unmapped(
+def test_a_token_minted_for_another_audience_is_refused(
     make_settings: Any, keys: KeyPair, other_keys: KeyPair
 ) -> None:
-    """Current behaviour, and the same bug: a wrong audience is not a 401."""
+    """The one that matters most: a valid token for a different service."""
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
     token = _idp_token(other_keys.private_pem, audience="api://some-other-service")
 
-    with pytest.raises(InvalidAudienceError):
+    with pytest.raises(ErrorsException) as caught:
         verifier.verify(token)
+    assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED
 
 
-def test_the_idp_path_lets_a_missing_audience_claim_escape_unmapped(
+def test_a_token_with_no_audience_claim_is_refused(
     make_settings: Any, keys: KeyPair, other_keys: KeyPair
 ) -> None:
-    """Current behaviour, and the same bug, for a token with no `aud` at all."""
+    """A claim the verifier required and the token never carried."""
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
     token = jwt.encode(
@@ -293,8 +289,9 @@ def test_the_idp_path_lets_a_missing_audience_claim_escape_unmapped(
         algorithm="RS256",
     )
 
-    with pytest.raises(MissingRequiredClaimError):
+    with pytest.raises(ErrorsException) as caught:
         verifier.verify(token)
+    assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED
 
 
 def test_an_expired_idp_token_is_refused_as_expired(
@@ -457,3 +454,133 @@ def _stub_discovery(
 
     monkeypatch.setattr(http_module.HttpRequestService, "call_endpoint", _call)
     return asked
+
+
+def test_a_token_not_yet_valid_is_refused(
+    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+) -> None:
+    """`nbf` in the future. Its error is a sibling of the ones above.
+
+    Naming exception types one at a time left this whole family uncaught;
+    catching `InvalidTokenError` covers the ones nobody thought to list.
+    """
+    _idp_settings(make_settings, keys)
+    verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
+    token = jwt.encode(
+        {
+            "sub": "idp-subject",
+            "email": "person@example.com",
+            "iss": ISSUER,
+            "aud": AUDIENCE,
+            "nbf": datetime.now(UTC) + timedelta(seconds=600),
+            "exp": datetime.now(UTC) + timedelta(seconds=1200),
+        },
+        other_keys.private_pem,
+        algorithm="RS256",
+    )
+
+    with pytest.raises(ErrorsException) as caught:
+        verifier.verify(token)
+    assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED
+
+
+def test_every_claim_failure_pyjwt_can_raise_is_mapped(
+    make_settings: Any,
+    keys: KeyPair,
+    other_keys: KeyPair,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No member of the family may reach a caller as a raw PyJWT error.
+
+    Walking the tree rather than naming members is what stops the next
+    version of PyJWT from reopening the gap this closed: a claim check added
+    there arrives here already mapped.
+    """
+    from jwt.exceptions import InvalidTokenError
+
+    import base.services.auth.tokens as tokens_module
+
+    _idp_settings(make_settings, keys)
+    verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
+    token = _idp_token(other_keys.private_pem)
+
+    family: list[type[BaseException]] = []
+
+    def walk(cls: type[BaseException]) -> None:
+        for sub in cls.__subclasses__():
+            family.append(sub)
+            walk(sub)
+
+    walk(InvalidTokenError)
+    assert len(family) > 8, "the family should not be this small"
+
+    for cls in family:
+        if issubclass(cls, ExpiredSignatureError):
+            continue
+        try:
+            failure = cls("simulated")
+        except Exception:
+            continue
+
+        def refuse(*args: Any, **kwargs: Any) -> Any:
+            raise failure
+
+        monkeypatch.setattr(tokens_module, "decode", refuse)
+        with pytest.raises(ErrorsException) as caught:
+            verifier._verify_idp(token)
+        assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED, cls.__name__
+
+
+def test_a_malformed_jwks_document_is_refused(
+    make_settings: Any,
+    keys: KeyPair,
+    other_keys: KeyPair,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`PyJWKSetError` sits under neither family the handler named.
+
+    It descends straight from `PyJWTError`, so an identity provider serving a
+    broken key set produced a 500 rather than a refusal.
+    """
+    from jwt.exceptions import PyJWKSetError
+
+    import base.services.auth.tokens as tokens_module
+
+    _idp_settings(make_settings, keys)
+    verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
+    token = _idp_token(other_keys.private_pem)
+
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise PyJWKSetError("the key set is not valid")
+
+    monkeypatch.setattr(tokens_module, "decode", refuse)
+    with pytest.raises(ErrorsException) as caught:
+        verifier._verify_idp(token)
+    assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED
+
+
+def test_a_key_the_algorithm_cannot_use_is_refused(
+    make_settings: Any,
+    keys: KeyPair,
+    other_keys: KeyPair,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged HS256 token makes PyJWT raise `TypeError`, not a JWT error.
+
+    The JWKS client hands back a key object; `HMACAlgorithm.prepare_key`
+    wants a string and says so in a `TypeError`. Refusing the token is right,
+    but it has to be refused rather than escape.
+    """
+    import base.services.auth.tokens as tokens_module
+
+    _idp_settings(make_settings, keys)
+    verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
+    token = _idp_token(other_keys.private_pem)
+
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise TypeError("Expected a string value")
+
+    monkeypatch.setattr(tokens_module, "decode", refuse)
+    with pytest.raises(ErrorsException) as caught:
+        verifier._verify_idp(token)
+    assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED

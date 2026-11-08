@@ -4,6 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from base.models.definitions.environment import Environment
 from base.tools.correlation import current_correlation_id
 
 _QUOTED_VALUE = re.compile(
@@ -46,8 +47,10 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
 
 
-def logging_config(*, environment: str = "local", level: str = "INFO") -> dict[str, Any]:
-    formatter = "colored" if environment == "local" else "json"
+def logging_config(
+    *, environment: Environment = Environment.LOCAL, level: str = "INFO"
+) -> dict[str, Any]:
+    formatter = "colored" if environment == Environment.LOCAL else "json"
     return {
         "version": 1,
         "disable_existing_loggers": False,

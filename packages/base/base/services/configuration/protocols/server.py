@@ -1,5 +1,7 @@
 from typing import Protocol, runtime_checkable
 
+from base.models.definitions.environment import Environment
+
 
 @runtime_checkable
 class SupportsServerConfig(Protocol):
@@ -10,7 +12,7 @@ class SupportsServerConfig(Protocol):
     """
 
     service_name: str
-    environment: str
+    environment: Environment
 
     api_host: str
     api_port: int
