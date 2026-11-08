@@ -130,15 +130,19 @@ def test_an_error_outside_the_map_is_unknown(handler: RedisErrorHandler) -> None
     assert handler.classify(error) == (CacheUnexpectedError, False)
 
 
-def test_a_cluster_slot_migration_is_not_retried(
+def test_a_cluster_slot_migration_is_retried(
     handler: RedisErrorHandler,
 ) -> None:
-    """`TRYAGAIN` is a `ResponseError`, so it lands among refused commands."""
+    """A slot is moving; the documented remedy is to ask again.
+
+    It subclasses `ResponseError`, so naming only the parent put it among
+    the commands the server refused.
+    """
     from redis.exceptions import TryAgainError
 
     error = TryAgainError("TRYAGAIN")
-    assert handler.failure_kind(error) is FailureKind.BAD_REQUEST
-    assert handler.classify(error) == (CacheBadRequestError, False)
+    assert handler.failure_kind(error) is FailureKind.SERVER
+    assert handler.classify(error)[1] is True
 
 
 def test_a_master_that_went_down_is_retried(handler: RedisErrorHandler) -> None:

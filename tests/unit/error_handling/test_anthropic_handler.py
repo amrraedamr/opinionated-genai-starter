@@ -146,13 +146,13 @@ def test_an_sdk_error_outside_the_map_is_unknown(
     assert handler.classify(error) == (LLMUnexpectedError, False)
 
 
-def test_an_error_the_sdk_marks_retryable_is_not_retried_here(
+def test_an_error_the_sdk_marks_retryable_is_retried(
     handler: AnthropicErrorHandler,
 ) -> None:
-    """`RetryableError` opts into the SDK's own retries, not this handler's."""
+    """The SDK says so in its own docstring, so this handler honours it."""
     error = anthropic.RetryableError("middleware asked for another go")
-    assert handler.failure_kind(error) is FailureKind.UNKNOWN
-    assert handler.classify(error) == (LLMUnexpectedError, False)
+    assert handler.failure_kind(error) is FailureKind.SERVER
+    assert handler.classify(error)[1] is True
 
 
 @pytest.mark.parametrize(

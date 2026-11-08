@@ -182,17 +182,22 @@ def test_an_operational_error_the_pool_kept_is_the_callers_fault(
     assert handler.classify(error) == (SQLBadRequestError, False)
 
 
-def test_a_cancelled_statement_on_an_invalidated_connection_is_retried(
+def test_a_cancelled_statement_is_not_retried_even_if_the_pool_gave_up(
     handler: SQLErrorHandler,
 ) -> None:
-    """The pool's verdict is read after the type walk, so it wins over `57014`."""
+    """A timeout says nothing about whether the server finished the work.
+
+    The pool's verdict used to be read after the type walk and win, so the
+    one code the module set out to keep off the retry path was back on it
+    whenever the connection happened to be invalidated too.
+    """
     error = dbapi_error(
         OperationalError,
         asyncpg.exceptions.QueryCanceledError("canceling"),
         connection_invalidated=True,
     )
-    assert handler.failure_kind(error) is FailureKind.CONNECTION
-    assert handler.classify(error) == (SQLConnectionError, True)
+    assert handler.failure_kind(error) is FailureKind.BAD_REQUEST
+    assert handler.classify(error)[1] is False
 
 
 def test_a_hand_built_psycopg2_error_reports_no_sqlstate(

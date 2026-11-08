@@ -16,6 +16,7 @@ try:
         ReadOnlyError,
         RedisError,
         ResponseError,
+        TryAgainError,
         WatchError,
     )
     from redis.exceptions import (
@@ -60,6 +61,10 @@ _FAILURE_MAP: dict[type[RedisError], FailureKind] = {
     WatchError: FailureKind.CONFLICT,
     NoScriptError: FailureKind.NOT_FOUND,
     DataError: FailureKind.BAD_REQUEST,
+    # A cluster moving a slot answers TRYAGAIN, and retrying is the
+    # documented remedy. It subclasses ResponseError, so it has to be
+    # named ahead of it.
+    TryAgainError: FailureKind.SERVER,
     ResponseError: FailureKind.BAD_REQUEST,
 }
 
