@@ -42,10 +42,12 @@ def test_the_auth_package_exports_both_halves_of_its_surface() -> None:
         "TokenResponse",
         "TokenVerifier",
         "current_principal",
+        "current_tenant_id",
         "current_user_id",
         "http_bearer",
         "http_bearer_dependency",
         "principal_dependency",
+        "tenant_id_dependency",
         "user_id_dependency",
     }
 

@@ -33,12 +33,14 @@ def hostile_patch(widget: type[Any], **values: Any) -> Any:
     return patch
 
 
-def test_the_default_protected_set_is_identity_and_the_timestamps() -> None:
+def test_the_default_protected_set_is_identity_timestamps_and_the_tenant() -> None:
+    """`tenant_id` is here so an edit cannot move a row into another customer."""
     assert SQLStore.protected_fields == {
         "id",
         "created_at",
         "updated_at",
         "deleted_at",
+        "tenant_id",
     }
 
 

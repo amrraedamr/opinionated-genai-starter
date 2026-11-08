@@ -249,6 +249,11 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "request_rate_limit_per_minute": 300,
         "auth_rate_limit_per_minute": 20,
     },
+    "TenancySettingsMixin": {
+        "tenancy_enabled": False,
+        "tenant_claim": "tid",
+        "tenancy_rls_enabled": False,
+    },
     "TokenIssuingSettingsMixin": {
         "auth_public_key_path": "keys/public.pem",
         "auth_private_key_path": "keys/private.pem",

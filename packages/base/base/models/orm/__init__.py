@@ -7,6 +7,7 @@ from typing import Self
 from base.tools.errors import MissingExtraError
 
 try:
+    from sqlalchemy import String
     from sqlalchemy.orm import MappedAsDataclass, MappedColumn, mapped_column
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="ORM mixins") from exc
@@ -66,4 +67,20 @@ class TimestampMixin(MappedAsDataclass):
         self.deleted_at = None
 
 
-__all__ = ["SerializableMixin", "TimestampMixin", "UtcDateTime"]
+class TenantScopedMixin(MappedAsDataclass):
+    """A row belonging to one customer.
+
+    Carrying this is how a model opts into separation: `SQLStore` narrows every
+    read to the tenant in context and stamps every write with it, and refuses
+    rather than guessing when nothing set one.
+    """
+
+    tenant_id: MappedColumn[str] = mapped_column(String(255), index=True, init=False)
+
+
+__all__ = [
+    "SerializableMixin",
+    "TenantScopedMixin",
+    "TimestampMixin",
+    "UtcDateTime",
+]

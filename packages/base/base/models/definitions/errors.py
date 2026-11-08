@@ -73,3 +73,10 @@ class GenericErrors(Enum):
         "message": "Unexpected error.",
         "status_code": HTTPStatus.INTERNAL_SERVER_ERROR,
     }
+
+
+class TenancyErrors(Enum):
+    TENANT_NOT_IN_CONTEXT = {
+        "message": "No tenant in context for a tenant-scoped operation.",
+        "status_code": HTTPStatus.INTERNAL_SERVER_ERROR,
+    }

@@ -2,10 +2,12 @@
 
 from base.services.auth.bearer import (
     current_principal,
+    current_tenant_id,
     current_user_id,
     http_bearer,
     http_bearer_dependency,
     principal_dependency,
+    tenant_id_dependency,
     user_id_dependency,
 )
 from base.services.auth.models import (
@@ -34,9 +36,11 @@ __all__ = [
     "TokenResponse",
     "TokenVerifier",
     "current_principal",
+    "current_tenant_id",
     "current_user_id",
     "http_bearer",
     "http_bearer_dependency",
     "principal_dependency",
+    "tenant_id_dependency",
     "user_id_dependency",
 ]
