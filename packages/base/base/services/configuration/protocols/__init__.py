@@ -50,6 +50,7 @@ from base.services.configuration.protocols.server import SupportsServerConfig
 from base.services.configuration.protocols.sql import SupportsSQLConfig
 from base.services.configuration.protocols.sql.mysql import SupportsMySQLConfig
 from base.services.configuration.protocols.sql.postgres import SupportsPostgresConfig
+from base.services.configuration.protocols.telemetry import SupportsTelemetryConfig
 from base.services.configuration.protocols.tenancy import SupportsTenancyConfig
 from base.services.configuration.protocols.token_issuing import (
     SupportsTokenIssuingConfig,
@@ -97,6 +98,7 @@ __all__ = [
     "SupportsRerankConfig",
     "SupportsSQLConfig",
     "SupportsServerConfig",
+    "SupportsTelemetryConfig",
     "SupportsTenancyConfig",
     "SupportsTokenIssuingConfig",
     "SupportsTokenVerificationConfig",
