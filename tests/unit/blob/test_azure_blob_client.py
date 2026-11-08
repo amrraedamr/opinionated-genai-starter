@@ -208,3 +208,166 @@ async def test_closing_everything_releases_both_halves(make_settings: Any) -> No
     assert closed == ["sync", "async"]
     assert client._sync_client is None
     assert client._async_client is None
+
+
+# Shared key versus identity
+#
+# An emulator authenticates on a key, and a deployment holding a role
+# assignment on an identity. Only one of the two is ever built.
+
+ACCOUNT_KEY = "a-shared-key"
+
+
+def _refuse_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make constructing a `DefaultAzureCredential` a test failure."""
+
+    def explode() -> None:
+        raise AssertionError("an identity was built despite a configured key")
+
+    monkeypatch.setattr("base.clients.blob.azure_blob.DefaultAzureCredential", explode)
+    monkeypatch.setattr(
+        "base.clients.blob.azure_blob.AsyncDefaultAzureCredential", explode
+    )
+
+
+def test_the_account_key_is_read_from_settings_and_exposed(
+    make_settings: Any,
+) -> None:
+    make_settings(
+        AzureBlobSettingsMixin,
+        azure_blob_account_url=ACCOUNT_URL,
+        azure_blob_account_key=ACCOUNT_KEY,
+    )
+    assert AzureBlobClient().account_key == ACCOUNT_KEY
+
+
+def test_an_account_with_no_key_reports_an_empty_one(make_settings: Any) -> None:
+    make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
+    assert AzureBlobClient().account_key == ""
+
+
+def test_a_configured_key_means_no_identity_is_ever_built(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_settings(
+        AzureBlobSettingsMixin,
+        azure_blob_account_url=ACCOUNT_URL,
+        azure_blob_account_key=ACCOUNT_KEY,
+    )
+    built: dict[str, Any] = {}
+
+    class FakeServiceClient:
+        def __init__(self, **kwargs: Any) -> None:
+            built.update(kwargs)
+
+    monkeypatch.setattr(
+        "base.clients.blob.azure_blob.BlobServiceClient", FakeServiceClient
+    )
+    _refuse_identity(monkeypatch)
+
+    client = AzureBlobClient()
+    assert isinstance(client.sync_client, FakeServiceClient)
+    assert built["credential"] == ACCOUNT_KEY
+    assert client._credential is None
+
+
+async def test_a_configured_key_keeps_the_async_half_free_of_an_identity_too(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_settings(
+        AzureBlobSettingsMixin,
+        azure_blob_account_url=ACCOUNT_URL,
+        azure_blob_account_key=ACCOUNT_KEY,
+    )
+    built: dict[str, Any] = {}
+
+    class FakeAsyncServiceClient:
+        def __init__(self, **kwargs: Any) -> None:
+            built.update(kwargs)
+
+    monkeypatch.setattr(
+        "base.clients.blob.azure_blob.AsyncBlobServiceClient", FakeAsyncServiceClient
+    )
+    _refuse_identity(monkeypatch)
+
+    client = AzureBlobClient()
+    assert isinstance(client.async_client, FakeAsyncServiceClient)
+    assert built["credential"] == ACCOUNT_KEY
+    assert client._async_credential is None
+
+
+def test_an_account_with_no_key_falls_back_to_an_identity(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
+
+    class FakeServiceClient:
+        def __init__(self, **kwargs: Any) -> None: ...
+
+    monkeypatch.setattr(
+        "base.clients.blob.azure_blob.BlobServiceClient", FakeServiceClient
+    )
+    monkeypatch.setattr(
+        "base.clients.blob.azure_blob.DefaultAzureCredential", lambda: "identity"
+    )
+
+    client = AzureBlobClient()
+    assert client.sync_client is not None
+    assert client._credential == "identity"
+
+
+# Each half closes what it opened
+
+
+async def test_closing_the_sync_half_leaves_the_async_credential_alone(
+    make_settings: Any,
+) -> None:
+    make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
+    closed: list[str] = []
+
+    class SyncCloseable:
+        def close(self) -> None:
+            closed.append("sync credential")
+
+    class AsyncCloseable:
+        async def close(self) -> None:
+            closed.append("async credential")
+
+    client = AzureBlobClient()
+    client._credential = SyncCloseable()  # type: ignore[assignment]
+    client._async_credential = AsyncCloseable()  # type: ignore[assignment]
+    client.close()
+    assert closed == ["sync credential"]
+    assert client._async_credential is not None
+    await client.aclose()
+    assert closed == ["sync credential", "async credential"]
+    assert client._async_credential is None
+
+
+async def test_closing_the_async_half_releases_its_own_client_and_credential(
+    make_settings: Any,
+) -> None:
+    make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
+    closed: list[str] = []
+
+    class AsyncCloseable:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        async def close(self) -> None:
+            closed.append(self.name)
+
+    client = AzureBlobClient()
+    client._async_client = AsyncCloseable("client")  # type: ignore[assignment]
+    client._async_credential = AsyncCloseable("credential")  # type: ignore[assignment]
+    await client.aclose()
+    assert closed == ["client", "credential"]
+    assert client._async_client is None
+    assert client._async_credential is None
+
+
+async def test_closing_an_async_client_that_was_never_opened_is_allowed(
+    make_settings: Any,
+) -> None:
+    make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
+    await AzureBlobClient().aclose()

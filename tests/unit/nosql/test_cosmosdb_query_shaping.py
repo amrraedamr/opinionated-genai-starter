@@ -1,10 +1,11 @@
 """The Cosmos SQL the adapter writes, and the parameters it binds.
 
 Cosmos has no document-level filter language, so every Mongo-shaped call is
-translated into a SQL string here. There is no Cosmos account and no emulator
-available to this repository, so the whole adapter is pinned by reading the
-query it would have sent: the clause builders, the fast path for a read by
-id, and the way `skip` and `limit` become `OFFSET`/`LIMIT` or `SELECT TOP`.
+translated into a SQL string here. These tests read the query the adapter
+would have sent rather than running it: the clause builders, the fast path
+for a read by id, and the way `skip` and `limit` become `OFFSET`/`LIMIT` or
+`SELECT TOP`. What a real emulator does with those strings is covered by
+`tests/integration/nosql`.
 """
 
 from typing import Any
@@ -81,11 +82,11 @@ def test_a_projection_that_excludes_everything_selects_the_whole_document(
     service: CosmosDBService,
 ) -> None:
     """Cosmos cannot express exclusion, so an exclude-only projection is dropped."""
-    assert service._build_select_clause({"_id": 0}) == "c"
+    assert service._build_select_clause({"_id": 0}) == "VALUE c"
 
 
 def test_no_projection_selects_the_whole_document(service: CosmosDBService) -> None:
-    assert service._build_select_clause(None) == "c"
+    assert service._build_select_clause(None) == "VALUE c"
 
 
 def test_sort_tuples_become_an_order_by_clause(service: CosmosDBService) -> None:
@@ -121,6 +122,22 @@ def test_a_missing_item_on_the_fast_path_is_none_rather_than_an_error(
     assert service.find_one("users", {"id": "abc"}) is None
 
 
+def test_a_projection_takes_the_query_path_even_for_a_lone_id(
+    service: CosmosDBService, container: FakeContainer
+) -> None:
+    """`read_item` returns the whole item, so a projection cannot use it."""
+    service.find_one("users", {"id": "abc"}, projection={"n": 1})
+    assert container.called("read_item") == 0
+    assert container.queries[-1] == "SELECT TOP 1 c.n FROM c WHERE c.id = @p0"
+
+
+def test_an_exclude_only_projection_still_takes_the_fast_path(
+    service: CosmosDBService, container: FakeContainer
+) -> None:
+    service.find_one("users", {"id": "abc"}, projection={})
+    assert container.call("read_item") == {"item": "abc", "partition_key": "abc"}
+
+
 def test_an_id_alongside_another_field_goes_through_a_query(
     service: CosmosDBService, container: FakeContainer
 ) -> None:
@@ -128,7 +145,7 @@ def test_an_id_alongside_another_field_goes_through_a_query(
     assert container.called("read_item") == 0
     assert (
         container.queries[-1]
-        == "SELECT TOP 1 c FROM c WHERE c.id = @p0 AND c.active = @p1"
+        == "SELECT TOP 1 VALUE c FROM c WHERE c.id = @p0 AND c.active = @p1"
     )
 
 
@@ -146,33 +163,42 @@ def test_find_one_returns_none_when_the_query_matched_nothing(
     assert service.find_one("users", {"active": True}) is None
 
 
-def test_every_query_crosses_partitions(
+def test_no_query_is_scoped_to_a_partition(
     service: CosmosDBService, container: FakeContainer
 ) -> None:
-    """No partition key is threaded through the API, so queries must fan out."""
+    """No partition key is threaded through the API, so queries fan out.
+
+    The SDK does that by default; naming it does not. The async
+    `query_items` never pops `enable_cross_partition_query` out of its
+    keywords, so it reaches aiohttp and the call dies with a `TypeError`.
+    """
     service.find_many("users", {})
-    assert container.call("query_items")["enable_cross_partition_query"] is True
+    assert "partition_key" not in container.call("query_items")
+    assert "enable_cross_partition_query" not in container.call("query_items")
 
 
 def test_a_skip_becomes_offset_and_limit(
     service: CosmosDBService, container: FakeContainer
 ) -> None:
     service.find_many("users", {"a": 1}, skip=5, limit=2)
-    assert container.queries[-1] == "SELECT c FROM c WHERE c.a = @p0 OFFSET 5 LIMIT 2"
+    assert (
+        container.queries[-1]
+        == "SELECT VALUE c FROM c WHERE c.a = @p0 OFFSET 5 LIMIT 2"
+    )
 
 
 def test_a_skip_without_a_limit_borrows_the_largest_one_cosmos_takes(
     service: CosmosDBService, container: FakeContainer
 ) -> None:
     service.find_many("users", {}, skip=4)
-    assert container.queries[-1] == "SELECT c FROM c OFFSET 4 LIMIT 2147483647"
+    assert container.queries[-1] == "SELECT VALUE c FROM c OFFSET 4 LIMIT 2147483647"
 
 
 def test_a_limit_without_a_skip_becomes_select_top(
     service: CosmosDBService, container: FakeContainer
 ) -> None:
     service.find_many("users", {}, limit=3)
-    assert container.queries[-1] == "SELECT TOP 3 c FROM c"
+    assert container.queries[-1] == "SELECT TOP 3 VALUE c FROM c"
 
 
 def test_a_sort_is_placed_before_the_paging_clause(
@@ -180,7 +206,8 @@ def test_a_sort_is_placed_before_the_paging_clause(
 ) -> None:
     service.find_many("users", {}, sort=[("name", 1)], skip=1, limit=2)
     assert (
-        container.queries[-1] == "SELECT c FROM c ORDER BY c.name ASC OFFSET 1 LIMIT 2"
+        container.queries[-1]
+        == "SELECT VALUE c FROM c ORDER BY c.name ASC OFFSET 1 LIMIT 2"
     )
 
 
@@ -300,7 +327,10 @@ async def test_the_async_find_many_builds_the_same_sql(
     service: CosmosDBService, acontainer: AsyncFakeContainer
 ) -> None:
     await service.afind_many("users", {"a": 1}, skip=5, limit=2)
-    assert acontainer.queries[-1] == "SELECT c FROM c WHERE c.a = @p0 OFFSET 5 LIMIT 2"
+    assert (
+        acontainer.queries[-1]
+        == "SELECT VALUE c FROM c WHERE c.a = @p0 OFFSET 5 LIMIT 2"
+    )
 
 
 async def test_the_async_count_reads_the_scalar(

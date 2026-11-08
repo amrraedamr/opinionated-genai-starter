@@ -23,6 +23,10 @@ class AzureBlobClient(metaclass=Singleton):
 
     Designed to be instantiated once and reused across the application.
     Lazy-initializes the underlying SDK clients on first access.
+
+    A shared key is used when one is configured; otherwise the client falls
+    back to `DefaultAzureCredential`, so a deployment holding a role
+    assignment needs no key. The identity is built only where there is no key.
     """
 
     def __init__(self) -> None:
@@ -31,10 +35,17 @@ class AzureBlobClient(metaclass=Singleton):
         if not self._account_url:
             raise BlobConfigError("azure_blob_account_url is required")
 
+        self._account_key: str = settings.azure_blob_account_key
+
         self._sync_client: BlobServiceClient | None = None
         self._async_client: AsyncBlobServiceClient | None = None
         self._credential: DefaultAzureCredential | None = None
         self._async_credential: AsyncDefaultAzureCredential | None = None
+
+    @property
+    def account_key(self) -> str:
+        """The shared key, where one is configured. Empty means an identity."""
+        return self._account_key
 
     # Client accessors (lazy init)
 
@@ -44,10 +55,11 @@ class AzureBlobClient(metaclass=Singleton):
     @property
     def sync_client(self) -> BlobServiceClient:
         if self._sync_client is None:
-            self._credential = DefaultAzureCredential()
+            if not self._account_key:
+                self._credential = DefaultAzureCredential()
             self._sync_client = BlobServiceClient(
                 account_url=self._account_url,
-                credential=self._credential,
+                credential=self._account_key or self._credential,
                 retry_total=0,
             )
         return self._sync_client
@@ -55,10 +67,11 @@ class AzureBlobClient(metaclass=Singleton):
     @property
     def async_client(self) -> AsyncBlobServiceClient:
         if self._async_client is None:
-            self._async_credential = AsyncDefaultAzureCredential()
+            if not self._account_key:
+                self._async_credential = AsyncDefaultAzureCredential()
             self._async_client = AsyncBlobServiceClient(
                 account_url=self._account_url,
-                credential=self._async_credential,
+                credential=self._account_key or self._async_credential,
                 retry_total=0,
             )
         return self._async_client

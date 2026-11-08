@@ -6,3 +6,4 @@ class SupportsAzureBlobConfig(Protocol):
     """Satisfied by `AzureBlobSettingsMixin`."""
 
     azure_blob_account_url: str
+    azure_blob_account_key: str

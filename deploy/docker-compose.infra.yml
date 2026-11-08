@@ -61,8 +61,27 @@ services:
     volumes:
       - qdrantdata:/qdrant/storage
 
+  azurite:
+    # Blob storage, so AzureBlobService runs against something rather than
+    # only being asserted on. Shared key, which is why the client takes one.
+    image: mcr.microsoft.com/azure-storage/azurite:3.37.0
+    ports:
+      # 10100, not Azurite's own 10000: that port is often already taken.
+      - "10100:10000"
+    volumes:
+      - azuritedata:/data
+
+  cosmos:
+    # The vNext emulator: native arm64 and plain HTTP, unlike the classic one.
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    environment:
+      PROTOCOL: http
+    ports:
+      - "8081:8081"
+
 volumes:
   pgdata:
   redisdata:
   mongodata:
   qdrantdata:
+  azuritedata:

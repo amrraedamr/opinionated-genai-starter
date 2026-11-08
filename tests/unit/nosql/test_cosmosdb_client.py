@@ -19,6 +19,7 @@ class RecordingSdk:
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
+        self.closed: int = 0
 
     def __call__(self, **kwargs: Any) -> Any:
         self.calls.append(kwargs)
@@ -26,6 +27,9 @@ class RecordingSdk:
 
     def get_database_client(self, database: str) -> Any:
         return {"database": database, "container": None}
+
+    def close(self) -> None:
+        self.closed += 1
 
     @property
     def last(self) -> dict[str, Any]:
@@ -159,6 +163,25 @@ def test_closing_drops_the_sync_client_so_the_next_use_rebuilds_it(
     client.sync_client
     assert len(sdk.calls) == 2
     assert credential.closed == 1
+
+
+def test_closing_closes_the_sync_client_rather_than_leaving_it_to_the_collector(
+    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+) -> None:
+    """`CosmosClient.close()` is public, and holds a transport until it runs."""
+    configure(make_settings, azure_cosmos_account_key="the-key")
+    client = CosmosDBClient()
+    client.sync_client
+    client.close()
+    assert sdk.closed == 1
+
+
+def test_closing_a_client_that_never_built_one_closes_nothing(
+    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+) -> None:
+    configure(make_settings, azure_cosmos_account_key="the-key")
+    CosmosDBClient().close()
+    assert sdk.closed == 0
 
 
 def test_the_client_is_one_instance_for_the_process(

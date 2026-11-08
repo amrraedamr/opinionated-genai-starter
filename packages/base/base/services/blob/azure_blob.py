@@ -1,5 +1,7 @@
 from collections.abc import AsyncIterator, Iterator
 from datetime import datetime, timedelta, timezone
+from typing import Any
+from urllib.parse import quote
 
 from base.tools.errors import MissingExtraError
 
@@ -20,6 +22,9 @@ from base.services.blob import AbstractBlobService
 from base.services.common.meta import SingletonABC
 from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.blob.azure import AzureBlobErrorHandler
+
+_LIST_INCLUDE: list[str] = ["metadata"]
+"""Azure leaves metadata out of a listing unless it is asked for."""
 
 
 class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
@@ -158,43 +163,31 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
         self, container: str, prefix: str | None = None
     ) -> Iterator[BlobProperties]:
         container_client = self._client.sync_client.get_container_client(container)
-        blobs = container_client.list_blobs(name_starts_with=prefix)
-        for blob in blobs:
-            yield BlobProperties(
-                name=blob.name,
-                size=blob.size or 0,
-                content_type=(
-                    blob.content_settings.content_type
-                    if blob.content_settings
-                    else "application/octet-stream"
-                ),
-                etag=blob.etag,
-                last_modified=(
-                    blob.last_modified.isoformat() if blob.last_modified else None
-                ),
-                metadata=blob.metadata or {},
+        try:
+            blobs = container_client.list_blobs(
+                name_starts_with=prefix, include=_LIST_INCLUDE
             )
+            for blob in blobs:
+                yield self._to_blob_properties(blob)
+        except Exception as exc:
+            # Retrying a half-drained pager would repeat what it already
+            # yielded, so a generator translates rather than retries.
+            raise self._error_handler.as_domain_error(exc) from exc
 
     async def alist_blobs(
         self, container: str, prefix: str | None = None
     ) -> AsyncIterator[BlobProperties]:
         container_client = self._client.async_client.get_container_client(container)
-        blobs = container_client.list_blobs(name_starts_with=prefix)
-        async for blob in blobs:
-            yield BlobProperties(
-                name=blob.name,
-                size=blob.size or 0,
-                content_type=(
-                    blob.content_settings.content_type
-                    if blob.content_settings
-                    else "application/octet-stream"
-                ),
-                etag=blob.etag,
-                last_modified=(
-                    blob.last_modified.isoformat() if blob.last_modified else None
-                ),
-                metadata=blob.metadata or {},
+        try:
+            blobs = container_client.list_blobs(
+                name_starts_with=prefix, include=_LIST_INCLUDE
             )
+            async for blob in blobs:
+                yield self._to_blob_properties(blob)
+        except Exception as exc:
+            # Retrying a half-drained pager would repeat what it already
+            # yielded, so a generator translates rather than retries.
+            raise self._error_handler.as_domain_error(exc) from exc
 
     # Generate URL
 
@@ -205,20 +198,33 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
         blob_name: str,
         expiry_seconds: int = 3600,
     ) -> str:
-        user_delegation_key = self._client.sync_client.get_user_delegation_key(
-            key_start_time=datetime.now(timezone.utc),
-            key_expiry_time=datetime.now(timezone.utc)
-            + timedelta(seconds=expiry_seconds),
+        """A read-only SAS URL, signed by whichever credential this is holding.
+
+        A user delegation key is minted by Entra ID, so it exists only on the
+        identity path; a shared key signs the token itself.
+        """
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)
+        signing: dict[str, Any] = (
+            {"account_key": self._client.account_key}
+            if self._client.account_key
+            else {
+                "user_delegation_key": self._client.sync_client.get_user_delegation_key(
+                    key_start_time=datetime.now(timezone.utc),
+                    key_expiry_time=expiry,
+                )
+            }
         )
         sas_token = generate_blob_sas(
             account_name=self._client.sync_client.account_name,  # type: ignore
             container_name=container,
             blob_name=blob_name,
-            user_delegation_key=user_delegation_key,
             permission=BlobSasPermissions(read=True),
-            expiry=datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds),
+            expiry=expiry,
+            **signing,
         )
-        return f"{self._client.sync_client.url}{container}/{blob_name}?{sas_token}"
+        return self._sas_url(
+            self._client.sync_client.url, container, blob_name, sas_token
+        )
 
     @aretrying
     async def agenerate_url(
@@ -227,20 +233,32 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
         blob_name: str,
         expiry_seconds: int = 3600,
     ) -> str:
-        user_delegation_key = await self._client.async_client.get_user_delegation_key(
-            key_start_time=datetime.now(timezone.utc),
-            key_expiry_time=datetime.now(timezone.utc)
-            + timedelta(seconds=expiry_seconds),
+        """A read-only SAS URL, signed by whichever credential this is holding.
+
+        A user delegation key is minted by Entra ID, so it exists only on the
+        identity path; a shared key signs the token itself.
+        """
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)
+        client = self._client.async_client
+        signing: dict[str, Any] = (
+            {"account_key": self._client.account_key}
+            if self._client.account_key
+            else {
+                "user_delegation_key": await client.get_user_delegation_key(
+                    key_start_time=datetime.now(timezone.utc),
+                    key_expiry_time=expiry,
+                )
+            }
         )
         sas_token = generate_blob_sas(
-            account_name=self._client.async_client.account_name,  # type: ignore
+            account_name=client.account_name,  # type: ignore
             container_name=container,
             blob_name=blob_name,
-            user_delegation_key=user_delegation_key,
             permission=BlobSasPermissions(read=True),
-            expiry=datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds),
+            expiry=expiry,
+            **signing,
         )
-        return f"{self._client.async_client.url}{container}/{blob_name}?{sas_token}"
+        return self._sas_url(client.url, container, blob_name, sas_token)
 
     # Metadata & Lifecycle
 
@@ -254,6 +272,20 @@ class AzureBlobService(AbstractBlobService, metaclass=SingletonABC):
         await self._client.aclose()
 
     # Internals
+
+    @staticmethod
+    def _sas_url(
+        account_url: str, container: str, blob_name: str, sas_token: str
+    ) -> str:
+        """The blob's address with a token on it.
+
+        The token is signed over the unescaped name, but the URL carries the
+        escaped one — a name holding a space, a `#` or a `?` is otherwise an
+        address that reaches a different blob or none at all.
+        """
+        return (
+            f"{account_url}{quote(container)}/{quote(blob_name, safe='~/')}?{sas_token}"
+        )
 
     @staticmethod
     def _to_blob_properties(props: object) -> BlobProperties:
