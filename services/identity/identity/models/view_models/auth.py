@@ -24,8 +24,13 @@ class RegisterRequest(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
 
-    _validate_first_name = field_validator("first_name")(validate_name)
-    _validate_last_name = field_validator("last_name")(validate_name)
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def _validate_names(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        return validate_name(value)
+
     _validate_password = field_validator("password")(validate_password)
 
 

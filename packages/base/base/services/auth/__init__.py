@@ -2,9 +2,11 @@
 
 from base.services.auth.bearer import (
     current_principal,
+    current_user_id,
     http_bearer,
     http_bearer_dependency,
     principal_dependency,
+    user_id_dependency,
 )
 from base.services.auth.models import (
     AccessToken,
@@ -32,7 +34,9 @@ __all__ = [
     "TokenResponse",
     "TokenVerifier",
     "current_principal",
+    "current_user_id",
     "http_bearer",
     "http_bearer_dependency",
     "principal_dependency",
+    "user_id_dependency",
 ]
