@@ -95,6 +95,16 @@ def test_an_account_key_is_used_as_the_credential(
     assert sdk.last["credential"] == "the-key"
 
 
+def test_an_account_key_builds_no_identity_at_all(
+    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+) -> None:
+    """The identity needs aiohttp on the async side, so a keyed deployment
+    must not reach for one it will never use."""
+    configure(make_settings, azure_cosmos_account_key="the-key")
+    CosmosDBClient().sync_client
+    assert credential.built == 0
+
+
 def test_no_account_key_falls_back_to_the_managed_identity(
     make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:

@@ -1,6 +1,5 @@
 """Getting documents into a vector collection, and keeping them current."""
 
-
 from base.models.view_models.rag import (
     Chunk,
     Document,

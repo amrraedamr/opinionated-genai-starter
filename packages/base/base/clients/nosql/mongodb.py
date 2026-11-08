@@ -59,8 +59,7 @@ class MongoDBClient(metaclass=Singleton):
         params: str = settings_for(SupportsMongoConfig).mongodb_params
 
         credentials = (
-            f"{urllib.parse.quote_plus(username)}:"
-            f"{urllib.parse.quote_plus(password)}@"
+            f"{urllib.parse.quote_plus(username)}:{urllib.parse.quote_plus(password)}@"
             if username or password
             else ""
         )

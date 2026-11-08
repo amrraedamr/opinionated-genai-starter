@@ -25,9 +25,15 @@ def parse_correlation_id(value: str | None) -> UUID | None:
     return UUID(match.group(1)) if match else None
 
 
-def adopt_correlation_id(header_value: str | None = None, traceparent: str | None = None) -> UUID:
+def adopt_correlation_id(
+    header_value: str | None = None, traceparent: str | None = None
+) -> UUID:
     """Adopt an inbound correlation id, or start a new one."""
-    resolved = parse_correlation_id(header_value) or parse_correlation_id(traceparent) or uuid4()
+    resolved = (
+        parse_correlation_id(header_value)
+        or parse_correlation_id(traceparent)
+        or uuid4()
+    )
     correlation_id.set(resolved)
     return resolved
 

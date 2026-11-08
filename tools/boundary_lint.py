@@ -76,7 +76,9 @@ def main() -> int:
         imports = imported_modules(ast.parse(path.read_text()))
         for service, package in packages.items():
             if package in imports:
-                failures.append(f"{path.relative_to(ROOT)}: base imports service package {package!r}")
+                failures.append(
+                    f"{path.relative_to(ROOT)}: base imports service package {package!r}"
+                )
 
     # 2. no service imports another service
     for service, package in packages.items():
@@ -93,9 +95,12 @@ def main() -> int:
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id == "__tablename__" for t in node.targets
+                isinstance(t, ast.Name) and t.id == "__tablename__"
+                for t in node.targets
             ):
-                failures.append(f"{path.relative_to(ROOT)}: base declares __tablename__")
+                failures.append(
+                    f"{path.relative_to(ROOT)}: base declares __tablename__"
+                )
             if isinstance(node, ast.ClassDef):
                 bases = {
                     b.id if isinstance(b, ast.Name) else getattr(b, "attr", "")
@@ -132,7 +137,8 @@ def main() -> int:
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Assign) and any(
-                    isinstance(t, ast.Name) and t.id == "__tablename__" for t in node.targets
+                    isinstance(t, ast.Name) and t.id == "__tablename__"
+                    for t in node.targets
                 ):
                     if isinstance(node.value, ast.Constant):
                         own_tables.add(str(node.value.value))
@@ -150,13 +156,16 @@ def main() -> int:
                             and len(item.targets) == 1
                             and isinstance(item.targets[0], ast.Name)
                         ):
-                            enum_values[f"{node.name}.{item.targets[0].id}"] = item.value.value
+                            enum_values[f"{node.name}.{item.targets[0].id}"] = (
+                                item.value.value
+                            )
 
         # Second pass, now that enum members are known.
         for path in python_files(SERVICES / service):
             for node in ast.walk(ast.parse(path.read_text())):
                 if isinstance(node, ast.Assign) and any(
-                    isinstance(t, ast.Name) and t.id == "__tablename__" for t in node.targets
+                    isinstance(t, ast.Name) and t.id == "__tablename__"
+                    for t in node.targets
                 ):
                     resolved = resolve_table(node.value, enum_values)
                     if resolved:
@@ -166,7 +175,8 @@ def main() -> int:
             for node in ast.walk(ast.parse(path.read_text())):
                 if (
                     isinstance(node, ast.Call)
-                    and getattr(node.func, "id", getattr(node.func, "attr", "")) == "ForeignKey"
+                    and getattr(node.func, "id", getattr(node.func, "attr", ""))
+                    == "ForeignKey"
                     and node.args
                 ):
                     target = foreign_key_table(node.args[0], enum_values)

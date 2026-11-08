@@ -52,10 +52,9 @@ class CosmosDBClient(metaclass=Singleton):
     @property
     def sync_client(self) -> CosmosClient:
         if self._sync_client is None:
-            self._credential = DefaultAzureCredential()
             self._sync_client = CosmosClient(
                 url=self._endpoint,
-                credential=self._account_key if self._account_key else self._credential,
+                credential=self._account_key or self._sync_credential,
                 **self._get_common_kwargs(),
             )
         return self._sync_client
@@ -63,15 +62,26 @@ class CosmosDBClient(metaclass=Singleton):
     @property
     def async_client(self) -> AsyncCosmosClient:
         if self._async_client is None:
-            self._async_credential = AsyncDefaultAzureCredential()
             self._async_client = AsyncCosmosClient(
                 url=self._endpoint,
-                credential=self._account_key
-                if self._account_key
-                else self._async_credential,
+                credential=self._account_key or self._async_identity,
                 **self._get_common_kwargs(),
             )
         return self._async_client
+
+    @property
+    def _sync_credential(self) -> DefaultAzureCredential:
+        """Built only where there is no key, so a keyed deployment needs no identity."""
+        if self._credential is None:
+            self._credential = DefaultAzureCredential()
+        return self._credential
+
+    @property
+    def _async_identity(self) -> AsyncDefaultAzureCredential:
+        """Built only where there is no key, so a keyed deployment needs no identity."""
+        if self._async_credential is None:
+            self._async_credential = AsyncDefaultAzureCredential()
+        return self._async_credential
 
     # Database & Container accessors
 

@@ -11,7 +11,9 @@ from identity.models.orm import IdentityBase
 
 class OutboxEventDTO(IdentityBase):
     __tablename__ = "outbox_event"
-    __table_args__ = (Index("idx_identity_outbox_pending", "published_at", "available_at"),)
+    __table_args__ = (
+        Index("idx_identity_outbox_pending", "published_at", "available_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUIDType(binary=True), primary_key=True)
     topic: Mapped[str] = mapped_column(String(255))

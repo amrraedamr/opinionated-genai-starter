@@ -130,13 +130,23 @@ def test_each_encoder_writes_the_tag_its_decoder_looks_for() -> None:
     assert encode_base_model(Payload(name="x"))["_type"] == "base_model"
 
 
-def test_a_short_numeric_string_is_read_back_as_a_number() -> None:
-    """`deserialize` short-circuits anything under ten characters that is an int."""
+def test_a_number_is_read_back_as_a_number() -> None:
     assert deserialize("42") == 42
+    assert deserialize(serialize(10**12)) == 10**12
 
 
-def test_a_short_non_numeric_string_falls_through_to_json() -> None:
+def test_a_quoted_string_is_read_back_as_a_string() -> None:
     assert deserialize('"hi"') == "hi"
+
+
+def test_a_string_of_digits_does_not_become_a_number() -> None:
+    """`serialize` quotes it, so only the quoting decides the type."""
+    assert deserialize(serialize("42")) == "42"
+
+
+def test_input_that_is_not_json_is_refused_rather_than_guessed() -> None:
+    with pytest.raises(json.JSONDecodeError):
+        deserialize("007")
 
 
 def test_a_subclass_of_a_registered_type_uses_that_types_encoder() -> None:

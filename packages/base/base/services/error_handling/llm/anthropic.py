@@ -20,7 +20,7 @@ try:
         PermissionDeniedError,
         RateLimitError,
         RequestTooLargeError,
-    RetryableError,
+        RetryableError,
         ServiceUnavailableError,
         UnprocessableEntityError,
     )

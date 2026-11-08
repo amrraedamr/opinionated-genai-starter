@@ -236,9 +236,7 @@ def test_unicode_and_emoji_survive_the_result() -> None:
     ],
 )
 def test_a_schema_is_read_whether_or_not_the_reply_is_fenced(body: str) -> None:
-    parsed = AnthropicService._to_parsed_result(
-        service(), Answer, message(text(body))
-    )
+    parsed = AnthropicService._to_parsed_result(service(), Answer, message(text(body)))
 
     assert parsed.parsed.text == "Paris"
 
