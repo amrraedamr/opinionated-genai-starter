@@ -56,15 +56,17 @@ def test_cloning_can_be_told_which_columns_to_drop() -> None:
     assert clone.name == "widget"
 
 
-def test_cloning_hands_back_json_types_rather_than_the_column_types() -> None:
-    """Pinned, not endorsed: `clone` rebuilds from `to_dict`, which has already
-    turned a datetime into a string. See the report."""
+def test_naming_another_column_does_not_keep_the_identifier() -> None:
+    original = Row(id=UUID(int=8), name="widget")
+    assert original.clone(exclude={"name"}).id != UUID(int=8)
+
+
+def test_cloning_hands_back_the_column_types_rather_than_json_types() -> None:
     clone = Row(id=UUID(int=6), name="widget").clone(exclude={"name"})
-    assert clone.created_at == "2026-01-01T00:00:00+00:00"
+    assert clone.created_at == datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def test_an_empty_exclude_set_still_drops_the_identifier() -> None:
-    """Pinned, not endorsed: `exclude or {"id"}` cannot tell empty from unset."""
     clone = Row(id=UUID(int=7), name="widget").clone(exclude=set())
     assert clone.id != UUID(int=7)
 

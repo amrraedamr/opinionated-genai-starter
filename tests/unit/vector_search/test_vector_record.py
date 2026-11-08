@@ -48,7 +48,7 @@ def test_nested_metadata_survives_the_round_trip() -> None:
 
 
 def test_an_id_must_be_a_string() -> None:
-    """Pins the shape: an unsigned integer point id cannot be expressed here."""
+    """The canonical id is text; a backend wanting a number reads it from digits."""
     with pytest.raises(ValidationError):
         VectorRecord(id=7, vector=[0.1])  # type: ignore[arg-type]
 

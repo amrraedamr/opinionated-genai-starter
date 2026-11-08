@@ -1,4 +1,5 @@
-from typing import Any, cast
+from typing import Any, ClassVar, cast
+from uuid import NAMESPACE_OID, UUID, uuid5
 
 from base.tools.errors import MissingExtraError
 
@@ -48,12 +49,57 @@ _DISTANCE_MAP: dict[str, Distance] = {
 class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC):
     """Qdrant-backed vector search service with sync and async support."""
 
+    SOURCE_ID_FIELD: ClassVar[str] = "_source_id"
+
     def __init__(self) -> None:
         super().__init__()
         self._client: QdrantClient = QdrantClient()
 
         # Collection Management
         self._error_handler: QdrantErrorHandler = QdrantErrorHandler()
+
+    # Point ids
+
+    @classmethod
+    def _point_id(cls, record_id: str) -> ExtendedPointId:
+        """Qdrant takes a UUID or an unsigned integer; any other id becomes a UUID."""
+        if record_id.isdigit():
+            return int(record_id)
+        try:
+            return str(UUID(record_id))
+        except ValueError:
+            return str(uuid5(NAMESPACE_OID, record_id))
+
+    @classmethod
+    def _payload_for(cls, record: VectorRecord) -> dict[str, Any]:
+        """Keep the caller's id alongside the metadata when it had to be rewritten."""
+        payload = dict(record.metadata)
+        if str(cls._point_id(record.id)) != record.id:
+            payload[cls.SOURCE_ID_FIELD] = record.id
+        return payload
+
+    @classmethod
+    def _read_payload(cls, payload: Any, point_id: Any) -> tuple[str, dict[str, Any]]:
+        """Split a stored payload back into the caller's id and their metadata."""
+        metadata = dict(payload) if payload else {}
+        return metadata.pop(cls.SOURCE_ID_FIELD, str(point_id)), metadata
+
+    def _as_record(self, point: Any) -> VectorRecord:
+        record_id, metadata = self._read_payload(point.payload, point.id)
+        return VectorRecord(
+            id=record_id,
+            vector=self._extract_vector(point.vector),
+            metadata=metadata,
+        )
+
+    def _as_result(self, point: Any) -> VectorSearchResult:
+        record_id, metadata = self._read_payload(point.payload, point.id)
+        return VectorSearchResult(
+            id=record_id,
+            score=point.score,
+            vector=self._extract_vector(point.vector),
+            metadata=metadata,
+        )
 
     @retrying
     def create_collection(
@@ -120,7 +166,11 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             self._client.sync_client.upsert(
                 collection_name=collection,
                 points=[
-                    PointStruct(id=r.id, vector=r.vector, payload=r.metadata)
+                    PointStruct(
+                        id=self._point_id(r.id),
+                        vector=r.vector,
+                        payload=self._payload_for(r),
+                    )
                     for r in batch
                 ],
             )
@@ -132,7 +182,11 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             await self._client.async_client.upsert(
                 collection_name=collection,
                 points=[
-                    PointStruct(id=r.id, vector=r.vector, payload=r.metadata)
+                    PointStruct(
+                        id=self._point_id(r.id),
+                        vector=r.vector,
+                        payload=self._payload_for(r),
+                    )
                     for r in batch
                 ],
             )
@@ -157,15 +211,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             with_payload=True,
             with_vectors=True,
         )
-        return [
-            VectorSearchResult(
-                id=str(point.id),
-                score=point.score,
-                vector=self._extract_vector(point.vector),
-                metadata=dict(point.payload) if point.payload else {},
-            )
-            for point in results.points
-        ]
+        return [self._as_result(point) for point in results.points]
 
     @aretrying
     async def asearch(
@@ -185,15 +231,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             with_payload=True,
             with_vectors=True,
         )
-        return [
-            VectorSearchResult(
-                id=str(point.id),
-                score=point.score,
-                vector=self._extract_vector(point.vector),
-                metadata=dict(point.payload) if point.payload else {},
-            )
-            for point in results.points
-        ]
+        return [self._as_result(point) for point in results.points]
 
     # Get by ID
 
@@ -206,17 +244,10 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
     ) -> list[VectorRecord]:
         records = self._client.sync_client.retrieve(
             collection_name=collection,
-            ids=ids,
+            ids=[self._point_id(i) for i in ids],
             with_vectors=with_vectors,
         )
-        return [
-            VectorRecord(
-                id=str(r.id),
-                vector=self._extract_vector(r.vector),
-                metadata=dict(r.payload) if r.payload else {},
-            )
-            for r in records
-        ]
+        return [self._as_record(r) for r in records]
 
     @aretrying
     async def aget(
@@ -227,17 +258,10 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
     ) -> list[VectorRecord]:
         records = await self._client.async_client.retrieve(
             collection_name=collection,
-            ids=ids,
+            ids=[self._point_id(i) for i in ids],
             with_vectors=with_vectors,
         )
-        return [
-            VectorRecord(
-                id=str(r.id),
-                vector=self._extract_vector(r.vector),
-                metadata=dict(r.payload) if r.payload else {},
-            )
-            for r in records
-        ]
+        return [self._as_record(r) for r in records]
 
     # Delete
 
@@ -245,14 +269,18 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
     def delete(self, collection: str, ids: list[str]) -> None:
         self._client.sync_client.delete(
             collection_name=collection,
-            points_selector=PointIdsList(points=cast(list[ExtendedPointId], ids)),
+            points_selector=PointIdsList(
+                points=cast(list[ExtendedPointId], [self._point_id(i) for i in ids])
+            ),
         )
 
     @aretrying
     async def adelete(self, collection: str, ids: list[str]) -> None:
         await self._client.async_client.delete(
             collection_name=collection,
-            points_selector=PointIdsList(points=cast(list[ExtendedPointId], ids)),
+            points_selector=PointIdsList(
+                points=cast(list[ExtendedPointId], [self._point_id(i) for i in ids])
+            ),
         )
 
     # Count
@@ -286,14 +314,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             with_vectors=with_vectors,
         )
         return (
-            [
-                VectorRecord(
-                    id=str(r.id),
-                    vector=self._extract_vector(r.vector),
-                    metadata=dict(r.payload) if r.payload else {},
-                )
-                for r in records
-            ],
+            [self._as_record(r) for r in records],
             str(next_offset) if next_offset is not None else None,
         )
 
@@ -314,14 +335,7 @@ class QdrantVectorSearchService(AbstractVectorSearchService, metaclass=Singleton
             with_vectors=with_vectors,
         )
         return (
-            [
-                VectorRecord(
-                    id=str(r.id),
-                    vector=self._extract_vector(r.vector),
-                    metadata=dict(r.payload) if r.payload else {},
-                )
-                for r in records
-            ],
+            [self._as_record(r) for r in records],
             str(next_offset) if next_offset is not None else None,
         )
 

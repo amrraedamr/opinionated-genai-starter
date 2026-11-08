@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, contextmanager
 from typing import Any
 from urllib.parse import quote_plus
 
+from base.models.definitions.backends import BackendSetting
 from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError, UnsupportedBackendError
 
@@ -50,6 +51,7 @@ class SQLClient(metaclass=KeyedSingleton):
             distribution=self._backend.distribution,
             missing=missing,
             available=[backend.value for backend in installed_backends()],
+            setting=BackendSetting.SQL,
         )
 
     def _get_database_url(self, driver: str) -> str:

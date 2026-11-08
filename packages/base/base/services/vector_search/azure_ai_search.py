@@ -184,6 +184,48 @@ class AzureAISearchService(AbstractVectorSearchService, metaclass=SingletonABC):
             output.append(self._document_to_search_result(doc, score))
         return output
 
+    # Lexical search
+
+    @retrying
+    def lexical_search(
+        self,
+        collection: str,
+        query: str,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[VectorSearchResult]:
+        """Full-text search over the stored text, for fusing with vectors."""
+        client = self._client.get_search_client(collection)
+        results = client.search(
+            search_text=query,
+            filter=self._build_filter(filters),
+            top=limit,
+        )
+        return [
+            self._document_to_search_result(doc, float(doc.get("@search.score", 0.0)))
+            for doc in results
+        ]
+
+    @aretrying
+    async def alexical_search(
+        self,
+        collection: str,
+        query: str,
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[VectorSearchResult]:
+        """Full-text search over the stored text, for fusing with vectors."""
+        client = self._client.get_async_search_client(collection)
+        results = await client.search(
+            search_text=query,
+            filter=self._build_filter(filters),
+            top=limit,
+        )
+        return [
+            self._document_to_search_result(doc, float(doc.get("@search.score", 0.0)))
+            async for doc in results
+        ]
+
     # Get by ID
 
     @retrying

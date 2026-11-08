@@ -142,6 +142,8 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         documents: list[dict[str, Any]],
         ordered: bool = True,
     ) -> list[str]:
+        if not documents:
+            return []
         result = self._get_database()[collection].insert_many(
             documents, ordered=ordered
         )
@@ -154,6 +156,8 @@ class MongoDBService(AbstractNoSQLService, metaclass=SingletonABC):
         documents: list[dict[str, Any]],
         ordered: bool = True,
     ) -> list[str]:
+        if not documents:
+            return []
         result = await self._aget_database()[collection].insert_many(
             documents, ordered=ordered
         )

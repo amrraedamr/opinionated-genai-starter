@@ -65,9 +65,7 @@ def test_closing_nothing_at_all_is_allowed() -> None:
     close_all(None)
 
 
-def test_a_failing_close_stops_the_rest() -> None:
-    """Pinned as it stands: there is no per-resource guard."""
-
+def test_a_failing_close_does_not_strand_the_rest() -> None:
     class Stubborn:
         def close(self) -> None:
             raise RuntimeError("still busy")
@@ -75,7 +73,30 @@ def test_a_failing_close_stops_the_rest() -> None:
     after = Client()
     with pytest.raises(RuntimeError, match="still busy"):
         close_all(Stubborn(), after)
-    assert after.closed == 0
+    assert after.closed == 1
+
+
+async def test_a_failing_async_close_does_not_strand_the_rest() -> None:
+    class Stubborn:
+        async def close(self) -> None:
+            raise RuntimeError("still busy")
+
+    after = AsyncClient()
+    with pytest.raises(RuntimeError, match="still busy"):
+        await aclose_all(Stubborn(), after)
+    assert after.closed == 1
+
+
+def test_the_first_failure_is_the_one_raised() -> None:
+    class Stubborn:
+        def __init__(self, reason: str) -> None:
+            self.reason = reason
+
+        def close(self) -> None:
+            raise RuntimeError(self.reason)
+
+    with pytest.raises(RuntimeError, match="first"):
+        close_all(Stubborn("first"), Stubborn("second"))
 
 
 async def test_every_async_resource_given_is_awaited_closed() -> None:

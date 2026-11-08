@@ -12,7 +12,6 @@ from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.cache.redis import RedisErrorHandler
 from base.tools.deserializers import ExpansiveDecoder
 from base.tools.misc import generic_deep_deserialize, parse_json_pairs
-from base.tools.serializers import serialize
 
 
 class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
@@ -35,11 +34,12 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         result: str | None = self._redis_client.sync_client.get(  # type: ignore
             self._get_key(key, namespace)
         )
-        if not result:
+        if result is None:
             return None
+        value = json.loads(result, cls=ExpansiveDecoder)
         if inspect.isclass(value_type) or value_type is dict:
-            return json.loads(result, cls=ExpansiveDecoder)
-        return value_type(result)
+            return value
+        return value_type(value)
 
     @aretrying
     async def aget(
@@ -51,11 +51,12 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         result: str | None = await self._redis_client.async_client.get(  # type: ignore
             self._get_key(key, namespace)
         )
-        if not result:
+        if result is None:
             return None
+        value = json.loads(result, cls=ExpansiveDecoder)
         if inspect.isclass(value_type) or value_type is dict:
-            return json.loads(result, cls=ExpansiveDecoder)
-        return value_type(result)
+            return value
+        return value_type(value)
 
     @retrying
     def set(
@@ -65,9 +66,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         value: Any = None,
         ttl_seconds: int | None = None,
     ) -> None:
+        self._check_ttl(ttl_seconds)
         self._redis_client.sync_client.set(
             name=self._get_key(key, namespace),
-            value=serialize(value),
+            value=self._encode(value),
             ex=ttl_seconds,
         )
 
@@ -79,9 +81,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         value: Any = None,
         ttl_seconds: int | None = None,
     ) -> None:
+        self._check_ttl(ttl_seconds)
         await self._redis_client.async_client.set(  # type: ignore
             name=self._get_key(key, namespace),
-            value=serialize(value),
+            value=self._encode(value),
             ex=ttl_seconds,
         )
 
@@ -206,7 +209,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         ttl_seconds: int = 600,
     ) -> None:
         composite_key = self._get_key(key, namespace)
-        self._redis_client.sync_client.rpush(composite_key, serialize(value))
+        self._redis_client.sync_client.rpush(composite_key, self._encode(value))
         self._redis_client.sync_client.expire(composite_key, ttl_seconds)
 
     @aretrying
@@ -218,7 +221,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         ttl_seconds: int = 600,
     ) -> None:
         composite_key = self._get_key(key, namespace)
-        await self._redis_client.async_client.rpush(composite_key, serialize(value))  # type: ignore
+        await self._redis_client.async_client.rpush(composite_key, self._encode(value))  # type: ignore
         await self._redis_client.async_client.expire(composite_key, ttl_seconds)  # type: ignore
 
     @retrying

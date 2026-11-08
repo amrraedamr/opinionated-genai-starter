@@ -109,21 +109,24 @@ def test_a_tool_message_pairs_with_its_assistant_turn() -> None:
     assert stored.tool_call_id == "call_1"
 
 
-def test_a_user_message_is_allowed_to_carry_a_tool_call_id() -> None:
-    """Pinned, not endorsed: the `role != TOOL` guard sits behind an earlier
-    `elif`, so only a tool-role message ever reaches it. See the report."""
-    assert message(role=MessageRole.USER, content="hi", tool_call_id="call_1")
+def test_a_user_message_may_not_carry_a_tool_call_id() -> None:
+    with pytest.raises(ValidationError, match="Only tool messages"):
+        message(role=MessageRole.USER, content="hi", tool_call_id="call_1")
 
 
-def test_an_assistant_message_is_allowed_to_carry_a_tool_call_id() -> None:
-    """Pinned, not endorsed. Same unreachable guard as the user case."""
-    assert message(role=MessageRole.ASSISTANT, content="hi", tool_call_id="call_1")
+def test_an_assistant_message_may_not_carry_a_tool_call_id() -> None:
+    with pytest.raises(ValidationError, match="Only tool messages"):
+        message(role=MessageRole.ASSISTANT, content="hi", tool_call_id="call_1")
 
 
-def test_a_user_message_is_allowed_to_carry_tool_calls() -> None:
-    """Pinned, not endorsed: `Only assistant messages may define tool_calls`
-    is only reachable for a tool-role message."""
-    assert message(role=MessageRole.USER, content="hi", tool_calls=[a_tool_call()])
+def test_a_user_message_may_not_carry_tool_calls() -> None:
+    with pytest.raises(ValidationError, match="Only assistant messages"):
+        message(role=MessageRole.USER, content="hi", tool_calls=[a_tool_call()])
+
+
+def test_a_system_message_may_not_carry_tool_calls() -> None:
+    with pytest.raises(ValidationError, match="Only assistant messages"):
+        message(role=MessageRole.SYSTEM, content="hi", tool_calls=[a_tool_call()])
 
 
 def test_a_message_keeps_a_cached_token_count_when_one_was_computed() -> None:

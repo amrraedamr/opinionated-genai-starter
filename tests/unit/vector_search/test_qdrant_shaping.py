@@ -225,9 +225,9 @@ def test_a_record_becomes_a_point_with_its_metadata_as_the_payload(
         "chunks", [VectorRecord(id="a", vector=[0.1, 0.2], metadata={"text": "hi"})]
     )
     point = client.call("upsert")["points"][0]
-    assert point.id == "a"
+    assert point.id == QdrantVectorSearchService._point_id("a")
     assert point.vector == [0.1, 0.2]
-    assert point.payload == {"text": "hi"}
+    assert point.payload == {"text": "hi", "_source_id": "a"}
 
 
 def test_an_empty_upsert_sends_nothing(
@@ -334,7 +334,10 @@ def test_get_asks_for_the_ids_it_was_given(
 ) -> None:
     service.get("chunks", ["a", "b"])
     sent = client.call("retrieve")
-    assert sent["ids"] == ["a", "b"]
+    assert sent["ids"] == [
+        QdrantVectorSearchService._point_id("a"),
+        QdrantVectorSearchService._point_id("b"),
+    ]
     assert sent["with_vectors"] is False
 
 
@@ -357,7 +360,10 @@ def test_delete_sends_the_ids_as_a_point_selector(
     service: QdrantVectorSearchService, client: RecordingClient
 ) -> None:
     service.delete("chunks", ["a", "b"])
-    assert client.call("delete")["points_selector"].points == ["a", "b"]
+    assert client.call("delete")["points_selector"].points == [
+        QdrantVectorSearchService._point_id("a"),
+        QdrantVectorSearchService._point_id("b"),
+    ]
 
 
 def test_count_reads_the_number_off_the_response(

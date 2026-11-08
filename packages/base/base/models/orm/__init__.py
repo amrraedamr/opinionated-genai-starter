@@ -1,6 +1,6 @@
 """Reusable ORM mixins."""
 
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from datetime import UTC, datetime
 from typing import Self
 
@@ -30,7 +30,13 @@ class SerializableMixin:
                 setattr(self, key, value)
 
     def clone(self, exclude: set[str] | None = None) -> Self:
-        data = self.to_dict(exclude=exclude or {"id"})
+        """Copy the columns `__init__` accepts, always dropping the identity."""
+        skip = {"id"} | (exclude or set())
+        data = {
+            column.name: getattr(self, column.name)
+            for column in fields(self)  # type: ignore[arg-type]
+            if column.init and column.name not in skip
+        }
         return self.__class__(**data)
 
 

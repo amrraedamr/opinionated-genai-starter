@@ -12,6 +12,7 @@ import jwt
 import pytest
 
 from base.models.definitions.errors import AuthErrors
+from base.models.definitions.tokens import TokenType
 from base.services.auth.models import AccessToken, Principal, RefreshToken, TokenPair
 from base.services.auth.tokens import TokenIssuer, TokenVerifier
 from base.services.configuration.mixins import (
@@ -47,14 +48,15 @@ def test_an_access_token_carries_the_claims_it_was_given(
     assert payload["user_id"] == CLAIMS["user_id"]
     assert payload["email"] == CLAIMS["email"]
     assert payload["roles"] == CLAIMS["roles"]
-    assert payload["type"] == "access"
+    assert payload["type"] == TokenType.ACCESS
 
 
 def test_a_refresh_token_is_marked_as_one(make_settings: Any, keys: KeyPair) -> None:
+    """The carrier type and the claim must agree; nothing else enforces it."""
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_refresh(CLAIMS)
     payload = jwt.decode(token, keys.public_pem, algorithms=["RS256"])
-    assert payload["type"] == "refresh"
+    assert payload["type"] == TokenType.REFRESH
 
 
 def test_a_pair_drops_the_email_from_the_refresh_token(

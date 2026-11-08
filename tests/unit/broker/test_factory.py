@@ -61,18 +61,12 @@ def test_a_config_passed_in_is_used_instead_of_the_registered_settings(
     )
 
 
-def test_an_unknown_transport_is_refused() -> None:
-    """Pins the error a bad `BROKER` actually raises.
-
-    `build_broker` coerces through `BrokerBackend(...)` before its match
-    statement, so an unrecognised value fails there as a plain `ValueError`
-    naming the enum. It is never the `UnsupportedBackendError` that
-    `base/preflight.py:107` uses for the same mistake at startup, so an
-    operator reading only this message is not told which transports the build
-    supports. `base/services/broker/factory.py:22`.
-    """
-    with pytest.raises(ValueError, match="not a valid BrokerBackend") as caught:
+def test_an_unknown_transport_names_the_transports_this_build_supports() -> None:
+    with pytest.raises(
+        ValueError, match="not a transport this library knows"
+    ) as caught:
         build_broker(UnknownTransportConfig())  # type: ignore[arg-type]
+    assert "This build supports" in str(caught.value)
     assert not isinstance(caught.value, ImportError)
 
 

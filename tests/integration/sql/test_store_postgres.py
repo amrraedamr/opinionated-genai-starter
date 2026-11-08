@@ -266,17 +266,10 @@ async def test_two_stores_over_one_table_see_each_other_s_writes(
 
 
 @pytest.mark.integration
-def test_editing_a_datetime_column_survives_the_string_to_dict_hands_back(
+def test_editing_a_datetime_column_keeps_it_a_datetime(
     store: WidgetStore, widget: type[Any]
 ) -> None:
-    """The other half of a backend-dependent defect.
-
-    `SQLStore._apply` round-trips the patch through `to_dict`, so a `datetime`
-    reaches the column as an ISO string. Postgres parses it and the value
-    comes back whole; SQLite refuses it outright, which is what the unit suite
-    pins. The same `edit` call therefore works on one backend and raises on
-    the other.
-    """
+    """The backend-agnostic half: the column type reaches Postgres unchanged."""
     row = store.add(widget(name="alpha"))
     moment = datetime(2030, 1, 1, tzinfo=UTC)
 

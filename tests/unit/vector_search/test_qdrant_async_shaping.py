@@ -120,7 +120,11 @@ async def test_a_record_becomes_a_point_with_its_metadata_as_the_payload(
         "chunks", [VectorRecord(id="a", vector=[0.1], metadata={"text": "hi"})]
     )
     point = client.call("upsert")["points"][0]
-    assert (point.id, point.vector, point.payload) == ("a", [0.1], {"text": "hi"})
+    assert (point.id, point.vector, point.payload) == (
+        QdrantVectorSearchService._point_id("a"),
+        [0.1],
+        {"text": "hi", "_source_id": "a"},
+    )
 
 
 async def test_an_empty_upsert_sends_nothing(
@@ -175,9 +179,9 @@ async def test_a_scored_point_becomes_a_result(
 async def test_get_asks_for_the_ids_it_was_given(
     service: QdrantVectorSearchService, client: AsyncRecordingClient
 ) -> None:
-    client.points = [Point("a", [0.1], {"text": "hi"})]
+    client.points = [Point("a", [0.1], {"text": "hi", "_source_id": "a"})]
     record = (await service.aget("chunks", ["a"], with_vectors=True))[0]
-    assert client.call("retrieve")["ids"] == ["a"]
+    assert client.call("retrieve")["ids"] == [QdrantVectorSearchService._point_id("a")]
     assert (record.id, record.vector, record.metadata) == ("a", [0.1], {"text": "hi"})
 
 
@@ -185,7 +189,10 @@ async def test_delete_sends_the_ids_as_a_point_selector(
     service: QdrantVectorSearchService, client: AsyncRecordingClient
 ) -> None:
     await service.adelete("chunks", ["a", "b"])
-    assert client.call("delete")["points_selector"].points == ["a", "b"]
+    assert client.call("delete")["points_selector"].points == [
+        QdrantVectorSearchService._point_id("a"),
+        QdrantVectorSearchService._point_id("b"),
+    ]
 
 
 async def test_count_reads_the_number_off_the_response(

@@ -5,13 +5,13 @@ the two are not inverses. Each case here states which of the two it is, so a
 change to either is visible rather than silent.
 """
 
-import json
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 from pydantic import BaseModel
 
+from base.models.view_models.exceptions.cache import CacheUnexpectedError
 from base.services.cache.memory import InMemoryCacheService
 
 
@@ -63,7 +63,7 @@ async def test_a_pydantic_model_comes_back_as_itself(
 async def test_a_value_the_encoder_cannot_reach_is_refused_on_write(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    with pytest.raises(TypeError, match="not JSON serializable"):
+    with pytest.raises(CacheUnexpectedError, match="not JSON serializable"):
         await memory_cache.aset("bad", namespace, value={1, 2, 3})
     assert await memory_cache.aget("bad", namespace) is None
 
@@ -71,31 +71,22 @@ async def test_a_value_the_encoder_cannot_reach_is_refused_on_write(
 async def test_an_arbitrary_object_is_refused_on_write(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    with pytest.raises(TypeError, match="not JSON serializable"):
+    with pytest.raises(CacheUnexpectedError, match="not JSON serializable"):
         await memory_cache.aset("bad", namespace, value=object())
 
 
-async def test_a_plain_string_cannot_be_read_back(
+async def test_a_plain_string_reads_back_as_the_same_string(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
-    """Pins a bug: `set` stores a string verbatim, `get` always JSON-decodes it.
-
-    `serialize` returns a `str` untouched rather than JSON-encoding it, while
-    `get` takes the `inspect.isclass(value_type)` branch for the default
-    `value_type=str` and calls `json.loads`. Anything that is not already
-    valid JSON raises. `base/tools/serializers.py:93`,
-    `base/services/cache/memory.py:72`.
-    """
     await memory_cache.aset("greeting", namespace, value="hello")
-    with pytest.raises(json.JSONDecodeError):
-        await memory_cache.aget("greeting", namespace)
+    assert await memory_cache.aget("greeting", namespace) == "hello"
 
 
-async def test_a_string_that_is_valid_json_reads_back_as_the_decoded_type(
+async def test_a_string_of_digits_stays_a_string(
     memory_cache: InMemoryCacheService, namespace: UUID
 ) -> None:
     await memory_cache.aset("numeric", namespace, value="123")
-    assert await memory_cache.aget("numeric", namespace) == 123
+    assert await memory_cache.aget("numeric", namespace) == "123"
 
 
 async def test_a_non_class_value_type_is_applied_to_the_stored_text(

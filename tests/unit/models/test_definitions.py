@@ -10,6 +10,7 @@ from enum import Enum, StrEnum
 
 import pytest
 
+from base.models.definitions.backends import BackendSetting
 from base.models.definitions.background_tasks import BackgroundTaskBackend, TaskStatus
 from base.models.definitions.broker import BrokerBackend, installed_brokers
 from base.models.definitions.cache import CacheChannels, CacheKeys
@@ -25,12 +26,14 @@ from base.models.definitions.model import (
     ProviderType,
     ReasoningEffort,
 )
+from base.models.definitions.tokens import TokenType
 from base.models.definitions.vector_search import (
     VECTOR_UPSERT_BATCH_SIZE,
     DistanceMetric,
 )
 
 STR_ENUMS: list[type[StrEnum]] = [
+    BackendSetting,
     BackgroundTaskBackend,
     BrokerBackend,
     CachePersistence,
@@ -47,6 +50,7 @@ STR_ENUMS: list[type[StrEnum]] = [
     SQLBackend,
     SortingOrder,
     TaskStatus,
+    TokenType,
 ]
 
 
@@ -232,3 +236,11 @@ def test_vector_search_pins_a_batch_size_both_backends_accept() -> None:
         "dot",
         "euclidean",
     }
+
+
+def test_backend_setting_names_the_variables_that_select_a_backend() -> None:
+    assert {member.value for member in BackendSetting} == {"SQL_BACKEND", "BROKER"}
+
+
+def test_token_type_names_the_two_tokens_this_library_mints() -> None:
+    assert {member.value for member in TokenType} == {"access", "refresh"}

@@ -10,6 +10,7 @@ from http import HTTPStatus
 
 import pytest
 
+from base.models.definitions.backends import BackendSetting
 from base.models.definitions.errors import AuthErrors, DatabaseErrors, GenericErrors
 from base.tools.errors import (
     ErrorsException,
@@ -54,7 +55,12 @@ def test_an_unsupported_backend_tells_an_operator_what_this_build_does_support()
     None
 ):
     error = UnsupportedBackendError(
-        "postgresql", "postgres", "asyncpg / psycopg2-binary", ["asyncpg"], ["sqlite"]
+        "postgresql",
+        "postgres",
+        "asyncpg / psycopg2-binary",
+        ["asyncpg"],
+        ["sqlite"],
+        BackendSetting.SQL,
     )
     message = str(error)
     assert "SQL_BACKEND='postgresql'" in message
@@ -64,13 +70,15 @@ def test_an_unsupported_backend_tells_an_operator_what_this_build_does_support()
 
 
 def test_an_unsupported_backend_says_so_plainly_when_nothing_is_supported() -> None:
-    error = UnsupportedBackendError("mysql", "mysql", "aiomysql", ["aiomysql"], [])
+    error = UnsupportedBackendError(
+        "mysql", "mysql", "aiomysql", ["aiomysql"], [], BackendSetting.SQL
+    )
     assert "This build supports: none" in str(error)
 
 
 def test_an_unsupported_backend_keeps_the_lists_it_was_given() -> None:
     error = UnsupportedBackendError(
-        "mysql", "mysql", "aiomysql", ["aiomysql"], ["sqlite"]
+        "mysql", "mysql", "aiomysql", ["aiomysql"], ["sqlite"], BackendSetting.SQL
     )
     assert error.backend == "mysql"
     assert error.missing == ("aiomysql",)
@@ -78,7 +86,9 @@ def test_an_unsupported_backend_keeps_the_lists_it_was_given() -> None:
 
 
 def test_an_unsupported_backend_is_still_a_missing_extra() -> None:
-    error = UnsupportedBackendError("mysql", "mysql", "aiomysql", [], [])
+    error = UnsupportedBackendError(
+        "mysql", "mysql", "aiomysql", [], [], BackendSetting.SQL
+    )
     assert isinstance(error, MissingExtraError)
     assert isinstance(error, ImportError)
 

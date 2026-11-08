@@ -13,7 +13,6 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select
 
-from base.models.view_models.exceptions.sql import SQLUnexpectedError
 from base.services.sql.service import SQLService
 from base.tools.errors import ErrorsException
 
@@ -177,25 +176,16 @@ def test_a_lookup_value_of_the_wrong_type_simply_matches_nothing(
     assert store.get_many(["not-an-id"]) == []
 
 
-def test_editing_a_datetime_column_fails_because_to_dict_hands_back_a_string(
+def test_editing_a_datetime_column_keeps_it_a_datetime(
     store: WidgetStore, widget: type[Any]
 ) -> None:
-    """A defect, pinned as it stands.
-
-    `_apply` round-trips the patch through `SerializableMixin.to_dict`, which
-    turns a `datetime` into an ISO string, and `update_from_dict` writes that
-    string straight onto the column. SQLite refuses it outright, so on the
-    default backend a model with an unprotected datetime column cannot be
-    edited at all once that column is set. Postgres coerces the string
-    instead, which is why this only bites one backend — see the integration
-    suite for the other half.
-    """
+    """The edit lands now; SQLite has no timezone of its own, so it reads back naive."""
     row = store.add(widget(name="alpha"))
-    with pytest.raises(SQLUnexpectedError, match="datetime"):
-        store.edit(
-            row.id,
-            widget(name="alpha", expires_at=datetime(2030, 1, 1, tzinfo=UTC)),
-        )
+    moment = datetime(2030, 1, 1, tzinfo=UTC)
+
+    edited = store.edit(row.id, widget(name="alpha", expires_at=moment))
+    assert edited is not None
+    assert store.get(row.id).expires_at == moment.replace(tzinfo=None)
 
 
 def test_editing_leaves_a_datetime_column_alone_while_it_stays_unset(

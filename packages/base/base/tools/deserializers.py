@@ -83,15 +83,7 @@ class ExpansiveDecoder(JSONDecoder):
     def decode(self, s: str, _w: Callable[..., Any] = WHITESPACE.match) -> Any:
         data = super().decode(s, _w)
         if self.should_be_decoded(data):
-            result = self.process_decoded_data(data)
-            return result
-
-        logging.info(f"Defaulting to inherent deserializer for {type(data)}")
-        if isinstance(data, str):
-            try:
-                return json.loads(data)
-            except json.JSONDecodeError:
-                return data
+            return self.process_decoded_data(data)
         return data
 
     @classmethod

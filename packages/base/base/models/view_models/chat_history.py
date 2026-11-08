@@ -96,6 +96,12 @@ class StoredMessage(BaseModel):
 
     @model_validator(mode="after")
     def validate_shape(self) -> Self:
+        if self.tool_calls is not None and self.role != MessageRole.ASSISTANT:
+            raise ValueError("Only assistant messages may define tool_calls.")
+
+        if self.tool_call_id is not None and self.role != MessageRole.TOOL:
+            raise ValueError("Only tool messages may define tool_call_id.")
+
         if self.role == MessageRole.SYSTEM:
             if self.content is None:
                 raise ValueError("System messages require content.")
@@ -113,14 +119,10 @@ class StoredMessage(BaseModel):
                 raise ValueError(
                     "Assistant messages require content, tool_calls, or both."
                 )
-        elif self.tool_calls is not None and self.role != MessageRole.ASSISTANT:
-            raise ValueError("Only assistant messages may define tool_calls.")
 
         elif self.role == MessageRole.TOOL:
             if self.tool_call_id is None:
                 raise ValueError("Tool messages require tool_call_id.")
-        elif self.tool_call_id is not None and self.role != MessageRole.TOOL:
-            raise ValueError("Only tool messages may define tool_call_id.")
 
         else:
             raise ValueError(f"Unsupported message role: {self.role}")
