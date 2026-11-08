@@ -317,11 +317,12 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         self, channel: CacheChannels | str, message: str, ttl_seconds: int = 86400
     ) -> int:
         ch = self._resolve_channel(channel)
+        history = self._history_key(ch)
         pipe = self._redis_client.sync_client.pipeline()
         pipe.publish(ch, message)
-        pipe.rpush(f"{ch}:history", message)
-        pipe.ltrim(f"{ch}:history", -10_000, -1)
-        pipe.expire(f"{ch}:history", ttl_seconds)
+        pipe.rpush(history, message)
+        pipe.ltrim(history, -10_000, -1)
+        pipe.expire(history, ttl_seconds)
         results: list[Any] = pipe.execute()  # type: ignore
         return results[0]
 
@@ -330,11 +331,12 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         self, channel: CacheChannels | str, message: str, ttl_seconds: int = 86400
     ) -> int:
         ch = self._resolve_channel(channel)
+        history = self._history_key(ch)
         pipe = self._redis_client.async_client.pipeline()
         pipe.publish(ch, message)
-        pipe.rpush(f"{ch}:history", message)
-        pipe.ltrim(f"{ch}:history", -10_000, -1)
-        pipe.expire(f"{ch}:history", ttl_seconds)
+        pipe.rpush(history, message)
+        pipe.ltrim(history, -10_000, -1)
+        pipe.expire(history, ttl_seconds)
         results: list[Any] = await pipe.execute()  # type: ignore
         return results[0]
 
@@ -364,12 +366,13 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         ttl_seconds: int = 86400,
     ) -> None:
         ch = self._resolve_channel(channel)
+        history = self._history_key(ch)
         pipe = self._redis_client.sync_client.pipeline()
         for message in messages:
             pipe.publish(ch, message)
-            pipe.rpush(f"{ch}:history", message)
-        pipe.ltrim(f"{ch}:history", -10_000, -1)
-        pipe.expire(f"{ch}:history", ttl_seconds)
+            pipe.rpush(history, message)
+        pipe.ltrim(history, -10_000, -1)
+        pipe.expire(history, ttl_seconds)
         pipe.execute()
 
     @aretrying
@@ -380,12 +383,13 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         ttl_seconds: int = 86400,
     ) -> None:
         ch = self._resolve_channel(channel)
+        history = self._history_key(ch)
         pipe = self._redis_client.async_client.pipeline()
         for message in messages:
             pipe.publish(ch, message)
-            pipe.rpush(f"{ch}:history", message)
-        pipe.ltrim(f"{ch}:history", -10_000, -1)
-        pipe.expire(f"{ch}:history", ttl_seconds)
+            pipe.rpush(history, message)
+        pipe.ltrim(history, -10_000, -1)
+        pipe.expire(history, ttl_seconds)
         await pipe.execute()  # type: ignore
 
     # Misc

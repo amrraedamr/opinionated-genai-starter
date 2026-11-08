@@ -190,8 +190,9 @@ async def test_a_subscriber_that_leaves_stops_counting(
 async def test_published_messages_are_kept_as_channel_history(
     memory_cache: InMemoryCacheService,
 ) -> None:
+    """Read back through the service: a raw key would pass while replay stayed broken."""
     await memory_cache.apublish_batch("room", ["one", "two"])
-    assert memory_cache._lists["room:history"].value == ["one", "two"]
+    assert await memory_cache.aget_list_raw("room:history") == ["one", "two"]
 
 
 def test_the_service_names_itself(memory_cache: InMemoryCacheService) -> None:

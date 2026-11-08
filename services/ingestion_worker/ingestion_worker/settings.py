@@ -32,5 +32,5 @@ class IngestionWorkerSettings(
 settings = IngestionWorkerSettings()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     print(f"ingestion_worker settings OK (environment={settings.environment!r})")
