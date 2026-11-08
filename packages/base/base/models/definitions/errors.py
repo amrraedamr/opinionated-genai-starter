@@ -80,3 +80,10 @@ class TenancyErrors(Enum):
         "message": "No tenant in context for a tenant-scoped operation.",
         "status_code": HTTPStatus.INTERNAL_SERVER_ERROR,
     }
+
+
+class GuardrailErrors(Enum):
+    CONTENT_BLOCKED = {
+        "message": "The request was refused by a content policy.",
+        "status_code": HTTPStatus.UNPROCESSABLE_ENTITY,
+    }
