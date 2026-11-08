@@ -4,6 +4,10 @@ from base.tools.errors import MissingExtraError
 try:
     from azure.core.credentials import AzureKeyCredential
     from azure.core.exceptions import AzureError
+    from azure.identity import DefaultAzureCredential
+    from azure.identity.aio import (
+        DefaultAzureCredential as AsyncDefaultAzureCredential,
+    )
     from azure.search.documents import SearchClient
     from azure.search.documents.aio import SearchClient as AsyncSearchClient
     from azure.search.documents.indexes import SearchIndexClient
@@ -17,6 +21,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.services.common.meta import Singleton
 from base.services.configuration.protocols import SupportsAzureSearchConfig
+from base.tools.resources import aclose_all, close_all
 
 
 class AzureAISearchClient(metaclass=Singleton):
@@ -26,6 +31,11 @@ class AzureAISearchClient(metaclass=Singleton):
 
     Provides cached ``SearchClient`` instances per index and shared
     ``SearchIndexClient`` instances for index management.
+
+    An API key is used when one is configured; otherwise the client falls back
+    to `DefaultAzureCredential`, so a deployment holding a role assignment
+    needs no key at all. The async clients take the async credential, which is
+    a separate object with a separate close.
     """
 
     def __init__(self) -> None:
@@ -35,14 +45,36 @@ class AzureAISearchClient(metaclass=Singleton):
             raise ValueError("azure_search_endpoint must be configured in Settings")
 
         api_key: str = config.azure_search_api_key
-        if not api_key:
-            raise ValueError("azure_search_api_key must be configured in Settings")
-        self._credential: AzureKeyCredential = AzureKeyCredential(api_key)
+        self._key_credential: AzureKeyCredential | None = (
+            AzureKeyCredential(api_key) if api_key else None
+        )
+        self._managed_credential: DefaultAzureCredential | None = None
+        self._async_managed_credential: AsyncDefaultAzureCredential | None = None
 
         self._sync_index_client: SearchIndexClient | None = None
         self._async_index_client: AsyncSearchIndexClient | None = None
         self._sync_search_clients: dict[str, SearchClient] = {}
         self._async_search_clients: dict[str, AsyncSearchClient] = {}
+
+    # Credentials
+
+    @property
+    def _credential(self) -> AzureKeyCredential | DefaultAzureCredential:
+        """The key when there is one, else the identity this deployment runs as."""
+        if self._key_credential is not None:
+            return self._key_credential
+        if self._managed_credential is None:
+            self._managed_credential = DefaultAzureCredential()
+        return self._managed_credential
+
+    @property
+    def _async_credential(self) -> AzureKeyCredential | AsyncDefaultAzureCredential:
+        """The key when there is one, else the identity this deployment runs as."""
+        if self._key_credential is not None:
+            return self._key_credential
+        if self._async_managed_credential is None:
+            self._async_managed_credential = AsyncDefaultAzureCredential()
+        return self._async_managed_credential
 
     # Index Client (for index management)
 
@@ -60,7 +92,7 @@ class AzureAISearchClient(metaclass=Singleton):
         """Async client for index management operations."""
         if self._async_index_client is None:
             self._async_index_client = AsyncSearchIndexClient(
-                endpoint=self._endpoint, credential=self._credential
+                endpoint=self._endpoint, credential=self._async_credential
             )
         return self._async_index_client
 
@@ -82,7 +114,7 @@ class AzureAISearchClient(metaclass=Singleton):
             self._async_search_clients[index_name] = AsyncSearchClient(
                 endpoint=self._endpoint,
                 index_name=index_name,
-                credential=self._credential,
+                credential=self._async_credential,
             )
         return self._async_search_clients[index_name]
 
@@ -115,6 +147,9 @@ class AzureAISearchClient(metaclass=Singleton):
             self._sync_index_client.close()
             self._sync_index_client = None
 
+        close_all(self._managed_credential)
+        self._managed_credential = None
+
     async def aclose(self) -> None:
         """Close all async clients."""
         for client in self._async_search_clients.values():
@@ -124,6 +159,9 @@ class AzureAISearchClient(metaclass=Singleton):
         if self._async_index_client is not None:
             await self._async_index_client.close()
             self._async_index_client = None
+
+        await aclose_all(self._async_managed_credential)
+        self._async_managed_credential = None
 
     async def close_all(self) -> None:
         """Close both sync and async resources."""

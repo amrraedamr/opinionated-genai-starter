@@ -315,5 +315,7 @@ def merge_outbox(slices: list[Slice], package: str, root: str) -> str | None:
         if not path.exists():
             continue
         text = rewrite(path.read_text(), slices, package, root)
-        return re.sub(r'"idx_\w*?outbox_pending"', f'"idx_{package}_outbox_pending"', text)
+        return re.sub(
+            r'"idx_\w*?outbox_pending"', f'"idx_{package}_outbox_pending"', text
+        )
     return None

@@ -52,4 +52,6 @@ settings = ChatApiSettings()
 
 if __name__ == "__main__":  # pragma: no cover
     # Validation entrypoint for CI and container preStart probes.
-    print(f"chat_api settings OK (service_name={settings.service_name!r}, environment={settings.environment!r})")
+    print(
+        f"chat_api settings OK (service_name={settings.service_name!r}, environment={settings.environment!r})"
+    )

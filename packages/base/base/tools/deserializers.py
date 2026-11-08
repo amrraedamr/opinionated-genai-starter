@@ -135,10 +135,5 @@ class ExpansiveDecoder(JSONDecoder):
 
 
 def deserialize(obj: str, **kwargs) -> Any:
-    stripped = obj.strip()
-    if len(stripped) < 10:
-        try:
-            return int(stripped)
-        except ValueError:
-            pass
+    """Read back what `serialize` wrote, and nothing it did not."""
     return json.loads(obj, cls=ExpansiveDecoder, **kwargs)

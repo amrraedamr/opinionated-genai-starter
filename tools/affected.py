@@ -30,7 +30,9 @@ def workspace_deps(service: str) -> set[str]:
     data = tomllib.loads(manifest.read_text())
     sources = data.get("tool", {}).get("uv", {}).get("sources", {})
     declared = {
-        name for name, spec in sources.items() if isinstance(spec, dict) and spec.get("workspace")
+        name
+        for name, spec in sources.items()
+        if isinstance(spec, dict) and spec.get("workspace")
     }
     return declared
 

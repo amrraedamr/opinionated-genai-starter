@@ -38,7 +38,11 @@ class Event(BaseModel):
         correlation_id: UUID | None = None,
         schema_version: int = CURRENT_EVENT_VERSION,
     ) -> "Event":
-        body = payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
+        body = (
+            payload.model_dump(mode="json")
+            if isinstance(payload, BaseModel)
+            else payload
+        )
         return cls(
             topic=topic,
             meta=EventMeta(

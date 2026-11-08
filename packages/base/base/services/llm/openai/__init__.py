@@ -1021,8 +1021,7 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
             return
         request.setdefault(
             "prompt_cache_key",
-            cache_hint.key
-            or self._head_fingerprint(prompt, tools, schema, messages),
+            cache_hint.key or self._head_fingerprint(prompt, tools, schema, messages),
         )
         request.setdefault(
             "prompt_cache_retention", _CACHE_RETENTION_MAP[cache_hint.persistence]
@@ -1201,7 +1200,9 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         self._reject_sync_call()
         stored = list(messages) if messages else None
         self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
-        self._apply_cache_hint(kwargs, cache_hint, prompt, messages=stored, schema=schema)
+        self._apply_cache_hint(
+            kwargs, cache_hint, prompt, messages=stored, schema=schema
+        )
 
         parsed: ParsedResponseResult[T] | ParsedCompletionResult[T]
         if self._supports_responses_api:
@@ -1239,7 +1240,9 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     ) -> ParsedResult[T]:
         stored = list(messages) if messages else None
         self._apply_generation_knobs(kwargs, max_output_tokens, reasoning_effort)
-        self._apply_cache_hint(kwargs, cache_hint, prompt, messages=stored, schema=schema)
+        self._apply_cache_hint(
+            kwargs, cache_hint, prompt, messages=stored, schema=schema
+        )
 
         parsed: ParsedResponseResult[T] | ParsedCompletionResult[T]
         if self._supports_responses_api:

@@ -3,6 +3,7 @@
 Revision ID: c7a7outbox001
 Revises: 5d517c618371
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -29,7 +30,9 @@ def upgrade() -> None:
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index("idx_chat_outbox_pending", "outbox_event", ["published_at", "available_at"])
+    op.create_index(
+        "idx_chat_outbox_pending", "outbox_event", ["published_at", "available_at"]
+    )
 
 
 def downgrade() -> None:

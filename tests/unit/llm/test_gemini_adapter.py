@@ -50,6 +50,7 @@ def _response(*parts: genai_types.Part) -> genai_types.GenerateContentResponse:
         ]
     )
 
+
 CONVERSATION = uuid.UUID(int=1)
 
 TAGGED = "hello\U000e0041\u200b"
@@ -579,7 +580,9 @@ def test_unicode_and_emoji_survive_the_adapter() -> None:
 def test_a_tool_call_keeps_the_signature_the_provider_issued() -> None:
     """Read off the reply, so it can be handed back on the next turn."""
     part = genai_types.Part(
-        function_call=genai_types.FunctionCall(name="get_weather", args={"city": "Oslo"})
+        function_call=genai_types.FunctionCall(
+            name="get_weather", args={"city": "Oslo"}
+        )
     )
     part.thought_signature = b"opaque-token"
 

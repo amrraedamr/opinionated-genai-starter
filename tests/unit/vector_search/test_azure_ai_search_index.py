@@ -10,6 +10,11 @@ breaks every document already written.
 from typing import Any
 
 import pytest
+from azure.core.credentials import AzureKeyCredential
+from azure.identity import DefaultAzureCredential
+from azure.identity.aio import (
+    DefaultAzureCredential as AsyncDefaultAzureCredential,
+)
 from azure.search.documents.indexes.models import (
     SearchField,
     SearchFieldDataType,
@@ -159,15 +164,42 @@ def test_an_unset_endpoint_is_refused_at_construction(make_settings: Any) -> Non
         AzureAISearchService()
 
 
-def test_an_unset_api_key_is_refused_at_construction(make_settings: Any) -> None:
-    """Pins the gap: there is no managed-identity path here, unlike Cosmos."""
+def test_an_unset_api_key_falls_back_to_the_deployments_own_identity(
+    make_settings: Any,
+) -> None:
+    """No key means a role assignment, as Cosmos has always allowed."""
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="https://account.search.windows.net",
         azure_search_api_key="",
     )
-    with pytest.raises(ValueError, match="azure_search_api_key"):
-        AzureAISearchService()
+    client = AzureAISearchService()._client
+    assert client._key_credential is None
+    assert isinstance(client._credential, DefaultAzureCredential)
+
+
+def test_a_configured_api_key_is_used_instead_of_an_identity(
+    make_settings: Any,
+) -> None:
+    make_settings(
+        AzureSearchSettingsMixin,
+        azure_search_endpoint="https://account.search.windows.net",
+        azure_search_api_key="the-key",
+    )
+    client = AzureAISearchService()._client
+    assert isinstance(client._credential, AzureKeyCredential)
+    assert client._managed_credential is None
+
+
+def test_the_async_clients_take_an_async_identity(make_settings: Any) -> None:
+    """A sync credential on an async client cannot be awaited closed."""
+    make_settings(
+        AzureSearchSettingsMixin,
+        azure_search_endpoint="https://account.search.windows.net",
+        azure_search_api_key="",
+    )
+    client = AzureAISearchService()._client
+    assert isinstance(client._async_credential, AsyncDefaultAzureCredential)
 
 
 def test_the_service_names_itself_azure_ai_search(

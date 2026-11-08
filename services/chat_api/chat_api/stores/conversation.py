@@ -201,9 +201,7 @@ class ConversationStore(SQLStore[ConversationDTO], metaclass=SingletonABC):
         existing = self.get_for_user(user_id, value)
         if existing is None:
             return None
-        return self._sql_service.upsert_row(
-            self._apply_edit_request(existing, request)
-        )
+        return self._sql_service.upsert_row(self._apply_edit_request(existing, request))
 
     async def aedit_for_user(
         self, user_id: UUID, value: Any, request: EditConversationRequest

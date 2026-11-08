@@ -8,6 +8,7 @@ from base.services.auth.oauth.flow import OAuthFlowStore
 from base.services.common.meta import Singleton
 from base.tools.errors import InvalidSignedPayload, raise_error
 from base.tools.security import pkce_pair
+from identity.models.definitions.auth import SignedPayloadType
 from identity.models.orm.user import UserDTO
 from identity.models.orm.user_identity import UserIdentityDTO
 from identity.settings import settings
@@ -86,7 +87,7 @@ class OAuthService(metaclass=Singleton):
         # upgrade to Redis/DB jti denylist if replay window matters.
         return self._sign_state(
             {
-                "type": "oauth_code",
+                "type": SignedPayloadType.OAUTH_CODE,
                 "user_id": str(user.id),
             },
             settings.oauth_exchange_code_ttl_seconds,
@@ -100,7 +101,7 @@ class OAuthService(metaclass=Singleton):
     async def aexchange_code(self, code: str) -> TokenPair:
         from identity.services.auth import AuthService
 
-        payload = self._decode_signed(code, expected_type="oauth_code")
+        payload = self._decode_signed(code, expected_type=SignedPayloadType.OAUTH_CODE)
         user_id = str(payload.get("user_id") or "")
         if not user_id:
             raise_error(AuthErrors.OAUTH_CODE_INVALID)
@@ -167,16 +168,14 @@ class OAuthService(metaclass=Singleton):
     def _sign_state(self, payload: dict[str, Any], ttl_seconds: int) -> str:
         return self._issuer.sign_payload(payload, ttl_seconds=ttl_seconds)
 
-    def _decode_signed(self, token: str, expected_type: str) -> dict[str, Any]:
-        invalid = (
-            AuthErrors.OAUTH_CODE_INVALID
-            if expected_type == "oauth_code"
-            else AuthErrors.OAUTH_STATE_INVALID
-        )
+    def _decode_signed(
+        self, token: str, expected_type: SignedPayloadType
+    ) -> dict[str, Any]:
+        """Verify a payload this service signed and check what it was signed for."""
         try:
             payload = self._verifier.decode_payload(token)
         except InvalidSignedPayload:
-            raise_error(invalid)
+            raise_error(AuthErrors.OAUTH_CODE_INVALID)
         if payload.get("type") != expected_type:
-            raise_error(invalid)
+            raise_error(AuthErrors.OAUTH_CODE_INVALID)
         return payload

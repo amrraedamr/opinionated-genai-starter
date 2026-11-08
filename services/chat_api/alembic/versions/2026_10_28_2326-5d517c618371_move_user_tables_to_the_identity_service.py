@@ -5,6 +5,7 @@ Revises: a1b2c3d4e5f6
 Create Date: 2026-10-28 23:26:13.318061
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -12,8 +13,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '5d517c618371'
-down_revision: Union[str, Sequence[str], None] = 'a1b2c3d4e5f6'
+revision: str = "5d517c618371"
+down_revision: Union[str, Sequence[str], None] = "a1b2c3d4e5f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -78,39 +79,58 @@ def downgrade() -> None:
             "fk_conversation_user_id", "user", ["user_id"], ["id"]
         )
 
-    op.create_table('user_identity',
-    sa.Column('id', sa.NUMERIC(precision=16), nullable=False),
-    sa.Column('user_id', sa.NUMERIC(precision=16), nullable=False),
-    sa.Column('provider', sa.VARCHAR(length=64), nullable=False),
-    sa.Column('subject', sa.VARCHAR(length=255), nullable=False),
-    sa.Column('email_at_link', sa.VARCHAR(length=255), nullable=True),
-    sa.Column('created_at', sa.DATETIME(), nullable=False),
-    sa.Column('updated_at', sa.DATETIME(), nullable=False),
-    sa.Column('deleted_at', sa.DATETIME(), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('provider', 'subject', name=op.f('uq_user_identity_provider_subject'))
+    op.create_table(
+        "user_identity",
+        sa.Column("id", sa.NUMERIC(precision=16), nullable=False),
+        sa.Column("user_id", sa.NUMERIC(precision=16), nullable=False),
+        sa.Column("provider", sa.VARCHAR(length=64), nullable=False),
+        sa.Column("subject", sa.VARCHAR(length=255), nullable=False),
+        sa.Column("email_at_link", sa.VARCHAR(length=255), nullable=True),
+        sa.Column("created_at", sa.DATETIME(), nullable=False),
+        sa.Column("updated_at", sa.DATETIME(), nullable=False),
+        sa.Column("deleted_at", sa.DATETIME(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["user_id"],
+            ["user.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "provider", "subject", name=op.f("uq_user_identity_provider_subject")
+        ),
     )
-    with op.batch_alter_table('user_identity', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('idx_user_identity_user_id'), ['user_id'], unique=False)
-        batch_op.create_index(batch_op.f('idx_user_identity_provider'), ['provider'], unique=False)
+    with op.batch_alter_table("user_identity", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("idx_user_identity_user_id"), ["user_id"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("idx_user_identity_provider"), ["provider"], unique=False
+        )
 
-    op.create_table('user',
-    sa.Column('id', sa.NUMERIC(precision=16), nullable=False),
-    sa.Column('email', sa.VARCHAR(length=255), nullable=False),
-    sa.Column('password_hash', sa.VARCHAR(length=255), nullable=True),
-    sa.Column('first_name', sa.VARCHAR(length=50), nullable=True),
-    sa.Column('last_name', sa.VARCHAR(length=50), nullable=True),
-    sa.Column('created_at', sa.DATETIME(), nullable=False),
-    sa.Column('updated_at', sa.DATETIME(), nullable=False),
-    sa.Column('deleted_at', sa.DATETIME(), nullable=True),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email')
+    op.create_table(
+        "user",
+        sa.Column("id", sa.NUMERIC(precision=16), nullable=False),
+        sa.Column("email", sa.VARCHAR(length=255), nullable=False),
+        sa.Column("password_hash", sa.VARCHAR(length=255), nullable=True),
+        sa.Column("first_name", sa.VARCHAR(length=50), nullable=True),
+        sa.Column("last_name", sa.VARCHAR(length=50), nullable=True),
+        sa.Column("created_at", sa.DATETIME(), nullable=False),
+        sa.Column("updated_at", sa.DATETIME(), nullable=False),
+        sa.Column("deleted_at", sa.DATETIME(), nullable=True),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("email"),
     )
-    with op.batch_alter_table('user', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('idx_user_updated_at'), ['updated_at'], unique=False)
-        batch_op.create_index(batch_op.f('idx_user_first_name_last_name'), ['first_name', 'last_name'], unique=False)
-        batch_op.create_index(batch_op.f('idx_user_email'), ['email'], unique=False)
-        batch_op.create_index(batch_op.f('idx_user_created_at'), ['created_at'], unique=False)
+    with op.batch_alter_table("user", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("idx_user_updated_at"), ["updated_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("idx_user_first_name_last_name"),
+            ["first_name", "last_name"],
+            unique=False,
+        )
+        batch_op.create_index(batch_op.f("idx_user_email"), ["email"], unique=False)
+        batch_op.create_index(
+            batch_op.f("idx_user_created_at"), ["created_at"], unique=False
+        )
 
     # ### end Alembic commands ###

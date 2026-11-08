@@ -51,9 +51,7 @@ def test_a_name_the_library_does_not_know_is_refused_at_startup(
 
 def test_the_gate_names_what_may_see_rather_than_what_may_not() -> None:
     """An allowlist is what makes an unforeseen value fail closed."""
-    assert DEBUG_ENVIRONMENTS == frozenset(
-        {Environment.LOCAL, Environment.DEVELOPMENT}
-    )
+    assert DEBUG_ENVIRONMENTS == frozenset({Environment.LOCAL, Environment.DEVELOPMENT})
     assert Environment.PRODUCTION not in DEBUG_ENVIRONMENTS
     assert Environment.STAGING not in DEBUG_ENVIRONMENTS
 

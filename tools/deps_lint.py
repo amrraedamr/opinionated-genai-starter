@@ -29,6 +29,7 @@ from workspace import BASE, ROOT, SERVICES, service_names
 BASE_EXTRAS = re.compile(r"^base\s*\[([^\]]*)\]")
 
 CORE_DEPENDENCIES = {
+    "aiohttp",
     "colorlog",
     "contracts",
     "httpx",
@@ -38,7 +39,12 @@ CORE_DEPENDENCIES = {
     "requests",
 }
 """What `base` installs with no extras. Everything a shape-specific service
-needs — an HTTP stack, a database driver, an LLM SDK — belongs to an extra."""
+needs — an HTTP stack, a database driver, an LLM SDK — belongs to an extra.
+
+`aiohttp` is core rather than an Azure extra: every async Azure client builds
+a `DefaultAzureCredential`, which cannot import without it, and async SDKs
+generally reach for it. Carrying it once beats discovering it missing per
+extra."""
 
 
 def normalize(requirement: str) -> str:
@@ -70,7 +76,9 @@ def declared_extras(service: str) -> set[str]:
     for dependency in manifest["project"].get("dependencies", []):
         match = BASE_EXTRAS.match(dependency.strip())
         if match:
-            found.update(part.strip() for part in match.group(1).split(",") if part.strip())
+            found.update(
+                part.strip() for part in match.group(1).split(",") if part.strip()
+            )
     return found
 
 
@@ -93,9 +101,7 @@ def production_closure(service: str) -> set[str]:
         check=True,
     )
     return {
-        normalize(line)
-        for line in result.stdout.splitlines()
-        if line[:1].isalnum()
+        normalize(line) for line in result.stdout.splitlines() if line[:1].isalnum()
     }
 
 
@@ -121,7 +127,9 @@ def main() -> int:
 
         # 1. no extra that base does not define
         for extra in sorted(declared - extras.keys()):
-            failures.append(f"{service}: declares base extra {extra!r}, which base does not define")
+            failures.append(
+                f"{service}: declares base extra {extra!r}, which base does not define"
+            )
 
         # 2. nothing belonging only to an extra this service did not declare
         allowed = {dist for extra in declared & extras.keys() for dist in extras[extra]}
@@ -142,7 +150,9 @@ def main() -> int:
             print(f"  {failure}")
         return 1
 
-    print(f"Dependency isolation OK: {len(service_names())} service(s) carry only their own closure")
+    print(
+        f"Dependency isolation OK: {len(service_names())} service(s) carry only their own closure"
+    )
     return 0
 
 
