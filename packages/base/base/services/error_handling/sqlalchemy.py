@@ -56,6 +56,16 @@ _FAILURE_MAP: dict[type[SQLAlchemyError], FailureKind] = {
     InternalError: FailureKind.SERVER,
 }
 
+_UNSAFE_TO_REPEAT_SQLSTATES: frozenset[str] = frozenset({"57014"})
+"""Codes that say the work stopped, not whether it finished.
+
+`57014` is a cancelled statement, which a `statement_timeout` raises. The
+server may have completed it before the cancellation landed, so repeating it
+could apply it twice. It is named here rather than left to fall through,
+because the connection is often invalidated at the same moment and the
+pool's verdict would otherwise put it back on the retry path.
+"""
+
 _RETRYABLE_SQLSTATES: frozenset[str] = frozenset(
     {
         "40001",  # serialization_failure
@@ -101,12 +111,15 @@ class SQLAlchemyErrorHandler(AbstractErrorHandler[SQLAlchemyError], ABC):
         `OperationalError` is otherwise deliberately not in the map. It covers
         both a dropped connection and a statement the server refused, and only
         the driver knows which, so the pool's own verdict is used instead. A
-        cancelled statement (`57014`, which a `statement_timeout` raises) stays
-        on that path on purpose: a timeout does not say whether the server
-        finished the work, so repeating it could apply it twice.
+        A cancelled statement is decided by its code rather than left to
+        that path, since the connection is often invalidated at the same
+        moment and the pool would then call it retryable.
         """
-        if self._sqlstate(error) in _RETRYABLE_SQLSTATES:
+        sqlstate = self._sqlstate(error)
+        if sqlstate in _RETRYABLE_SQLSTATES:
             return FailureKind.SERVER
+        if sqlstate in _UNSAFE_TO_REPEAT_SQLSTATES:
+            return FailureKind.BAD_REQUEST
         for cls in type(error).__mro__:
             if cls in _FAILURE_MAP:
                 return _FAILURE_MAP[cls]

@@ -20,6 +20,7 @@ try:
         PermissionDeniedError,
         RateLimitError,
         RequestTooLargeError,
+    RetryableError,
         ServiceUnavailableError,
         UnprocessableEntityError,
     )
@@ -62,6 +63,8 @@ _FAILURE_MAP: dict[type[AnthropicError], FailureKind] = {
     CredentialsError: FailureKind.AUTH,
     NotFoundError: FailureKind.NOT_FOUND,
     ConflictError: FailureKind.CONFLICT,
+    # The SDK's own docstring: "opts into the SDK's retry policy".
+    RetryableError: FailureKind.SERVER,
 }
 
 _ERROR_MAP: dict[FailureKind, type[ProviderError]] = {

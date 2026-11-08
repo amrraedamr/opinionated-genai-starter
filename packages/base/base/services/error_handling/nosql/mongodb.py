@@ -5,6 +5,7 @@ from base.tools.errors import MissingExtraError
 try:
     from pymongo.errors import (
         AutoReconnect,
+        BulkWriteError,
         ConfigurationError,
         ConnectionFailure,
         DuplicateKeyError,
@@ -40,6 +41,9 @@ from base.services.error_handling import AbstractErrorHandler
 _UNAUTHORIZED_CODES: frozenset[int] = frozenset({13, 18, 8000})
 """Mongo reports a rejected credential as an `OperationFailure` carrying a
 code: Unauthorized, AuthenticationFailed, and Atlas's own variant."""
+
+_DUPLICATE_KEY_CODES: frozenset[int] = frozenset({11000, 11001, 12582})
+"""A unique index refusing a write, whichever operation carried it."""
 
 _RETRYABLE_CODES: frozenset[int] = frozenset({6, 7, 89, 134, 262, 9001})
 """Codes the driver retries that reach us as a bare `OperationFailure`.
@@ -105,6 +109,14 @@ class MongoErrorHandler(AbstractErrorHandler[PyMongoError]):
         for cls in type(error).__mro__:
             if cls in _FAILURE_MAP:
                 return _FAILURE_MAP[cls]
+        if isinstance(error, BulkWriteError):
+            # A batch reports its own code 65 and carries the real reason per
+            # write, so a duplicate in a batch reads like a duplicate alone.
+            if any(
+                write.get("code") in _DUPLICATE_KEY_CODES
+                for write in error.details.get("writeErrors", [])
+            ):
+                return FailureKind.CONFLICT
         if isinstance(error, OperationFailure):
             if error.code in _UNAUTHORIZED_CODES:
                 return FailureKind.AUTH

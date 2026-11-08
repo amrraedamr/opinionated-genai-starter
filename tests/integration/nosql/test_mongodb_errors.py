@@ -48,19 +48,17 @@ def test_a_duplicate_id_is_a_conflict_on_the_sync_path(
         mongo.insert_one(collection, {"_id": "a"})
 
 
-async def test_a_duplicate_in_a_batch_is_reported_as_a_bad_request(
+async def test_a_duplicate_in_a_batch_is_reported_as_a_conflict(
     mongo: MongoDBService, collection: str
 ) -> None:
-    """Pins a bug: the same clash is a conflict one at a time, a bad request in bulk.
+    """The same clash reads the same whether it arrives alone or in a batch.
 
-    pymongo wraps per-write failures in `BulkWriteError`, which is an
-    `OperationFailure` carrying code 65 rather than the 11000 inside
-    `writeErrors`, and `MongoErrorHandler` never looks inside. A caller
-    catching `NoSqlConflictError` therefore misses a duplicate in a batch.
+    pymongo wraps per-write failures in `BulkWriteError`, an
+    `OperationFailure` carrying code 65 with the real 11000 inside
+    `writeErrors`, so a caller catching `NoSqlConflictError` used to miss it.
     """
-    with pytest.raises(NoSqlBadRequestError) as caught:
+    with pytest.raises(NoSqlConflictError) as caught:
         await mongo.ainsert_many(collection, [{"_id": "a"}, {"_id": "a"}])
-    assert caught.value.status_code == 65
     assert "11000" in str(caught.value)
 
 
