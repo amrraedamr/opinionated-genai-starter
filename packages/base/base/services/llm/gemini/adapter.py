@@ -237,7 +237,7 @@ class GeminiContentAdapter:
             {
                 "name": tool.name,
                 "description": tool.description,
-                "parameters": cls.to_schema(tool.parameters.model_json_schema()),
+                "parameters": cls.to_schema(tool.json_schema),
             }
             for tool in tools
         ]
