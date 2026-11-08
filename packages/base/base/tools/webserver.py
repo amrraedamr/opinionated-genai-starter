@@ -3,6 +3,7 @@ import logging
 import multiprocessing
 from typing import Any
 
+from base.models.definitions.environment import Environment
 from base.services.configuration import settings_for
 from base.tools.errors import MissingExtraError
 
@@ -32,7 +33,7 @@ def run_webserver(
     app_path: str,
     host: str | None = None,
     port: int | None = None,
-    environment: str | None = None,
+    environment: Environment | None = None,
     settings: SupportsServerConfig | None = None,
 ) -> None:
     """Serve `app_path` with uvicorn locally and gunicorn everywhere else."""
@@ -42,7 +43,7 @@ def run_webserver(
     environment = environment if environment is not None else settings.environment
 
     logging.info(f"Starting webserver (environment={environment})")
-    if environment == "local":
+    if environment == Environment.LOCAL:
         run_uvicorn(app_path, host, port)
     else:
         run_gunicorn(app_path, host, port, settings=settings)

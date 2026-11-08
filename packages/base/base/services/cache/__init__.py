@@ -251,22 +251,16 @@ class AbstractCacheService(ABC):
 
     @staticmethod
     def _get_key(key: CacheKeys | str, namespace: UUID | str | None = None) -> str:
-        try:
-            namespace = UUID(namespace) if isinstance(namespace, str) else namespace
-            return str(
-                uuid5(
-                    namespace or UUID(int=0),
-                    key.value if isinstance(key, CacheKeys) else str(key),
-                )
-            )
-        except ValueError:
-            return (
-                namespace
-                if isinstance(namespace, str)
-                else str(
-                    uuid5(
-                        UUID(int=0),
-                        key.value if isinstance(key, CacheKeys) else str(key),
-                    )
-                )
-            )
+        """One entry per key, narrowed by the namespace it was stored under.
+
+        A namespace that does not parse as a UUID is folded into one rather
+        than replacing the key: a name used as a namespace used to return
+        itself, which gave everything stored under it a single shared entry.
+        """
+        name = key.value if isinstance(key, CacheKeys) else str(key)
+        if isinstance(namespace, str):
+            try:
+                namespace = UUID(namespace)
+            except ValueError:
+                namespace = uuid5(UUID(int=0), namespace)
+        return str(uuid5(namespace or UUID(int=0), name))

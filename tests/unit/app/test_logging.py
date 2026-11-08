@@ -220,3 +220,14 @@ def test_the_logger_works_before_any_settings_are_registered(
     ConsoleLoggerService().info("still logs")
 
     assert "still logs" in capsys.readouterr().out
+
+
+def test_the_environment_may_arrive_as_the_enum_or_its_value() -> None:
+    """A `StrEnum` compares equal to its value, and both callers exist."""
+    from base.models.definitions.environment import Environment
+    from base.services.logging.config import logging_config
+
+    as_enum = logging_config(environment=Environment.LOCAL)
+    as_text = logging_config(environment="local")  # type: ignore[arg-type]
+    assert as_enum["handlers"]["console"]["formatter"] == "colored"
+    assert as_text["handlers"]["console"]["formatter"] == "colored"

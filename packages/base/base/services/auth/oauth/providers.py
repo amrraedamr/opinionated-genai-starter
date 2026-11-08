@@ -151,7 +151,7 @@ class OAuthProviderRegistry:
         claims = decode(id_token, options={"verify_signature": False})
         subject = str(claims.get("sub") or "")
         email = str(claims.get("email") or "")
-        email_verified_raw = claims.get("email_verified", True)
+        email_verified_raw = claims.get("email_verified", False)
         email_verified = (
             email_verified_raw
             if isinstance(email_verified_raw, bool)
@@ -195,7 +195,7 @@ class OAuthProviderRegistry:
                 return OAuthProfile(
                     subject=subject,
                     email=email,
-                    email_verified=bool(claims.get("email_verified", True)),
+                    email_verified=bool(claims.get("email_verified", False)),
                     first_name=claims.get("given_name"),
                     last_name=claims.get("family_name"),
                 )
@@ -219,7 +219,7 @@ class OAuthProviderRegistry:
         return OAuthProfile(
             subject=subject,
             email=email,
-            email_verified=bool(body.get("email_verified", True)),
+            email_verified=bool(body.get("email_verified", False)),
             first_name=body.get("given_name"),
             last_name=body.get("family_name"),
         )
@@ -245,7 +245,8 @@ class OAuthProviderRegistry:
         return OAuthProfile(
             subject=subject,
             email=email,
-            email_verified=True,
+            # Facebook's profile endpoint reports no verification state.
+            email_verified=False,
             first_name=body.get("first_name"),
             last_name=body.get("last_name"),
         )
@@ -268,30 +269,43 @@ class OAuthProviderRegistry:
         body = resp.data
         subject = str(body.get("id") or "")
         email = str(body.get("email") or "")
-        if not email:
-            raw = await self._http.acall_endpoint(
-                "https://api.github.com/user/emails",
-                method="GET",
-                headers=headers,
-                raw=True,
-            )
-            items = json.loads(raw)
-            if isinstance(items, list):
-                for item in items:
-                    if (
-                        isinstance(item, dict)
-                        and item.get("primary")
-                        and item.get("verified")
-                    ):
-                        email = str(item.get("email") or "")
-                        break
+
+        # The profile endpoint returns whichever address the user chose to
+        # publish, verified or not, and says which only on /user/emails. The
+        # address is read from there whenever one is offered, so a published
+        # address is trusted exactly when GitHub itself vouches for it.
+        verified_primary = await self._agithub_verified_primary(headers)
+        if verified_primary and (not email or verified_primary == email):
+            email, email_verified = verified_primary, True
+        else:
+            email_verified = False
+
         if not subject or not email:
             raise_error(AuthErrors.OAUTH_PROFILE_INCOMPLETE)
         name = str(body.get("name") or "").split(" ", 1)
         return OAuthProfile(
             subject=subject,
             email=email,
-            email_verified=True,
+            email_verified=email_verified,
             first_name=name[0] or None,
             last_name=name[1] if len(name) > 1 else None,
         )
+
+    async def _agithub_verified_primary(self, headers: dict[str, str]) -> str:
+        """GitHub's primary address, only when GitHub reports it verified."""
+        raw = await self._http.acall_endpoint(
+            "https://api.github.com/user/emails",
+            method="GET",
+            headers=headers,
+            raw=True,
+        )
+        try:
+            items = json.loads(raw)
+        except (TypeError, ValueError):
+            return ""
+        if not isinstance(items, list):
+            return ""
+        for item in items:
+            if isinstance(item, dict) and item.get("primary") and item.get("verified"):
+                return str(item.get("email") or "")
+        return ""

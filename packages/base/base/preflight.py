@@ -32,6 +32,7 @@ from enum import StrEnum
 
 from base.models.definitions.broker import BrokerBackend, installed_brokers
 from base.models.definitions.database import SQLBackend, installed_backends
+from base.models.definitions.environment import Environment
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
     BrokerSettingsMixin,
@@ -117,10 +118,13 @@ def check_broker() -> list[str]:
             f'"base[{backend.extra}]" (installs {backend.distribution}).'
         ]
 
-    environment = os.environ.get("ENVIRONMENT") or _default(CoreSettings, "environment")
-    if not backend.is_distributed and environment != "local":
+    # Read raw: preflight runs before settings are built, so an unrecognised
+    # name must warn rather than raise.
+    raw = os.environ.get("ENVIRONMENT") or _default(CoreSettings, "environment")
+    environment = Environment(raw) if raw in set(Environment) else None
+    if not backend.is_distributed and environment != Environment.LOCAL:
         _warn(
-            f"WARNING: BROKER={backend.value!r} in environment {environment!r}. "
+            f"WARNING: BROKER={backend.value!r} in environment {raw!r}. "
             f"This transport is in-process, so each replica owns a private queue "
             f"and events reach no other service. Set BROKER=redis unless this "
             f"deployment is deliberately a single process."

@@ -624,3 +624,136 @@ async def test_an_unknown_profile_style_is_refused(
             userinfo_url="https://userinfo",
         )
     assert caught.value.error_enum is AuthErrors.OAUTH_PROVIDER_DISABLED
+
+
+# A provider that does not state an email is verified must not be read as
+# though it had. Identity linking keys on this flag, so a default of True
+# attaches a stranger's login to whichever local account owns that address.
+
+
+async def test_an_oidc_claim_set_with_no_verification_is_not_trusted(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`email_verified` is optional in OIDC; absent means unknown."""
+    http = FakeHttp()
+    registry = _registry(make_settings, monkeypatch, http)
+    payload = TokenResponse(
+        access_token="at",
+        id_token=_id_token(sub="s", email="victim@example.com"),
+    )
+
+    profile = await registry.afetch_profile(
+        registry.get("google"), token_payload=payload, userinfo_url="https://userinfo"
+    )
+    assert profile.email_verified is False
+
+
+async def test_a_userinfo_body_with_no_verification_is_not_trusted(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same, for the endpoint used when there is no id token."""
+    http = FakeHttp(
+        {
+            "https://userinfo": HttpResponse.ok(
+                200, {"sub": "s", "email": "v@example.com"}
+            )
+        }
+    )
+    registry = _registry(make_settings, monkeypatch, http)
+
+    profile = await registry.afetch_profile(
+        registry.get("google"),
+        token_payload=TokenResponse(access_token="at"),
+        userinfo_url="https://userinfo",
+    )
+    assert profile.email_verified is False
+
+
+async def test_an_apple_claim_set_with_no_verification_is_not_trusted(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    http = FakeHttp()
+    registry = _registry(make_settings, monkeypatch, http)
+    payload = TokenResponse(
+        access_token="at", id_token=_id_token(sub="s", email="v@example.com")
+    )
+
+    profile = await registry.afetch_profile(
+        registry.get("apple"), token_payload=payload, userinfo_url=None
+    )
+    assert profile.email_verified is False
+
+
+async def test_facebook_does_not_assert_an_email_is_verified(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Facebook's profile endpoint says nothing about verification."""
+    http = FakeHttp(
+        {
+            "https://graph.facebook.com": HttpResponse.ok(
+                200, {"id": "fb-1", "email": "v@example.com", "first_name": "A"}
+            )
+        }
+    )
+    registry = _registry(make_settings, monkeypatch, http)
+
+    profile = await registry.afetch_profile(
+        registry.get("facebook"),
+        token_payload=TokenResponse(access_token="at"),
+        userinfo_url="https://graph.facebook.com/me",
+    )
+    assert profile.email_verified is False
+
+
+async def test_a_github_public_profile_email_is_not_taken_as_verified(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub's `/user` email is whatever the user typed, verified or not.
+
+    Only `/user/emails` reports verification, which is why the fallback
+    branch already filtered on it while this one did not.
+    """
+    http = FakeHttp(
+        {
+            "https://api.github.com/user/emails": json.dumps(
+                [{"email": "other@example.com", "primary": False, "verified": True}]
+            ),
+            "https://api.github.com/user": HttpResponse.ok(
+                200, {"id": 7, "email": "typed@example.com", "name": "Ada Lovelace"}
+            ),
+        }
+    )
+    registry = _registry(make_settings, monkeypatch, http)
+
+    profile = await registry.afetch_profile(
+        registry.get("github"),
+        token_payload=TokenResponse(access_token="at"),
+        userinfo_url="https://api.github.com/user",
+    )
+    assert profile.email == "typed@example.com"
+    assert profile.email_verified is False
+
+
+async def test_a_github_verified_primary_email_is_trusted(
+    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one case GitHub does state, and the only one worth trusting."""
+    http = FakeHttp(
+        {
+            "https://api.github.com/user/emails": json.dumps(
+                [{"email": "ada@example.com", "primary": True, "verified": True}]
+            ),
+            "https://api.github.com/user": HttpResponse.ok(
+                200, {"id": 7, "email": "ada@example.com", "name": "Ada Lovelace"}
+            ),
+        }
+    )
+    registry = _registry(make_settings, monkeypatch, http)
+
+    profile = await registry.afetch_profile(
+        registry.get("github"),
+        token_payload=TokenResponse(access_token="at"),
+        userinfo_url="https://api.github.com/user",
+    )
+    assert profile.email == "ada@example.com"
+    assert profile.email_verified is True

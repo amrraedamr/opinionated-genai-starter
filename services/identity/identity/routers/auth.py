@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from base.models.definitions.errors import AuthErrors
+from base.models.definitions.oauth import OAUTH_NONCE_COOKIE
 from base.models.view_models import BaseResponse
 from base.tools.errors import raise_error
 from base.tools.security import PasswordHashingService
@@ -19,6 +20,7 @@ from identity.models.view_models.auth import (
 from identity.models.view_models.user import CreateUserResponse
 from identity.services.auth import AuthService
 from identity.services.auth.oauth import OAuthService
+from identity.settings import settings
 from identity.stores.user import UserStore
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -78,8 +80,18 @@ async def oauth_providers() -> BaseResponse[OAuthProvidersResponse]:
 
 @router.get("/oauth/{provider}")
 async def oauth_start(provider: str) -> RedirectResponse:
-    url = await OAuthService().abuild_authorize_redirect(provider)
-    return RedirectResponse(url=url, status_code=302)
+    url, nonce = await OAuthService().abuild_authorize_redirect(provider)
+    response = RedirectResponse(url=url, status_code=302)
+    response.set_cookie(
+        OAUTH_NONCE_COOKIE,
+        nonce,
+        max_age=settings.oauth_state_ttl_seconds,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
 
 
 @router.api_route("/oauth/{provider}/callback", methods=["GET", "POST"])
@@ -106,12 +118,15 @@ async def oauth_callback(
         provider,
         code=code,
         state=state,
+        nonce=request.cookies.get(OAUTH_NONCE_COOKIE),
         apple_user_json=apple_user_json,
     )
-    return RedirectResponse(
+    response = RedirectResponse(
         url=OAuthService().success_redirect_url(exchange_code),
         status_code=302,
     )
+    response.delete_cookie(OAUTH_NONCE_COOKIE, path="/")
+    return response
 
 
 @router.post("/oauth/exchange", response_model=BaseResponse[LoginResponse])

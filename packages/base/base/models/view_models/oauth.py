@@ -34,3 +34,17 @@ class OAuthProfile:
     email_verified: bool
     first_name: str | None = None
     last_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingFlow:
+    """A login begun and not yet finished.
+
+    `nonce` goes in a cookie, `state_id` in the authorize URL; neither is
+    useful without the other.
+    """
+
+    state_id: str
+    nonce: str
+    code_verifier: str
+    code_challenge: str

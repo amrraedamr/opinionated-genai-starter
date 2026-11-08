@@ -8,10 +8,9 @@ try:
     from fastapi.responses import JSONResponse
     from starlette.exceptions import HTTPException as StarletteHTTPException
 except ModuleNotFoundError as exc:  # pragma: no cover
-    raise MissingExtraError(
-        "server", "fastapi", feature="AppExceptionHandler"
-    ) from exc
+    raise MissingExtraError("server", "fastapi", feature="AppExceptionHandler") from exc
 
+from base.models.definitions.environment import DEBUG_ENVIRONMENTS
 from base.models.definitions.exceptions import ExceptionCategory
 from base.models.view_models import DebugContext, ErrorResponse
 from base.services.common.meta import Singleton, scope_id
@@ -26,7 +25,8 @@ class AppExceptionHandler(metaclass=Singleton):
 
     @staticmethod
     def _is_debug() -> bool:
-        return get_settings().environment != "production"
+        """Whether a caller may see the exception and its traceback."""
+        return get_settings().environment in DEBUG_ENVIRONMENTS
 
     @staticmethod
     def _get_request_id() -> str:

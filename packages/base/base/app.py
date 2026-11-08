@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from types import ModuleType
 
+from base.models.definitions.environment import Environment
 from base.tools.errors import MissingExtraError
 from base.tools.misc import split_csv
 
@@ -34,12 +35,12 @@ DEFAULT_VERSION = "0.1"
 
 def _resolve_cors_origins(
     cors_origins: Sequence[str] | None,
-    environment: str,
+    environment: Environment,
     logger: ConsoleLoggerService,
 ) -> list[str]:
     if cors_origins is not None:
         return list(cors_origins)
-    if environment == "local":
+    if environment == Environment.LOCAL:
         return ["*"]
     logger.warning("No CORS origins configured; cross-origin requests are refused")
     return []
