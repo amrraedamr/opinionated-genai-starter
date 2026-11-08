@@ -249,6 +249,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "request_rate_limit_per_minute": 300,
         "auth_rate_limit_per_minute": 20,
     },
+    "TelemetrySettingsMixin": {
+        "otel_enabled": False,
+        "otel_exporter_endpoint": "http://localhost:4317",
+        "otel_service_name": "",
+        "otel_sample_ratio": 1.0,
+        "otel_capture_content": False,
+    },
     "TenancySettingsMixin": {
         "tenancy_enabled": False,
         "tenant_claim": "tid",
