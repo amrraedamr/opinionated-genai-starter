@@ -16,6 +16,7 @@ from base.services.configuration.mixins.embedding.azure_openai import (
 from base.services.configuration.mixins.embedding.openai import (
     OpenAIEmbeddingSettingsMixin,
 )
+from base.services.configuration.mixins.guardrails import GuardrailSettingsMixin
 from base.services.configuration.mixins.idp import IdpSettingsMixin
 from base.services.configuration.mixins.keyvault import KeyVaultSettingsMixin
 from base.services.configuration.mixins.llm import LLMSettingsMixin
@@ -70,6 +71,7 @@ __all__ = [
     "GeminiSettingsMixin",
     "GitHubOAuthSettingsMixin",
     "GoogleOAuthSettingsMixin",
+    "GuardrailSettingsMixin",
     "IdpSettingsMixin",
     "KeyVaultSettingsMixin",
     "LLMSettingsMixin",

@@ -140,6 +140,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "oauth_google_scopes": "openid email profile",
         "oauth_google_redirect_uri": "",
     },
+    "GuardrailSettingsMixin": {
+        "pii_extra_patterns": {},
+        "moderation_model": "omni-moderation-latest",
+        "moderation_threshold": 0.5,
+        "moderation_categories": [],
+        "injection_block_enabled": True,
+    },
     "IdpSettingsMixin": {
         "idp_resource_server_enabled": False,
         "idp_issuer": "",
@@ -417,6 +424,8 @@ def _runtime_types(annotation: Any) -> tuple[type, ...]:
         )
     if annotation is float:
         return (float, int)
+    if origin is not None:
+        return (origin,)
     assert isinstance(annotation, type)
     return (annotation,)
 
@@ -437,4 +446,8 @@ def _environment_sample(annotation: Any, default: Any) -> tuple[str, Any]:
         return "4321", 4321
     if annotation is float:
         return "1.25", 1.25
+    if origin is dict:
+        return '{"probe": "value"}', {"probe": "value"}
+    if origin is list:
+        return '["probe"]', ["probe"]
     return "set-from-the-environment", "set-from-the-environment"
