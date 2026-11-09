@@ -12,10 +12,9 @@ import uuid
 from typing import Any
 
 import pytest
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
-from starlette.websockets import WebSocketDisconnect
 
 from base.middleware import SECURITY_HEADERS, request_context
 from base.middleware.request_size import RequestSizeLimitMiddleware

@@ -48,6 +48,7 @@ class OptionalTelemetry:
             "producer": SpanKind.PRODUCER,
             "consumer": SpanKind.CONSUMER,
             "client": SpanKind.CLIENT,
+            "server": SpanKind.SERVER,
             "internal": SpanKind.INTERNAL,
         }
         with Telemetry().continued_span(
