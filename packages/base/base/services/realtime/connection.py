@@ -80,6 +80,11 @@ class RealtimeConnection:
         return self._ticket.user_id
 
     @property
+    def subject(self) -> str:
+        """The token's subject, for a caller that carries no user id."""
+        return self._ticket.subject
+
+    @property
     def key(self) -> str:
         """Per user, not per connection: ten sockets is not ten budgets.
 

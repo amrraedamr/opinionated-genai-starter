@@ -117,3 +117,23 @@ class TicketResponse(BaseModel):
     device_id: str
     """Echoed back so a client that sent none can store the one it was given
     and resume with it next time."""
+
+
+class FanoutMessage(BaseModel):
+    """One envelope on its way to every replica holding the named user.
+
+    The user travels beside the envelope rather than inside it: a replica has
+    to know who a message is for before it looks at what the message says, and
+    the payload belongs to the application.
+    """
+
+    user_id: str
+    envelope: RealtimeEnvelope
+
+
+class Presence(BaseModel):
+    """Whether a user is connected anywhere, and when they last were."""
+
+    user_id: str
+    online: bool
+    last_seen: datetime | None = None
