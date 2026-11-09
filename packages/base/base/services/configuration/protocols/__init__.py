@@ -22,6 +22,7 @@ from base.services.configuration.protocols.embedding.azure_openai import (
 from base.services.configuration.protocols.embedding.openai import (
     SupportsOpenAIEmbeddingConfig,
 )
+from base.services.configuration.protocols.guardrails import SupportsGuardrailConfig
 from base.services.configuration.protocols.idp import SupportsIdpConfig
 from base.services.configuration.protocols.keyvault import SupportsKeyVaultConfig
 from base.services.configuration.protocols.llm import SupportsLLMConfig
@@ -84,6 +85,7 @@ __all__ = [
     "SupportsGeminiConfig",
     "SupportsGitHubOAuthConfig",
     "SupportsGoogleOAuthConfig",
+    "SupportsGuardrailConfig",
     "SupportsIdpConfig",
     "SupportsKeyVaultConfig",
     "SupportsLLMConfig",
