@@ -30,6 +30,9 @@ try:
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
     from opentelemetry.trace import Span, SpanKind
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,
+    )
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("otel", "opentelemetry-sdk", feature="Telemetry") from exc
 
@@ -89,7 +92,9 @@ class Telemetry(metaclass=Singleton):
         if self._provider is None:
             yield None
             return
-        tracer = trace.get_tracer(__name__)
+        # The service's own provider, not the global one: a library that
+        # claimed the global first would otherwise silently take these spans.
+        tracer = self._provider.get_tracer(__name__)
         with tracer.start_as_current_span(name, kind=kind) as span:
             for key, value in self._ambient().items():
                 span.set_attribute(key, value)
@@ -97,6 +102,55 @@ class Telemetry(metaclass=Singleton):
                 if value is not None:
                     span.set_attribute(key, value)
             yield span
+
+    @contextmanager
+    def continued_span(
+        self,
+        name: str,
+        traceparent: str | None,
+        *,
+        kind: SpanKind = SpanKind.INTERNAL,
+        attributes: Mapping[str, Any] | None = None,
+    ) -> Generator[Span | None]:
+        """A span whose parent is somewhere else entirely.
+
+        The point of carrying a traceparent on an event: the consumer's work
+        belongs to the trace that produced it, even though it happens in
+        another process minutes later. Without this each side is its own
+        orphan trace and the causal link is a timestamp and a hope.
+
+        An absent or unparseable traceparent starts a fresh trace rather than
+        failing — a published event is not worth losing over a header.
+        """
+        if self._provider is None:
+            yield None
+            return
+        parent = (
+            TraceContextTextMapPropagator().extract({"traceparent": traceparent})
+            if traceparent
+            else None
+        )
+        # The service's own provider, not the global one: a library that
+        # claimed the global first would otherwise silently take these spans.
+        tracer = self._provider.get_tracer(__name__)
+        with tracer.start_as_current_span(name, context=parent, kind=kind) as span:
+            for key, value in self._ambient().items():
+                span.set_attribute(key, value)
+            for key, value in (attributes or {}).items():
+                if value is not None:
+                    span.set_attribute(key, value)
+            yield span
+
+    @staticmethod
+    def current_traceparent() -> str | None:
+        """This span, in the form another process can continue it from.
+
+        `None` when nothing is being traced, so a caller stores nothing rather
+        than a placeholder that looks like a trace and is not.
+        """
+        carrier: dict[str, str] = {}
+        TraceContextTextMapPropagator().inject(carrier)
+        return carrier.get("traceparent")
 
     @staticmethod
     def _ambient() -> dict[str, str]:

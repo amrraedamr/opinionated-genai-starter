@@ -13,6 +13,13 @@ class EventMeta(BaseModel):
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     producer: str
     correlation_id: UUID | None = None
+    traceparent: str | None = None
+    """W3C trace context, so a consumer's work joins the trace that caused it.
+
+    Absent when the producer was not tracing. A consumer treats that as the
+    start of a new trace rather than as an error.
+    """
+
     schema_version: int = CURRENT_EVENT_VERSION
 
     @field_validator("schema_version")

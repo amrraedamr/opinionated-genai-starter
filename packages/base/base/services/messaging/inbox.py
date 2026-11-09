@@ -16,8 +16,14 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="Inbox") from exc
 
 from base.models.definitions.messaging import EventHandler, InboxState
+from base.models.definitions.telemetry import (
+    MESSAGING_DESTINATION,
+    MESSAGING_MESSAGE_ID,
+    MESSAGING_OPERATION,
+)
 from base.services.messaging.protocol import InboxRow
 from base.services.sql.service import SQLService
+from base.tools.tracing import OptionalTelemetry
 from contracts.events import Event
 
 
@@ -31,19 +37,30 @@ class InboxProcessor:
         self._model = model
         self._claim_timeout = timedelta(seconds=claim_timeout_seconds)
         self._sql = SQLService()
+        self._telemetry = OptionalTelemetry()
 
     def wrap(self, handler: EventHandler) -> EventHandler:
         """Make a handler idempotent across redelivery and restarts."""
 
         async def process(event: Event) -> None:
-            if not await self._aclaim(event):
-                return
-            try:
-                await handler(event)
-            except Exception as exc:
-                await self._afinish(event, InboxState.FAILED, exc)
-                raise
-            await self._afinish(event, InboxState.PROCESSED)
+            with self._telemetry.continued_span(
+                f"inbox process {event.topic}",
+                event.meta.traceparent,
+                kind="consumer",
+                attributes={
+                    MESSAGING_DESTINATION: event.topic,
+                    MESSAGING_MESSAGE_ID: str(event.meta.event_id),
+                    MESSAGING_OPERATION: "process",
+                },
+            ):
+                if not await self._aclaim(event):
+                    return
+                try:
+                    await handler(event)
+                except Exception as exc:
+                    await self._afinish(event, InboxState.FAILED, exc)
+                    raise
+                await self._afinish(event, InboxState.PROCESSED)
 
         return process
 
