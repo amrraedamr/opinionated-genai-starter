@@ -162,6 +162,7 @@ def infra_settings(make_settings: Any) -> CoreSettings:
         MongoSettingsMixin,
         PostgresSettingsMixin,
         QdrantSettingsMixin,
+        RateLimitSettingsMixin,
         RedisSettingsMixin,
         SQLSettingsMixin,
     )
@@ -173,6 +174,7 @@ def infra_settings(make_settings: Any) -> CoreSettings:
         MongoSettingsMixin,
         QdrantSettingsMixin,
         BrokerSettingsMixin,
+        RateLimitSettingsMixin,
         sql_backend="postgresql",
         pg_host="localhost",
         pg_port="5432",
@@ -185,6 +187,8 @@ def infra_settings(make_settings: Any) -> CoreSettings:
         mongodb_database=f"test_{os.getpid()}",
         qdrant_url="http://localhost:6333",
         broker="redis",
+        rate_limit_auth_per_minute=5,
+        rate_limit_llm_tokens_per_minute=100,
     )
 
 
