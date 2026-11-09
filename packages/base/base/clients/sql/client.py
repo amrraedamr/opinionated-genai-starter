@@ -25,6 +25,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.models.definitions.database import SQLBackend, installed_backends
 from base.services.common.meta import KeyedSingleton
 from base.services.configuration.protocols import SupportsSQLConfig
+from base.services.sql.rls import RowLevelSecurity
 
 
 class SQLClient(metaclass=KeyedSingleton):
@@ -34,6 +35,7 @@ class SQLClient(metaclass=KeyedSingleton):
         self._backend: SQLBackend = backend
         self._config: SupportsSQLConfig = config or settings_for(SupportsSQLConfig)
         self._require_driver()
+        RowLevelSecurity.install()
 
         self._sync_engine: Engine | None = None
         self._async_engine: AsyncEngine | None = None
