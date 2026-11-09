@@ -87,3 +87,10 @@ class GuardrailErrors(Enum):
         "message": "The request was refused by a content policy.",
         "status_code": HTTPStatus.UNPROCESSABLE_ENTITY,
     }
+
+
+class RateLimitErrors(Enum):
+    LLM_BUDGET_EXHAUSTED = {
+        "message": "The token budget for this period is already spent.",
+        "status_code": HTTPStatus.TOO_MANY_REQUESTS,
+    }
