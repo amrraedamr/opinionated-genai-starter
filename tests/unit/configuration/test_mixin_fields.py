@@ -262,8 +262,6 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "trusted_hosts": "localhost,127.0.0.1,testserver",
         "request_max_bytes": 1_048_576,
         "request_concurrency_limit": 100,
-        "request_rate_limit_per_minute": 300,
-        "auth_rate_limit_per_minute": 20,
     },
     "TelemetrySettingsMixin": {
         "otel_enabled": False,

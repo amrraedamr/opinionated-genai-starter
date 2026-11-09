@@ -191,23 +191,22 @@ def test_traffic_control_sits_outside_the_body_size_limit(
 def test_the_size_limit_and_traffic_limits_come_from_settings(
     make_settings: Any,
 ) -> None:
+    """Budgets no longer come through the middleware: the limiter reads them.
+
+    Only the concurrency ceiling is passed, because it is this process's own
+    and not a figure any other replica shares.
+    """
     settings = make_settings(
         ServerSettingsMixin,
         service_name="demo",
         request_max_bytes=2048,
         request_concurrency_limit=7,
-        request_rate_limit_per_minute=11,
-        auth_rate_limit_per_minute=3,
     )
     app = create_app(settings=settings)
 
     by_class = {m.cls: m for m in app.user_middleware}
     assert by_class[RequestSizeLimitMiddleware].kwargs["max_bytes"] == 2048
-    assert by_class[TrafficControlMiddleware].kwargs == {
-        "concurrency": 7,
-        "per_minute": 11,
-        "auth_per_minute": 3,
-    }
+    assert by_class[TrafficControlMiddleware].kwargs == {"concurrency": 7}
 
 
 def test_trusted_hosts_are_split_from_the_comma_separated_setting(

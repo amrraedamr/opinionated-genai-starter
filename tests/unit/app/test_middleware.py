@@ -11,13 +11,18 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import FastAPI, Request
+import pytest
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from base.middleware import SECURITY_HEADERS, request_context
 from base.middleware.request_size import RequestSizeLimitMiddleware
-from base.middleware.traffic_control import TrafficControlMiddleware
+from base.middleware.traffic_control import (
+    WEBSOCKET_TRY_LATER,
+    TrafficControlMiddleware,
+)
 from base.services.common.meta import Stored, scope_id
 from base.tools.correlation import (
     CORRELATION_HEADER,
@@ -239,15 +244,38 @@ def test_a_non_http_scope_is_passed_straight_through() -> None:
 # TrafficControlMiddleware
 
 
+def budgets(
+    per_minute: int = 100, auth_per_minute: int = 100, ws_connect: int = 100
+) -> Any:
+    """A limiter with budgets this test chose, not whatever settings hold."""
+    from dataclasses import dataclass
+
+    from base.models.definitions.rate_limiting import RateLimitBackend
+    from base.services.rate_limiting.memory import InMemoryRateLimiter
+
+    @dataclass
+    class Budgets:
+        rate_limit_backend: RateLimitBackend = RateLimitBackend.MEMORY
+        rate_limit_requests_per_minute: int = per_minute
+        rate_limit_auth_per_minute: int = auth_per_minute
+        rate_limit_llm_tokens_per_minute: int = 100_000
+        rate_limit_ws_connect_per_minute: int = ws_connect
+        rate_limit_ws_messages_per_minute: int = 100
+
+    return InMemoryRateLimiter(Budgets())
+
+
 def limited_app(
-    per_minute: int = 100, auth_per_minute: int = 100, concurrency: int = 100
+    per_minute: int = 100,
+    auth_per_minute: int = 100,
+    concurrency: int = 100,
+    ws_connect: int = 100,
 ) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
         TrafficControlMiddleware,
         concurrency=concurrency,
-        per_minute=per_minute,
-        auth_per_minute=auth_per_minute,
+        limiter=budgets(per_minute, auth_per_minute, ws_connect),
     )
 
     @app.get("/thing")
@@ -261,6 +289,12 @@ def limited_app(
     @app.get("/api/auth")
     async def api_auth() -> dict[str, bool]:
         return {"ok": True}
+
+    @app.websocket("/ws")
+    async def socket(websocket: WebSocket) -> None:
+        await websocket.accept()
+        await websocket.send_text("hello")
+        await websocket.close()
 
     return app
 
@@ -316,32 +350,59 @@ def test_a_request_that_cannot_get_a_concurrency_slot_is_told_the_server_is_busy
     assert response.json()["error"] == "Server is busy"
 
 
-def test_an_idle_client_key_is_evicted_rather_than_retained_forever() -> None:
-    import time
-    from collections import deque
-
-    from base.middleware.traffic_control import _Bucket
-
-    async def inner(scope: Any, receive: Any, send: Any) -> None:
-        return None
-
-    middleware = TrafficControlMiddleware(
-        inner, concurrency=1, per_minute=10, auth_per_minute=10
-    )
-    stale, fresh = _Bucket(), _Bucket()
-    stale.hits = deque([time.monotonic() - 120])
-    fresh.hits = deque([time.monotonic()])
-    middleware._buckets = {"1.2.3.4": stale, "5.6.7.8": fresh}
-
-    middleware._evict_idle(time.monotonic())
-
-    assert list(middleware._buckets) == ["5.6.7.8"]
-
-
 def test_a_path_ending_in_auth_also_gets_the_auth_budget() -> None:
     with TestClient(limited_app(per_minute=100, auth_per_minute=1)) as client:
         assert client.get("/api/auth").status_code == 200
         assert client.get("/api/auth").status_code == 429
+
+
+# Websockets
+
+
+def test_a_websocket_under_the_budget_is_admitted() -> None:
+    with TestClient(limited_app(ws_connect=2)) as client:
+        with client.websocket_connect("/ws") as socket:
+            assert socket.receive_text() == "hello"
+
+
+def test_a_websocket_over_the_budget_is_refused_at_the_handshake() -> None:
+    """Sockets bypassed this middleware entirely before, so nothing bounded them."""
+    with TestClient(limited_app(ws_connect=1)) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.receive_text()
+
+        with pytest.raises(WebSocketDisconnect) as refused:
+            with client.websocket_connect("/ws"):
+                pass
+
+    assert refused.value.code == WEBSOCKET_TRY_LATER
+
+
+def test_a_handshake_does_not_spend_the_http_budget() -> None:
+    """A connection and a request are different budgets, counted separately."""
+    with TestClient(limited_app(per_minute=1, ws_connect=5)) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.receive_text()
+        assert client.get("/thing").status_code == 200
+
+
+def test_a_socket_does_not_hold_a_concurrency_slot() -> None:
+    """A slot held for the life of a socket would exhaust the ceiling."""
+    app = limited_app(concurrency=1, ws_connect=5)
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws") as socket:
+            socket.receive_text()
+        traffic = _find_traffic_control(
+            client.app.middleware_stack  # type: ignore[attr-defined]
+        )
+        assert traffic is not None
+        assert traffic._semaphore._value == 1
+
+
+def test_a_lifespan_message_passes_straight_through() -> None:
+    """Startup is not traffic, and must not be spent against a budget."""
+    with TestClient(limited_app(per_minute=1)) as client:
+        assert client.get("/thing").status_code == 200
 
 
 def _find_traffic_control(app: Any) -> TrafficControlMiddleware | None:

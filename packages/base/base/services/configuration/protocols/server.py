@@ -21,5 +21,3 @@ class SupportsServerConfig(Protocol):
     trusted_hosts: str
     request_max_bytes: int
     request_concurrency_limit: int
-    request_rate_limit_per_minute: int
-    auth_rate_limit_per_minute: int
