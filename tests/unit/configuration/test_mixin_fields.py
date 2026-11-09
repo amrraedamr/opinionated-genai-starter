@@ -14,6 +14,7 @@ import pytest
 from pydantic import BaseModel as PydanticBaseModel
 
 from base.models.definitions.broker import BrokerBackend
+from base.models.definitions.rate_limiting import RateLimitBackend
 from base.models.view_models import BaseModel as CamelisingBaseModel
 from base.services.configuration import mixins as mixins_package
 from base.services.configuration.mixins import (
@@ -217,6 +218,14 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "qdrant_prefer_grpc": True,
         "qdrant_timeout": 30,
         "qdrant_api_key": "",
+    },
+    "RateLimitSettingsMixin": {
+        "rate_limit_backend": RateLimitBackend.MEMORY,
+        "rate_limit_requests_per_minute": 300,
+        "rate_limit_auth_per_minute": 20,
+        "rate_limit_llm_tokens_per_minute": 100_000,
+        "rate_limit_ws_connect_per_minute": 60,
+        "rate_limit_ws_messages_per_minute": 600,
     },
     "RedisSettingsMixin": {
         "redis_url": "",

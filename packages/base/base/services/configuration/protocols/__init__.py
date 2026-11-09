@@ -44,6 +44,9 @@ from base.services.configuration.protocols.oauth.microsoft import (
     SupportsMicrosoftOAuthConfig,
 )
 from base.services.configuration.protocols.prompt import SupportsPromptConfig
+from base.services.configuration.protocols.rate_limiting import (
+    SupportsRateLimitConfig,
+)
 from base.services.configuration.protocols.rerank import SupportsRerankConfig
 from base.services.configuration.protocols.rerank.cohere import SupportsCohereConfig
 from base.services.configuration.protocols.server import SupportsServerConfig
@@ -93,6 +96,7 @@ __all__ = [
     "SupportsPostgresConfig",
     "SupportsPromptConfig",
     "SupportsQdrantConfig",
+    "SupportsRateLimitConfig",
     "SupportsRedisBrokerConfig",
     "SupportsRedisConfig",
     "SupportsRerankConfig",
