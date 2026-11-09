@@ -1,10 +1,23 @@
 """Talking to a model, without naming one."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Generator, Sequence
+from contextlib import contextmanager
 from typing import Any, final
 
 from base.models.definitions.model import ReasoningEffort
+from base.models.definitions.telemetry import (
+    GENAI_COMPLETION,
+    GENAI_OPERATION,
+    GENAI_PROMPT,
+    GENAI_REQUEST_MODEL,
+    GENAI_RESPONSE_FINISH_REASON,
+    GENAI_SYSTEM,
+    GENAI_USAGE_CACHE_READ_TOKENS,
+    GENAI_USAGE_CACHE_WRITE_TOKENS,
+    GENAI_USAGE_INPUT_TOKENS,
+    GENAI_USAGE_OUTPUT_TOKENS,
+)
 from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredMessage
 from base.models.view_models.llm_result import LLMResult, ParsedResult
@@ -13,6 +26,7 @@ from base.models.view_models.prompt import RenderedPrompt
 from base.services.rate_limiting.llm_budget import TokenBudget
 from base.services.tool_calling import Tool
 from base.tools.stream import StreamIterator
+from base.tools.tracing import OptionalTelemetry
 
 
 class AbstractLLMService(ABC):
@@ -113,17 +127,19 @@ class AbstractLLMService(ABC):
         self._require_input(prompt, messages, "complete")
         budget = self._budget
         budget.check()
-        result = self._complete(
-            prompt,
-            messages,
-            tools,
-            stream_iterator,
-            max_output_tokens,
-            reasoning_effort,
-            label,
-            cache_hint,
-            **kwargs,
-        )
+        with self._genai_span("chat", prompt, messages) as span:
+            result = self._complete(
+                prompt,
+                messages,
+                tools,
+                stream_iterator,
+                max_output_tokens,
+                reasoning_effort,
+                label,
+                cache_hint,
+                **kwargs,
+            )
+            self._record_genai(span, result)
         budget.spend(result.usage.total_tokens if result.usage else 0)
         return result
 
@@ -149,17 +165,19 @@ class AbstractLLMService(ABC):
         self._require_input(prompt, messages, "acomplete")
         budget = self._budget
         await budget.acheck()
-        result = await self._acomplete(
-            prompt,
-            messages,
-            tools,
-            stream_iterator,
-            max_output_tokens,
-            reasoning_effort,
-            label,
-            cache_hint,
-            **kwargs,
-        )
+        with self._genai_span("chat", prompt, messages) as span:
+            result = await self._acomplete(
+                prompt,
+                messages,
+                tools,
+                stream_iterator,
+                max_output_tokens,
+                reasoning_effort,
+                label,
+                cache_hint,
+                **kwargs,
+            )
+            self._record_genai(span, result)
         await budget.aspend(result.usage.total_tokens if result.usage else 0)
         return result
 
@@ -254,6 +272,75 @@ class AbstractLLMService(ABC):
         )
         await budget.aspend(result.usage.total_tokens if result.usage else 0)
         return result
+
+    @contextmanager
+    def _genai_span(
+        self,
+        operation: str,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None,
+    ) -> Generator[Any]:
+        """A span describing the call, following the GenAI conventions.
+
+        Opened here rather than in each adapter: this is the boundary every
+        provider crosses, so one span covers all of them and none of them has
+        to remember to emit it.
+
+        Prompt content is an attribute only where a service asked for it.
+        A trace is routinely shipped to a third party, and the prompt is the
+        one thing in it that belongs to somebody else.
+        """
+        attributes: dict[str, Any] = {
+            GENAI_SYSTEM: self.get_service_name(),
+            GENAI_OPERATION: operation,
+            GENAI_REQUEST_MODEL: self.model,
+        }
+        if self._capture_content():
+            attributes[GENAI_PROMPT] = self._content_of(prompt, messages)
+
+        with OptionalTelemetry.continued_span(
+            f"{operation} {self.model}", None, kind="client", attributes=attributes
+        ) as span:
+            yield span
+
+    def _record_genai(self, span: Any, result: Any) -> None:
+        """Put what the call cost on the span, once the provider has answered."""
+        if span is None:
+            return
+        usage = getattr(result, "usage", None)
+        if usage is not None:
+            span.set_attribute(GENAI_USAGE_INPUT_TOKENS, usage.input_tokens)
+            span.set_attribute(GENAI_USAGE_OUTPUT_TOKENS, usage.output_tokens)
+            span.set_attribute(GENAI_USAGE_CACHE_READ_TOKENS, usage.cached_input_tokens)
+            span.set_attribute(GENAI_USAGE_CACHE_WRITE_TOKENS, usage.cache_write_tokens)
+        finish = getattr(result, "finish_reason", None)
+        if finish is not None:
+            span.set_attribute(GENAI_RESPONSE_FINISH_REASON, str(finish.value))
+        content = getattr(result, "content", None)
+        if content and self._capture_content():
+            span.set_attribute(GENAI_COMPLETION, content)
+
+    @staticmethod
+    def _capture_content() -> bool:
+        """Whether this service opted into prompts and replies in its traces.
+
+        Read from telemetry rather than settings: it already holds the answer,
+        and a service without the `otel` extra has no spans to put them on.
+        """
+        return OptionalTelemetry.capture_content()
+
+    @staticmethod
+    def _content_of(
+        prompt: RenderedPrompt | None, messages: Sequence[StoredMessage] | None
+    ) -> str:
+        """The text going to the model, for a service that asked to record it."""
+        parts: list[str] = []
+        if prompt is not None:
+            parts.extend(instruction.content for instruction in prompt.instructions)
+            parts.extend(message.content for message in prompt.messages)
+        if messages:
+            parts.extend(message.content or "" for message in messages)
+        return "\n".join(part for part in parts if part)
 
     @property
     def _budget(self) -> TokenBudget:

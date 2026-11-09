@@ -16,10 +16,16 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("sql", "sqlalchemy", feature="Outbox") from exc
 
+from base.models.definitions.telemetry import (
+    MESSAGING_DESTINATION,
+    MESSAGING_MESSAGE_ID,
+    MESSAGING_OPERATION,
+)
 from base.services.broker import AbstractBroker
 from base.services.logging.console import ConsoleLoggerService
 from base.services.messaging.protocol import OutboxRow
 from base.services.sql.service import SQLService
+from base.tools.tracing import OptionalTelemetry
 from contracts.events import Event
 
 MAX_BACKOFF_SECONDS = 60
@@ -52,6 +58,7 @@ class OutboxDispatcher:
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._logger = ConsoleLoggerService()
+        self._telemetry = OptionalTelemetry()
 
     async def astart(self) -> None:
         if self._task is not None:
@@ -112,36 +119,65 @@ class OutboxDispatcher:
                 ).all()
             )
             for row in rows:
-                try:
-                    await self._broker.apublish(Event.model_validate(row.event))
-                    row.published_at = datetime.now(UTC)
-                    row.last_error = None
-                except Exception as exc:
-                    row.attempts += 1
-                    row.last_error = f"{type(exc).__name__}: {exc}"[:1000]
-                    row.available_at = datetime.now(UTC) + timedelta(
-                        seconds=min(2 ** max(row.attempts - 1, 0), MAX_BACKOFF_SECONDS)
-                    )
-                    if row.attempts >= self._max_attempts:
-                        self._logger.error(
-                            f"Outbox row {row.id} parked after {row.attempts} "
-                            f"attempts; it will not be retried: {row.last_error}"
+                event = Event.model_validate(row.event)
+                with self._telemetry.continued_span(
+                    f"outbox dispatch {event.topic}",
+                    event.meta.traceparent,
+                    kind="producer",
+                    attributes={
+                        MESSAGING_DESTINATION: event.topic,
+                        MESSAGING_MESSAGE_ID: str(event.meta.event_id),
+                        MESSAGING_OPERATION: "publish",
+                    },
+                ):
+                    try:
+                        await self._broker.apublish(event)
+                        row.published_at = datetime.now(UTC)
+                        row.last_error = None
+                    except Exception as exc:
+                        row.attempts += 1
+                        row.last_error = f"{type(exc).__name__}: {exc}"[:1000]
+                        row.available_at = datetime.now(UTC) + timedelta(
+                            seconds=min(
+                                2 ** max(row.attempts - 1, 0), MAX_BACKOFF_SECONDS
+                            )
                         )
-                    else:
-                        self._logger.exception(
-                            "Outbox publication failed for %s", row.id
-                        )
+                        if row.attempts >= self._max_attempts:
+                            self._logger.error(
+                                f"Outbox row {row.id} parked after {row.attempts} "
+                                f"attempts; it will not be retried: {row.last_error}"
+                            )
+                        else:
+                            self._logger.exception(
+                                "Outbox publication failed for %s", row.id
+                            )
             await session.flush()
             return len(rows)
 
 
 def add_event(session: AsyncSession, model: type[OutboxRow], event: Event) -> None:
-    """Stage an event in the caller's transaction, so it commits with the write."""
+    """Stage an event in the caller's transaction, so it commits with the write.
+
+    The traceparent is captured here rather than in `Event.of`, for two
+    reasons. This is the moment the event is genuinely caused, inside whatever
+    span the producer is in; and `contracts` cannot reach telemetry, because a
+    package describing the wire format must not depend on how a service is
+    observed.
+    """
+    stamped = event
+    if event.meta.traceparent is None:
+        traceparent = OptionalTelemetry.current_traceparent()
+        if traceparent is not None:
+            stamped = event.model_copy(
+                update={
+                    "meta": event.meta.model_copy(update={"traceparent": traceparent})
+                }
+            )
     session.add(
         model(
-            id=event.meta.event_id,
-            topic=event.topic,
-            event=event.model_dump(mode="json"),
-            occurred_at=event.meta.occurred_at,
+            id=stamped.meta.event_id,
+            topic=stamped.topic,
+            event=stamped.model_dump(mode="json"),
+            occurred_at=stamped.meta.occurred_at,
         )
     )

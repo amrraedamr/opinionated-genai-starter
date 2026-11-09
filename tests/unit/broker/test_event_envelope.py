@@ -139,6 +139,7 @@ def test_a_dumped_event_carries_the_fields_a_consumer_reads() -> None:
         "occurred_at",
         "producer",
         "correlation_id",
+        "traceparent",
         "schema_version",
     }
 
