@@ -17,7 +17,7 @@ import pathlib
 import socket
 import urllib.parse
 from collections.abc import Iterator
-from typing import Any
+from typing import Protocol
 
 import pytest
 from pydantic_settings import SettingsConfigDict
@@ -145,11 +145,23 @@ def settings_class(*mixins: type) -> type[CoreSettings]:
     return Settings
 
 
+class MakeSettings(Protocol):
+    """Builds and registers settings composed from the mixins a test needs.
+
+    A protocol rather than `Any`, so a test that passes a mixin positionally
+    and a value by keyword is checked at the call site. The values really are
+    arbitrary — they are whatever the composed settings declare — but `object`
+    still forces them through the constructor rather than past it.
+    """
+
+    def __call__(self, *mixins: type, **values: object) -> CoreSettings: ...
+
+
 @pytest.fixture
-def make_settings() -> Any:
+def make_settings() -> MakeSettings:
     """Build and register settings for one test."""
 
-    def _make(*mixins: type, **values: Any) -> CoreSettings:
+    def _make(*mixins: type, **values: object) -> CoreSettings:
         values.setdefault("service_name", "test-service")
         return configure(settings_class(*mixins)(**values))
 
@@ -157,7 +169,7 @@ def make_settings() -> Any:
 
 
 @pytest.fixture
-def infra_settings(make_settings: Any) -> CoreSettings:
+def infra_settings(make_settings: MakeSettings) -> CoreSettings:
     """Settings pointing at the local containers."""
     from base.services.configuration.mixins import (
         BrokerSettingsMixin,

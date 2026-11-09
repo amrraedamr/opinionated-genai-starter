@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from typing import Any, final
+from typing import TYPE_CHECKING, Any, final
 
 from base.models.definitions.model import ReasoningEffort
 from base.models.definitions.telemetry import (
@@ -27,6 +27,10 @@ from base.services.rate_limiting.llm_budget import TokenBudget
 from base.services.tool_calling import Tool
 from base.tools.stream import StreamIterator
 from base.tools.tracing import OptionalTelemetry
+
+if TYPE_CHECKING:
+    from opentelemetry.trace import Span
+    from opentelemetry.util.types import AttributeValue
 
 
 class AbstractLLMService(ABC):
@@ -279,7 +283,7 @@ class AbstractLLMService(ABC):
         operation: str,
         prompt: RenderedPrompt | None,
         messages: Sequence[StoredMessage] | None,
-    ) -> Generator[Any]:
+    ) -> "Generator[Span | None]":
         """A span describing the call, following the GenAI conventions.
 
         Opened here rather than in each adapter: this is the boundary every
@@ -290,7 +294,7 @@ class AbstractLLMService(ABC):
         A trace is routinely shipped to a third party, and the prompt is the
         one thing in it that belongs to somebody else.
         """
-        attributes: dict[str, Any] = {
+        attributes: "dict[str, AttributeValue]" = {
             GENAI_SYSTEM: self.get_service_name(),
             GENAI_OPERATION: operation,
             GENAI_REQUEST_MODEL: self.model,
@@ -303,7 +307,9 @@ class AbstractLLMService(ABC):
         ) as span:
             yield span
 
-    def _record_genai(self, span: Any, result: Any) -> None:
+    def _record_genai(
+        self, span: "Span | None", result: LLMResult | ParsedResult[BaseModel]
+    ) -> None:
         """Put what the call cost on the span, once the provider has answered."""
         if span is None:
             return

@@ -7,6 +7,7 @@ from typing import Any, cast
 from base.models.definitions.errors import AuthErrors
 from base.models.definitions.tenancy import TenantId
 from base.models.definitions.tokens import TokenType
+from base.models.view_models import JSONObject
 from base.services.auth.models import AccessToken, Principal, RefreshToken, TokenPair
 from base.services.common.meta import Singleton
 from base.services.configuration import settings_for
@@ -110,7 +111,7 @@ class TokenVerifier(metaclass=Singleton):
             else None
         )
 
-    def _tenant_of(self, payload: dict[str, Any]) -> TenantId | None:
+    def _tenant_of(self, payload: JSONObject) -> TenantId | None:
         """The tenant a token names, read only where this service opted in."""
         tenancy = self._tenancy
         if tenancy is None or not tenancy.tenancy_enabled:

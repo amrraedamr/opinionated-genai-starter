@@ -26,7 +26,7 @@ from base.services.configuration.mixins import (
 from base.services.llm.anthropic import AnthropicService
 from base.services.llm.gemini import GeminiService
 from base.services.llm.openai import OpenAIService
-from tests.conftest import credential
+from tests.conftest import MakeSettings, credential
 from tests.fakes import build_prompt, build_tool
 
 BUDGET: int = 2048
@@ -57,7 +57,7 @@ def gateway(model: str, provider: ProviderType, **extra: Any) -> ModelConfigurat
 
 
 @pytest.mark.live
-async def test_the_responses_surface_answers(make_settings: Any) -> None:
+async def test_the_responses_surface_answers(make_settings: MakeSettings) -> None:
     make_settings(LLMSettingsMixin, OpenAILLMSettingsMixin)
     service = OpenAIService(
         gateway(OPENAI_MODEL, ProviderType.OPENAI, supports_responses_api=True),
@@ -75,7 +75,9 @@ async def test_the_responses_surface_answers(make_settings: Any) -> None:
 
 
 @pytest.mark.live
-async def test_the_chat_completions_surface_answers(make_settings: Any) -> None:
+async def test_the_chat_completions_surface_answers(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(LLMSettingsMixin, OpenAILLMSettingsMixin)
     service = OpenAIService(
         gateway(OPENAI_MODEL, ProviderType.OPENAI, supports_responses_api=False),
@@ -93,7 +95,7 @@ async def test_the_chat_completions_surface_answers(make_settings: Any) -> None:
 
 @pytest.mark.live
 async def test_the_responses_surface_accepts_the_maximum_effort(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """Accepted here and rejected on Chat Completions, by the provider's rules."""
     make_settings(LLMSettingsMixin, OpenAILLMSettingsMixin)
@@ -112,7 +114,9 @@ async def test_the_responses_surface_accepts_the_maximum_effort(
 
 
 @pytest.mark.live
-async def test_a_cache_hint_is_accepted_by_the_gateway(make_settings: Any) -> None:
+async def test_a_cache_hint_is_accepted_by_the_gateway(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(LLMSettingsMixin, OpenAILLMSettingsMixin)
     service = OpenAIService(
         gateway(OPENAI_MODEL, ProviderType.OPENAI, supports_responses_api=True),
@@ -130,7 +134,7 @@ async def test_a_cache_hint_is_accepted_by_the_gateway(make_settings: Any) -> No
 
 @pytest.mark.live
 async def test_a_parsed_call_returns_the_schema_it_asked_for(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(LLMSettingsMixin, OpenAILLMSettingsMixin)
     service = OpenAIService(
@@ -149,7 +153,9 @@ async def test_a_parsed_call_returns_the_schema_it_asked_for(
 
 
 @pytest.mark.live
-async def test_a_tool_is_offered_and_can_be_asked_for(make_settings: Any) -> None:
+async def test_a_tool_is_offered_and_can_be_asked_for(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(LLMSettingsMixin, OpenAILLMSettingsMixin)
     service = OpenAIService(
         gateway(OPENAI_MODEL, ProviderType.OPENAI, supports_responses_api=True),
@@ -169,7 +175,9 @@ async def test_a_tool_is_offered_and_can_be_asked_for(make_settings: Any) -> Non
 
 
 @pytest.mark.live
-async def test_anthropics_native_messages_api_answers(make_settings: Any) -> None:
+async def test_anthropics_native_messages_api_answers(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(LLMSettingsMixin, AnthropicSettingsMixin)
     service = AnthropicService(
         gateway(ANTHROPIC_MODEL, ProviderType.ANTHROPIC), _key="live-anthropic"
@@ -186,7 +194,9 @@ async def test_anthropics_native_messages_api_answers(make_settings: Any) -> Non
 
 
 @pytest.mark.live
-async def test_anthropic_returns_the_schema_it_was_given(make_settings: Any) -> None:
+async def test_anthropic_returns_the_schema_it_was_given(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(LLMSettingsMixin, AnthropicSettingsMixin)
     service = AnthropicService(
         gateway(ANTHROPIC_MODEL, ProviderType.ANTHROPIC), _key="live-anthropic-parse"
@@ -202,7 +212,7 @@ async def test_anthropic_returns_the_schema_it_was_given(make_settings: Any) -> 
 
 
 @pytest.mark.live
-async def test_gemini_answers(make_settings: Any) -> None:
+async def test_gemini_answers(make_settings: MakeSettings) -> None:
     make_settings(LLMSettingsMixin, GeminiSettingsMixin)
     service = GeminiService(
         gateway(GEMINI_MODEL, ProviderType.GEMINI), _key="live-gemini"
@@ -219,7 +229,9 @@ async def test_gemini_answers(make_settings: Any) -> None:
 
 
 @pytest.mark.live
-async def test_gemini_returns_the_schema_it_was_given(make_settings: Any) -> None:
+async def test_gemini_returns_the_schema_it_was_given(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(LLMSettingsMixin, GeminiSettingsMixin)
     service = GeminiService(
         gateway(GEMINI_MODEL, ProviderType.GEMINI), _key="live-gemini-parse"

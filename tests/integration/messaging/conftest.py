@@ -17,6 +17,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from base.services.common.meta import purge_all
 from contracts.events import Event
+from tests.conftest import CoreSettings
 
 
 class MessagingBase(DeclarativeBase):
@@ -88,7 +89,7 @@ def _fresh_singletons() -> Iterator[None]:
 
 
 @pytest.fixture
-async def messaging_tables(infra_settings: Any) -> AsyncIterator[Any]:
+async def messaging_tables(infra_settings: CoreSettings) -> AsyncIterator[Any]:
     """An empty outbox and inbox, dropped again afterwards."""
     del infra_settings
     from base.services.sql.service import SQLService

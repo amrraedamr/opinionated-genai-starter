@@ -18,10 +18,11 @@ from base.services.configuration.mixins import (
 )
 from base.services.nosql import AbstractNoSQLService
 from base.services.nosql.mongodb import MongoDBService
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def mongo_only(make_settings: Any) -> Any:
+def mongo_only(make_settings: MakeSettings) -> Any:
     """Settings composed of the Mongo mixin and nothing else."""
     return make_settings(
         MongoSettingsMixin, mongodb_host="db:27017", mongodb_database="app"
@@ -38,7 +39,9 @@ def test_no_embedding_setting_exists_on_a_mongo_only_service(mongo_only: Any) ->
     assert not hasattr(get_settings(), "azure_openai_embedding_dimensions")
 
 
-def test_the_embedding_mixin_would_have_supplied_that_field(make_settings: Any) -> None:
+def test_the_embedding_mixin_would_have_supplied_that_field(
+    make_settings: MakeSettings,
+) -> None:
     """Names the field the service used to require, so the pin cannot rot."""
     make_settings(
         AzureOpenAIEmbeddingSettingsMixin,

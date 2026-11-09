@@ -17,6 +17,7 @@ import pytest
 
 from base.services.cache import AbstractCacheService
 from base.services.common.meta import purge_all
+from tests.conftest import CoreSettings
 
 BACKENDS = [
     pytest.param("memory", id="memory"),
@@ -74,7 +75,7 @@ async def cache(request: pytest.FixtureRequest) -> AsyncIterator[AbstractCacheSe
 
 
 @pytest.fixture
-async def redis_cache(infra_settings: Any) -> AsyncIterator[Any]:
+async def redis_cache(infra_settings: CoreSettings) -> AsyncIterator[Any]:
     """The Redis cache alone, for behaviour the in-process one cannot show."""
     del infra_settings
     from base.clients.redis_client import RedisClient

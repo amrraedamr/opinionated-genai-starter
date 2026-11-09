@@ -29,6 +29,7 @@ from base.models.orm import SerializableMixin, TimestampMixin
 from base.services.common.meta import KeyedSingleton, Singleton, purge_all
 from base.services.sql.service import SQLService
 from base.services.store.sql import SQLStore
+from tests.conftest import CoreSettings
 
 
 def _abandon_engines() -> None:
@@ -80,7 +81,7 @@ class WidgetStore(SQLStore[Any]):
 
 
 @pytest.fixture
-def widget(infra_settings: Any, unique: str) -> Iterator[type[Any]]:
+def widget(infra_settings: CoreSettings, unique: str) -> Iterator[type[Any]]:
     """The model under test, with its table created and then dropped."""
     model = build_widget_model(f"widget_{unique}")
     service = SQLService()

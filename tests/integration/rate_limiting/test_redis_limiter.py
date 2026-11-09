@@ -8,7 +8,6 @@ limiter object and showing it inherits what the first already spent.
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
 
 import pytest
 
@@ -17,6 +16,7 @@ from base.models.definitions.rate_limiting import RateLimitPolicy
 from base.services.common.meta import Singleton
 from base.services.rate_limiting import WINDOW_SECONDS
 from base.services.rate_limiting.redis import RedisRateLimiter
+from tests.conftest import CoreSettings
 
 pytestmark = pytest.mark.integration
 
@@ -35,7 +35,7 @@ def another_replica() -> RedisRateLimiter:
 
 
 @pytest.fixture
-async def limiter(infra_settings: Any) -> AsyncIterator[RedisRateLimiter]:
+async def limiter(infra_settings: CoreSettings) -> AsyncIterator[RedisRateLimiter]:
     del infra_settings
     instance = another_replica()
     for policy in RateLimitPolicy:

@@ -7,19 +7,18 @@ returns are pinned here, against doubles rather than a server. What a real
 emulator does with those calls is covered by `tests/integration/nosql`.
 """
 
-from typing import Any
-
 import pytest
 from azure.cosmos import exceptions
 
 from base.models.view_models.exceptions.nosql import NoSqlError, NoSqlUnexpectedError
 from base.services.configuration.mixins import CosmosSettingsMixin
 from base.services.nosql.cosmosdb import CosmosDBService
+from tests.conftest import MakeSettings
 from tests.unit.nosql.cosmos_doubles import AsyncFakeContainer, FakeContainer
 
 
 @pytest.fixture
-def service(make_settings: Any) -> CosmosDBService:
+def service(make_settings: MakeSettings) -> CosmosDBService:
     make_settings(
         CosmosSettingsMixin,
         azure_cosmos_account_uri="https://account.documents.azure.com",

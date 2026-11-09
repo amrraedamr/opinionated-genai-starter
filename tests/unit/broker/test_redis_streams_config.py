@@ -15,10 +15,11 @@ from base.services.configuration.mixins import (
     RedisSettingsMixin,
 )
 from contracts.events import Event
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def broker_settings(make_settings: Any) -> Any:
+def broker_settings(make_settings: MakeSettings) -> Any:
     return make_settings(
         BrokerSettingsMixin,
         RedisSettingsMixin,

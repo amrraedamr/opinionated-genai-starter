@@ -12,6 +12,7 @@ import pytest
 
 from base.clients.nosql.mongodb import MongoDBClient
 from base.services.configuration.mixins import MongoSettingsMixin
+from tests.conftest import MakeSettings
 
 
 class RecordingDriver:
@@ -43,7 +44,7 @@ def driver(monkeypatch: pytest.MonkeyPatch) -> RecordingDriver:
 
 
 @pytest.fixture
-def configured(make_settings: Any) -> Any:
+def configured(make_settings: MakeSettings) -> Any:
     """Settings a Mongo client can be built from."""
     return make_settings(
         MongoSettingsMixin,

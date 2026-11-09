@@ -24,6 +24,7 @@ from base.services.configuration.mixins import (
     OpenAILLMSettingsMixin,
 )
 from base.tools.errors import MissingSettingsError
+from tests.conftest import MakeSettings
 
 LLM_MIXINS = (
     OpenAILLMSettingsMixin,
@@ -66,7 +67,7 @@ EMBEDDING_VALUES: dict[str, Any] = {
 
 
 def test_openai_configuration_is_built_from_the_openai_settings(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*LLM_MIXINS, **LLM_VALUES)
     config = ModelConfigurations.get_default_for_provider(ProviderType.OPENAI)
@@ -78,7 +79,7 @@ def test_openai_configuration_is_built_from_the_openai_settings(
 
 
 def test_azure_openai_configuration_carries_the_deployment_and_api_version(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*LLM_MIXINS, **LLM_VALUES)
     config = ModelConfigurations.get_default_for_provider(ProviderType.AZURE_OPENAI)
@@ -88,7 +89,7 @@ def test_azure_openai_configuration_carries_the_deployment_and_api_version(
 
 
 def test_anthropic_configuration_is_built_from_the_anthropic_settings(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*LLM_MIXINS, **LLM_VALUES)
     config = ModelConfigurations.get_default_for_provider(ProviderType.ANTHROPIC)
@@ -101,7 +102,7 @@ def test_anthropic_configuration_is_built_from_the_anthropic_settings(
 
 
 def test_gemini_configuration_is_built_from_the_gemini_settings(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*LLM_MIXINS, **LLM_VALUES)
     config = ModelConfigurations.get_default_for_provider(ProviderType.GEMINI)
@@ -123,7 +124,7 @@ def test_gemini_configuration_is_built_from_the_gemini_settings(
     ],
 )
 def test_every_supported_provider_gets_the_same_retry_defaults(
-    make_settings: Any, provider: ProviderType
+    make_settings: MakeSettings, provider: ProviderType
 ) -> None:
     make_settings(*LLM_MIXINS, **LLM_VALUES)
     config = ModelConfigurations.get_default_for_provider(provider)
@@ -133,7 +134,7 @@ def test_every_supported_provider_gets_the_same_retry_defaults(
 
 
 def test_an_empty_setting_becomes_none_rather_than_an_empty_string(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*LLM_MIXINS)
     config = ModelConfigurations.get_default_for_provider(ProviderType.OPENAI)
@@ -153,7 +154,7 @@ def test_an_empty_setting_becomes_none_rather_than_an_empty_string(
     ],
 )
 def test_a_provider_with_no_branch_is_refused_by_name(
-    make_settings: Any, provider: ProviderType
+    make_settings: MakeSettings, provider: ProviderType
 ) -> None:
     make_settings(*LLM_MIXINS, **LLM_VALUES)
     with pytest.raises(
@@ -163,7 +164,7 @@ def test_a_provider_with_no_branch_is_refused_by_name(
 
 
 def test_a_service_that_never_composed_the_provider_mixin_is_told_which_one(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(OpenAILLMSettingsMixin, **{"openai_llm_model": "gpt-5"})
     with pytest.raises(MissingSettingsError, match="SupportsAnthropicConfig"):
@@ -171,7 +172,7 @@ def test_a_service_that_never_composed_the_provider_mixin_is_told_which_one(
 
 
 def test_openai_embedding_configuration_carries_its_batch_size_and_dimensions(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*EMBEDDING_MIXINS, **EMBEDDING_VALUES)
     config = EmbeddingConfigurations.get_default_for_provider(ProviderType.OPENAI)
@@ -182,7 +183,7 @@ def test_openai_embedding_configuration_carries_its_batch_size_and_dimensions(
 
 
 def test_azure_embedding_configuration_carries_the_deployment_and_api_version(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(*EMBEDDING_MIXINS, **EMBEDDING_VALUES)
     config = EmbeddingConfigurations.get_default_for_provider(ProviderType.AZURE_OPENAI)
@@ -196,7 +197,7 @@ def test_azure_embedding_configuration_carries_the_deployment_and_api_version(
     "provider", [ProviderType.ANTHROPIC, ProviderType.GEMINI, ProviderType.OLLAMA]
 )
 def test_embeddings_refuse_a_provider_with_no_branch(
-    make_settings: Any, provider: ProviderType
+    make_settings: MakeSettings, provider: ProviderType
 ) -> None:
     make_settings(*EMBEDDING_MIXINS, **EMBEDDING_VALUES)
     with pytest.raises(ValueError, match="Unsupported provider type"):

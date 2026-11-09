@@ -12,9 +12,13 @@ module that raises.
 
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from base.tools.errors import MissingExtraError
+
+if TYPE_CHECKING:
+    from opentelemetry.trace import Span
+    from opentelemetry.util.types import AttributeValue
 
 try:
     from base.services.telemetry import Telemetry
@@ -36,8 +40,8 @@ class OptionalTelemetry:
         traceparent: str | None,
         *,
         kind: str = "internal",
-        attributes: Mapping[str, Any] | None = None,
-    ) -> Generator[Any]:
+        attributes: "Mapping[str, AttributeValue] | None" = None,
+    ) -> "Generator[Span | None]":
         """A span continuing `traceparent`, or nothing at all."""
         if not _AVAILABLE:
             yield None

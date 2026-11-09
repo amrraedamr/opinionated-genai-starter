@@ -38,6 +38,7 @@ from base.services.common.meta import purge_all
 from base.services.configuration.mixins import KeyVaultSettingsMixin
 from base.services.keyvault import AbstractKeyVaultService
 from base.services.keyvault.azure_keyvault import AzureKeyVaultService
+from tests.conftest import MakeSettings
 
 VAULT_URL = "https://contoso.vault.azure.net/"
 
@@ -136,7 +137,7 @@ class AsyncFakeSecretClient(FakeSecretClient):
 
 
 def build(
-    make_settings: Any,
+    make_settings: MakeSettings,
     error: Exception | None = None,
     **settings: Any,
 ) -> tuple[AzureKeyVaultService, FakeSecretClient]:
@@ -150,33 +151,37 @@ def build(
     return service, client
 
 
-def test_the_service_implements_the_neutral_contract(make_settings: Any) -> None:
+def test_the_service_implements_the_neutral_contract(
+    make_settings: MakeSettings,
+) -> None:
     service, _ = build(make_settings)
     assert isinstance(service, AbstractKeyVaultService)
     assert service.get_service_name() == "Azure Key Vault"
 
 
-def test_a_bare_name_is_prefixed_with_the_system_tag(make_settings: Any) -> None:
+def test_a_bare_name_is_prefixed_with_the_system_tag(
+    make_settings: MakeSettings,
+) -> None:
     service, _ = build(make_settings)
     assert service.format_secret_name("db-password") == "appconfig-db-password"
 
 
 def test_a_name_that_already_carries_the_system_tag_is_left_alone(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     assert service.format_secret_name("appconfig-db") == "appconfig-db"
 
 
 def test_a_name_that_already_carries_the_model_tag_is_left_alone(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     assert service.format_secret_name("modelconfig-gpt5") == "modelconfig-gpt5"
 
 
 def test_the_tags_come_from_settings_rather_than_being_hard_coded(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(
         make_settings, system_keyvault_tag="sys", model_keyvault_tag="mdl"
@@ -186,7 +191,7 @@ def test_the_tags_come_from_settings_rather_than_being_hard_coded(
 
 
 def test_a_tagged_name_outside_the_allowed_prefix_is_refused(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     with pytest.raises(ValueError, match="does not start with the allowed prefix"):
@@ -194,7 +199,7 @@ def test_a_tagged_name_outside_the_allowed_prefix_is_refused(
 
 
 def test_that_refusal_is_a_plain_value_error_not_a_provider_error(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """It makes no network call, so wrapping it in the vault family would say
     the vault failed when the caller's own argument was wrong."""
@@ -205,14 +210,14 @@ def test_that_refusal_is_a_plain_value_error_not_a_provider_error(
     assert not isinstance(caught.value, KeyVaultError)
 
 
-def test_name_formatting_is_not_retry_decorated(make_settings: Any) -> None:
+def test_name_formatting_is_not_retry_decorated(make_settings: MakeSettings) -> None:
     """Nothing to retry, so repeating it would only repeat the same refusal."""
     assert not hasattr(AzureKeyVaultService.format_secret_name, "__wrapped__")
     assert not inspect.iscoroutinefunction(AzureKeyVaultService.format_secret_name)
 
 
 def test_an_allowed_prefix_that_matches_lets_the_name_through(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     assert service.format_secret_name("appconfig-db", allowed_prefix="appconfig") == (
@@ -221,7 +226,7 @@ def test_an_allowed_prefix_that_matches_lets_the_name_through(
 
 
 def test_reading_a_secret_asks_the_vault_for_the_formatted_name(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, client = build(make_settings)
     assert service.get_secret("db-password") == "value-of-appconfig-db-password"
@@ -229,7 +234,7 @@ def test_reading_a_secret_asks_the_vault_for_the_formatted_name(
 
 
 def test_writing_a_secret_returns_the_version_the_vault_assigned(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, client = build(make_settings)
     assert service.upsert_secret("db-password", "hunter2") == "v7"
@@ -237,7 +242,7 @@ def test_writing_a_secret_returns_the_version_the_vault_assigned(
 
 
 def test_writing_can_be_told_to_use_the_name_exactly_as_given(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, client = build(make_settings)
     service.upsert_secret("raw-name", "value", format_name=False)
@@ -245,7 +250,7 @@ def test_writing_can_be_told_to_use_the_name_exactly_as_given(
 
 
 def test_a_vault_that_returns_no_version_is_treated_as_a_failure(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, client = build(make_settings)
 
@@ -257,14 +262,16 @@ def test_a_vault_that_returns_no_version_is_treated_as_a_failure(
         service.upsert_secret("db", "v")
 
 
-def test_removing_a_secret_addresses_the_formatted_name(make_settings: Any) -> None:
+def test_removing_a_secret_addresses_the_formatted_name(
+    make_settings: MakeSettings,
+) -> None:
     service, client = build(make_settings)
     service.remove_secret("db-password")
     assert client.deleted == ["appconfig-db-password"]
 
 
 def test_listing_returns_the_neutral_shape_rather_than_the_sdk_type(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     listed = list(service.list_secrets())
@@ -276,7 +283,7 @@ def test_listing_returns_the_neutral_shape_rather_than_the_sdk_type(
 
 
 def test_a_secret_whose_enabled_flag_is_absent_is_treated_as_enabled(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     listed = list(service.list_secrets())
@@ -285,7 +292,7 @@ def test_a_secret_whose_enabled_flag_is_absent_is_treated_as_enabled(
 
 
 def test_reading_several_secrets_fetches_each_one_on_its_own(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, client = build(make_settings)
     assert service.get_secrets(["a", "b"]) == {
@@ -304,7 +311,9 @@ def test_reading_several_secrets_fetches_each_one_on_its_own(
     ],
 )
 def test_an_sdk_error_becomes_the_matching_vault_error(
-    make_settings: Any, sdk_error: AzureError, domain_error: type[KeyVaultError]
+    make_settings: MakeSettings,
+    sdk_error: AzureError,
+    domain_error: type[KeyVaultError],
 ) -> None:
     service, _ = build(make_settings, error=sdk_error)
     with pytest.raises(domain_error) as caught:
@@ -313,7 +322,7 @@ def test_an_sdk_error_becomes_the_matching_vault_error(
 
 
 def test_a_transient_failure_ends_as_a_retry_exhausted_vault_error(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -325,7 +334,7 @@ def test_a_transient_failure_ends_as_a_retry_exhausted_vault_error(
 
 
 def test_a_throttled_vault_ends_as_a_rate_limit_error(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -341,7 +350,7 @@ def test_a_throttled_vault_ends_as_a_rate_limit_error(
 
 
 def test_a_failed_vault_ends_as_a_server_error(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -352,7 +361,7 @@ def test_a_failed_vault_ends_as_a_server_error(
 
 
 def test_something_the_sdk_never_promised_becomes_an_unexpected_vault_error(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings, error=TypeError("surprise"))
     with pytest.raises(KeyVaultUnexpectedError) as caught:
@@ -361,7 +370,7 @@ def test_something_the_sdk_never_promised_becomes_an_unexpected_vault_error(
 
 
 def test_a_retryable_failure_is_tried_the_handlers_full_budget(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -372,7 +381,7 @@ def test_a_retryable_failure_is_tried_the_handlers_full_budget(
     assert len(client.requested) == service._error_handler.DEFAULT_RETRIES + 1
 
 
-def test_an_unretryable_failure_is_tried_once(make_settings: Any) -> None:
+def test_an_unretryable_failure_is_tried_once(make_settings: MakeSettings) -> None:
     service, client = build(make_settings, error=ResourceNotFoundError("gone"))
     with pytest.raises(KeyVaultNotFoundError):
         service.get_secret("db")
@@ -397,14 +406,14 @@ def test_listing_is_a_generator_expression_and_so_is_not_retry_decorated() -> No
 
 
 async def test_reading_a_secret_asynchronously_formats_the_name_too(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     assert await service.aget_secret("db") == "value-of-appconfig-db"
 
 
 async def test_writing_and_removing_asynchronously_reach_the_same_vault(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     assert await service.aupsert_secret("db", "v") == "v7"
@@ -413,7 +422,7 @@ async def test_writing_and_removing_asynchronously_reach_the_same_vault(
 
 
 async def test_reading_several_secrets_concurrently_keeps_them_in_order(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     assert await service.aget_secrets(["a", "b", "c"]) == {
@@ -424,7 +433,7 @@ async def test_reading_several_secrets_concurrently_keeps_them_in_order(
 
 
 async def test_reading_several_secrets_one_at_a_time_is_also_offered(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     result = await service.aget_secrets(["a", "b"], concurrent=False)
@@ -436,7 +445,7 @@ async def test_reading_several_secrets_one_at_a_time_is_also_offered(
 
 
 async def test_listing_asynchronously_returns_the_neutral_shape(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     listed = [item async for item in service.alist_secrets()]
@@ -446,7 +455,9 @@ async def test_listing_asynchronously_returns_the_neutral_shape(
     ]
 
 
-async def test_an_async_sdk_error_becomes_a_vault_error(make_settings: Any) -> None:
+async def test_an_async_sdk_error_becomes_a_vault_error(
+    make_settings: MakeSettings,
+) -> None:
     error = ResourceNotFoundError("gone")
     service, _ = build(make_settings, error=error)
     with pytest.raises(KeyVaultNotFoundError) as caught:
@@ -454,7 +465,9 @@ async def test_an_async_sdk_error_becomes_a_vault_error(make_settings: Any) -> N
     assert caught.value.provider_error is error
 
 
-def test_closing_releases_the_client_and_the_credential(make_settings: Any) -> None:
+def test_closing_releases_the_client_and_the_credential(
+    make_settings: MakeSettings,
+) -> None:
     service, _ = build(make_settings)
     closed: list[str] = []
 
@@ -473,7 +486,7 @@ def test_closing_releases_the_client_and_the_credential(make_settings: Any) -> N
 
 
 async def test_closing_asynchronously_releases_both_async_halves(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     closed: list[str] = []
@@ -492,7 +505,7 @@ async def test_closing_asynchronously_releases_both_async_halves(
     assert service._async_client is None
 
 
-def test_the_context_manager_closes_on_the_way_out(make_settings: Any) -> None:
+def test_the_context_manager_closes_on_the_way_out(make_settings: MakeSettings) -> None:
     service, _ = build(make_settings)
     with service as entered:
         assert entered is service
@@ -500,7 +513,7 @@ def test_the_context_manager_closes_on_the_way_out(make_settings: Any) -> None:
 
 
 async def test_the_async_context_manager_closes_on_the_way_out(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     async with service as entered:

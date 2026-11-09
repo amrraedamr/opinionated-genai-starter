@@ -6,12 +6,12 @@ the whole of their contract.
 """
 
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 
 from base.clients.redis_client import RedisClient
 from base.services.common.meta import purge_all
+from tests.conftest import CoreSettings, MakeSettings
 
 pytestmark = pytest.mark.integration
 
@@ -23,7 +23,7 @@ def _fresh_singletons() -> Iterator[None]:
     purge_all()
 
 
-async def test_the_server_answers_an_async_ping(infra_settings: Any) -> None:
+async def test_the_server_answers_an_async_ping(infra_settings: CoreSettings) -> None:
     del infra_settings
     client = RedisClient()
     try:
@@ -32,7 +32,7 @@ async def test_the_server_answers_an_async_ping(infra_settings: Any) -> None:
         await client.close_all()
 
 
-def test_the_server_answers_a_sync_ping(infra_settings: Any) -> None:
+def test_the_server_answers_a_sync_ping(infra_settings: CoreSettings) -> None:
     del infra_settings
     client = RedisClient()
     try:
@@ -41,7 +41,9 @@ def test_the_server_answers_a_sync_ping(infra_settings: Any) -> None:
         client.close()
 
 
-async def test_both_clients_see_the_same_data(infra_settings: Any, unique: str) -> None:
+async def test_both_clients_see_the_same_data(
+    infra_settings: CoreSettings, unique: str
+) -> None:
     del infra_settings
     client = RedisClient()
     key = f"test-client-{unique}"
@@ -53,7 +55,7 @@ async def test_both_clients_see_the_same_data(infra_settings: Any, unique: str) 
         await client.close_all()
 
 
-async def test_a_ping_to_a_closed_port_is_false(make_settings: Any) -> None:
+async def test_a_ping_to_a_closed_port_is_false(make_settings: MakeSettings) -> None:
     """A health probe reports down rather than raising the client's error."""
     from base.services.configuration.mixins import RedisSettingsMixin
 
@@ -66,7 +68,7 @@ async def test_a_ping_to_a_closed_port_is_false(make_settings: Any) -> None:
         await client.close_all()
 
 
-async def test_closing_drops_the_pools(infra_settings: Any) -> None:
+async def test_closing_drops_the_pools(infra_settings: CoreSettings) -> None:
     del infra_settings
     client = RedisClient()
     await client.aping()
@@ -76,7 +78,9 @@ async def test_closing_drops_the_pools(infra_settings: Any) -> None:
     assert client._sync_pool is None
 
 
-async def test_a_closed_client_reconnects_on_the_next_use(infra_settings: Any) -> None:
+async def test_a_closed_client_reconnects_on_the_next_use(
+    infra_settings: CoreSettings,
+) -> None:
     del infra_settings
     client = RedisClient()
     await client.aping()

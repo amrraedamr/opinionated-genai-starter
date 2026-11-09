@@ -17,7 +17,7 @@ telling it the user has started talking rather than asking it to stop.
 
 import json
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from base.models.definitions.model import FinishReason, ProviderType
 from base.models.definitions.realtime_session import RealtimeModality
@@ -46,6 +46,7 @@ try:
         AudioTranscriptionConfig,
         Blob,
         Content,
+        FunctionDeclarationDict,
         FunctionResponse,
         HttpOptions,
         LiveConnectConfig,
@@ -60,7 +61,16 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     ) from exc
 
 if TYPE_CHECKING:
+    from contextlib import AbstractAsyncContextManager
+
     from google.genai.live import AsyncSession
+    from google.genai.types import (
+        Content as ModelTurn,
+    )
+    from google.genai.types import (
+        LiveServerContent,
+        LiveServerMessage,
+    )
 
 INPUT_SAMPLE_RATE_HZ: Final = 16_000
 """What Gemini listens at. OpenAI listens at 24 kHz; neither resamples."""
@@ -80,13 +90,13 @@ class GeminiLiveSession(AbstractRealtimeSession):
         self,
         session: RealtimeSessionConfig,
         config: ModelConfigurations | None = None,
-        tool_schemas: list[dict[str, Any]] | None = None,
+        tool_schemas: "list[FunctionDeclarationDict] | None" = None,
     ) -> None:
         self._session = session
         self._config = config
         self._tool_schemas = tool_schemas or []
         self._logger = ConsoleLoggerService()
-        self._manager: Any = None
+        self._manager: "AbstractAsyncContextManager[AsyncSession] | None" = None
         self._live: AsyncSession | None = None
         self._tool_names: dict[str, str] = {}
         """Which function each outstanding call belongs to.
@@ -153,7 +163,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
                 )
             )
         if self._tool_schemas:
-            config.tools = [{"function_declarations": self._tool_schemas}]  # type: ignore[list-item]
+            config.tools = [{"function_declarations": self._tool_schemas}]
         return config
 
     async def asend(self, value: RealtimeInput) -> None:
@@ -186,7 +196,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
             for event in self._translate(message):
                 yield event
 
-    def _translate(self, message: Any) -> list[RealtimeOutput]:
+    def _translate(self, message: "LiveServerMessage") -> list[RealtimeOutput]:
         events: list[RealtimeOutput] = []
         content = message.server_content
 
@@ -221,7 +231,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         return events
 
     @staticmethod
-    def _parts_of(model_turn: Any) -> list[RealtimeOutput]:
+    def _parts_of(model_turn: "ModelTurn") -> list[RealtimeOutput]:
         """Text and audio arrive as parts of one turn, not separate events."""
         events: list[RealtimeOutput] = []
         for part in model_turn.parts or []:
@@ -232,7 +242,9 @@ class GeminiLiveSession(AbstractRealtimeSession):
         return events
 
     @staticmethod
-    def _turn_end(message: Any, content: Any) -> RealtimeTurnEnd:
+    def _turn_end(
+        message: "LiveServerMessage", content: "LiveServerContent"
+    ) -> RealtimeTurnEnd:
         usage = message.usage_metadata
         return RealtimeTurnEnd(
             finish_reason=FinishReason.OTHER

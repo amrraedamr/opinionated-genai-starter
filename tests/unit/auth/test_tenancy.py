@@ -31,13 +31,16 @@ from base.services.configuration.mixins import (
 from base.tools.errors import ErrorsException
 from base.tools.exception_handlers import AppExceptionHandler
 from base.tools.tenancy import TenantContext, current_tenant
+from tests.conftest import MakeSettings
 from tests.unit.auth.conftest import KeyPair
 
 ISSUER = "https://login.example.com/tenant/v2.0"
 AUDIENCE = "api://this-service"
 
 
-def _settings(make_settings: Any, keys: KeyPair, *mixins: type, **values: Any) -> Any:
+def _settings(
+    make_settings: MakeSettings, keys: KeyPair, *mixins: type, **values: Any
+) -> Any:
     return make_settings(
         TokenIssuingSettingsMixin,
         *mixins,
@@ -59,27 +62,29 @@ def test_the_default_claim_is_the_one_entra_id_issues() -> None:
 
 
 def test_a_service_that_did_not_opt_in_never_gets_a_tenant(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys)
     assert TokenVerifier().verify(_local_token(tid="acme")).tenant_id is None
 
 
 def test_composing_the_mixin_without_enabling_it_is_still_off(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin)
     assert TokenVerifier().verify(_local_token(tid="acme")).tenant_id is None
 
 
 def test_an_opted_in_service_reads_the_tenant_from_a_first_party_token(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     assert TokenVerifier().verify(_local_token(tid="acme")).tenant_id == "acme"
 
 
-def test_the_claim_name_is_configurable(make_settings: Any, keys: KeyPair) -> None:
+def test_the_claim_name_is_configurable(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
     _settings(
         make_settings,
         keys,
@@ -92,19 +97,21 @@ def test_the_claim_name_is_configurable(make_settings: Any, keys: KeyPair) -> No
 
 
 def test_a_token_naming_no_tenant_reads_as_none(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     assert TokenVerifier().verify(_local_token()).tenant_id is None
 
 
-def test_an_empty_tenant_claim_reads_as_none(make_settings: Any, keys: KeyPair) -> None:
+def test_an_empty_tenant_claim_reads_as_none(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     assert TokenVerifier().verify(_local_token(tid="")).tenant_id is None
 
 
 def test_a_numeric_tenant_claim_is_read_as_text(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     assert TokenVerifier().verify(_local_token(tid=42)).tenant_id == TenantId("42")
@@ -136,7 +143,7 @@ def _idp_verifier(other_keys: KeyPair) -> TokenVerifier:
     return verifier
 
 
-def _idp_settings(make_settings: Any, keys: KeyPair, **values: Any) -> Any:
+def _idp_settings(make_settings: MakeSettings, keys: KeyPair, **values: Any) -> Any:
     return _settings(
         make_settings,
         keys,
@@ -151,7 +158,7 @@ def _idp_settings(make_settings: Any, keys: KeyPair, **values: Any) -> Any:
 
 
 def test_an_opted_in_service_reads_the_tenant_from_an_idp_token(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys, tenancy_enabled=True)
     token = _idp_token(other_keys.private_pem, tid="contoso")
@@ -159,7 +166,7 @@ def test_an_opted_in_service_reads_the_tenant_from_an_idp_token(
 
 
 def test_an_idp_token_carrying_tid_gives_no_tenant_unless_opted_in(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """Entra ID sends `tid` on every token, so this is the case that matters."""
     _idp_settings(make_settings, keys)
@@ -182,7 +189,7 @@ def _app() -> FastAPI:
 
 
 def test_the_dependency_hands_a_route_the_callers_tenant(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     response = TestClient(_app()).get(
@@ -193,7 +200,7 @@ def test_the_dependency_hands_a_route_the_callers_tenant(
 
 
 def test_the_dependency_sets_the_tenant_context_for_what_runs_below_it(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     response = TestClient(_app()).get(
@@ -203,7 +210,7 @@ def test_the_dependency_sets_the_tenant_context_for_what_runs_below_it(
 
 
 def test_a_token_naming_no_tenant_is_refused_by_the_dependency(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     response = TestClient(_app()).get(
@@ -213,7 +220,7 @@ def test_a_token_naming_no_tenant_is_refused_by_the_dependency(
 
 
 def test_a_service_that_did_not_opt_in_is_refused_by_the_dependency(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     """A route asking for a tenant in a service with tenancy off is a mistake."""
     _settings(make_settings, keys)
@@ -224,7 +231,7 @@ def test_a_service_that_did_not_opt_in_is_refused_by_the_dependency(
 
 
 async def test_the_dependency_refuses_with_the_incomplete_token_error(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _settings(make_settings, keys, TenancySettingsMixin, tenancy_enabled=True)
     principal = TokenVerifier().verify(_local_token())

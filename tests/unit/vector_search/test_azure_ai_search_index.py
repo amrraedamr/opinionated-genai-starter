@@ -24,10 +24,11 @@ from azure.search.documents.indexes.models import (
 
 from base.services.configuration.mixins import AzureSearchSettingsMixin
 from base.services.vector_search.azure_ai_search import AzureAISearchService
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def service(make_settings: Any) -> AzureAISearchService:
+def service(make_settings: MakeSettings) -> AzureAISearchService:
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="https://account.search.windows.net",
@@ -142,7 +143,9 @@ def test_several_extra_fields_keep_their_order(
     assert [f.name for f in index.fields][-2:] == ["a", "b"]
 
 
-def test_the_field_names_follow_the_configured_settings(make_settings: Any) -> None:
+def test_the_field_names_follow_the_configured_settings(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="https://account.search.windows.net",
@@ -154,7 +157,9 @@ def test_the_field_names_follow_the_configured_settings(make_settings: Any) -> N
     assert [f.name for f in index.fields] == ["chunk_id", "embedding", "metadata"]
 
 
-def test_an_unset_endpoint_is_refused_at_construction(make_settings: Any) -> None:
+def test_an_unset_endpoint_is_refused_at_construction(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="",
@@ -165,7 +170,7 @@ def test_an_unset_endpoint_is_refused_at_construction(make_settings: Any) -> Non
 
 
 def test_an_unset_api_key_falls_back_to_the_deployments_own_identity(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """No key means a role assignment, as Cosmos has always allowed."""
     make_settings(
@@ -179,7 +184,7 @@ def test_an_unset_api_key_falls_back_to_the_deployments_own_identity(
 
 
 def test_a_configured_api_key_is_used_instead_of_an_identity(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         AzureSearchSettingsMixin,
@@ -191,7 +196,7 @@ def test_a_configured_api_key_is_used_instead_of_an_identity(
     assert client._managed_credential is None
 
 
-def test_the_async_clients_take_an_async_identity(make_settings: Any) -> None:
+def test_the_async_clients_take_an_async_identity(make_settings: MakeSettings) -> None:
     """A sync credential on an async client cannot be awaited closed."""
     make_settings(
         AzureSearchSettingsMixin,

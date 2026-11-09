@@ -19,6 +19,7 @@ from base.models.definitions.errors import AuthErrors
 from base.services.common.meta import purge_all, scope_id
 from base.tools.errors import ErrorsException
 from base.tools.exception_handlers import AppExceptionHandler
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +51,7 @@ def body(response: Any) -> dict[str, Any]:
 
 
 async def test_a_validation_error_names_every_field_that_failed(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -63,7 +64,7 @@ async def test_a_validation_error_names_every_field_that_failed(
 
 
 async def test_an_http_exception_keeps_its_own_status_and_detail(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -75,7 +76,7 @@ async def test_an_http_exception_keeps_its_own_status_and_detail(
 
 
 async def test_a_server_side_http_exception_is_still_reported_to_the_client(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -87,7 +88,7 @@ async def test_a_server_side_http_exception_is_still_reported_to_the_client(
 
 
 async def test_a_catalogued_error_answers_with_its_message_and_status(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -99,7 +100,7 @@ async def test_a_catalogued_error_answers_with_its_message_and_status(
 
 
 async def test_an_ad_hoc_error_answers_with_its_own_message_and_status(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -111,7 +112,7 @@ async def test_an_ad_hoc_error_answers_with_its_own_message_and_status(
 
 
 async def test_an_error_with_neither_message_nor_status_falls_back_to_five_hundred(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -121,7 +122,7 @@ async def test_an_error_with_neither_message_nor_status_falls_back_to_five_hundr
 
 
 async def test_an_unhandled_exception_shows_its_cause_outside_production(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -135,7 +136,7 @@ async def test_an_unhandled_exception_shows_its_cause_outside_production(
 
 
 async def test_an_unhandled_exception_says_nothing_specific_in_production(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="production")
     handler = AppExceptionHandler()
@@ -149,7 +150,7 @@ async def test_an_unhandled_exception_says_nothing_specific_in_production(
 
 
 async def test_the_debug_block_names_the_request_it_describes(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     handler = AppExceptionHandler()
@@ -162,7 +163,7 @@ async def test_the_debug_block_names_the_request_it_describes(
 
 
 async def test_the_debug_block_carries_the_current_scope_id(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     from uuid import UUID
 
@@ -176,7 +177,7 @@ async def test_the_debug_block_carries_the_current_scope_id(
 
 
 def test_a_request_outside_any_scope_reports_an_unknown_id(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     import contextvars
 
@@ -185,7 +186,9 @@ def test_a_request_outside_any_scope_reports_an_unknown_id(
     assert fresh.run(AppExceptionHandler._get_request_id) == "unknown"
 
 
-def test_a_request_inside_a_scope_reports_that_scopes_id(make_settings: Any) -> None:
+def test_a_request_inside_a_scope_reports_that_scopes_id(
+    make_settings: MakeSettings,
+) -> None:
     import contextvars
     from uuid import UUID
 
@@ -198,7 +201,9 @@ def test_a_request_inside_a_scope_reports_that_scopes_id(make_settings: Any) -> 
     assert contextvars.Context().run(inside) == str(UUID(int=99))
 
 
-async def test_the_debug_block_is_withheld_in_production(make_settings: Any) -> None:
+async def test_the_debug_block_is_withheld_in_production(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(environment="production")
     handler = AppExceptionHandler()
     response = await handler.handle_starlette_http_exception(
@@ -208,7 +213,7 @@ async def test_the_debug_block_is_withheld_in_production(make_settings: Any) -> 
 
 
 def test_registering_installs_a_handler_for_each_failure_kind(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(environment="local")
     app = FastAPI()
@@ -219,6 +224,8 @@ def test_registering_installs_a_handler_for_each_failure_kind(
     assert Exception in app.exception_handlers
 
 
-def test_the_handler_is_one_object_for_the_whole_process(make_settings: Any) -> None:
+def test_the_handler_is_one_object_for_the_whole_process(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(environment="local")
     assert AppExceptionHandler() is AppExceptionHandler()

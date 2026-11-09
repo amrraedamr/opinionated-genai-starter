@@ -7,8 +7,6 @@ starts cleanly, passes readiness and delivers nothing between containers.
 What is pinned here is that it does fail — and with which error.
 """
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -19,6 +17,7 @@ from base.services.configuration.mixins import (
     BrokerSettingsMixin,
     RedisSettingsMixin,
 )
+from tests.conftest import MakeSettings
 
 
 class UnknownTransportConfig:
@@ -30,12 +29,16 @@ class UnknownTransportConfig:
     broker_retry_backoff_seconds = 0.25
 
 
-def test_the_memory_setting_selects_the_in_process_broker(make_settings: Any) -> None:
+def test_the_memory_setting_selects_the_in_process_broker(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(BrokerSettingsMixin, broker="memory")
     assert isinstance(build_broker(), InMemoryBroker)
 
 
-def test_the_redis_setting_selects_the_streams_broker(make_settings: Any) -> None:
+def test_the_redis_setting_selects_the_streams_broker(
+    make_settings: MakeSettings,
+) -> None:
     from base.services.broker.redis_streams import RedisStreamsBroker
 
     make_settings(
@@ -47,13 +50,15 @@ def test_the_redis_setting_selects_the_streams_broker(make_settings: Any) -> Non
     assert isinstance(build_broker(), RedisStreamsBroker)
 
 
-def test_the_default_setting_selects_the_in_process_broker(make_settings: Any) -> None:
+def test_the_default_setting_selects_the_in_process_broker(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(BrokerSettingsMixin)
     assert isinstance(build_broker(), InMemoryBroker)
 
 
 def test_a_config_passed_in_is_used_instead_of_the_registered_settings(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(BrokerSettingsMixin, broker="memory")
     assert isinstance(
@@ -71,13 +76,13 @@ def test_an_unknown_transport_names_the_transports_this_build_supports() -> None
 
 
 def test_settings_refuse_an_unknown_transport_before_the_factory_sees_it(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     with pytest.raises(ValidationError):
         make_settings(BrokerSettingsMixin, broker="kafka")
 
 
-def test_every_enum_member_has_a_transport(make_settings: Any) -> None:
+def test_every_enum_member_has_a_transport(make_settings: MakeSettings) -> None:
     """No member may be added without a branch, which would fall through."""
     for backend in BrokerBackend:
         make_settings(
@@ -89,6 +94,8 @@ def test_every_enum_member_has_a_transport(make_settings: Any) -> None:
         assert build_broker() is not None
 
 
-def test_the_factory_hands_back_one_shared_instance(make_settings: Any) -> None:
+def test_the_factory_hands_back_one_shared_instance(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(BrokerSettingsMixin, broker="memory")
     assert build_broker() is build_broker()

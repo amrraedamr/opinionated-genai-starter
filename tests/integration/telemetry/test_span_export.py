@@ -17,12 +17,12 @@ import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 
 from base.services.configuration.mixins import TelemetrySettingsMixin
 from base.services.telemetry import Telemetry
+from tests.conftest import MakeSettings
 
 pytestmark = pytest.mark.integration
 
@@ -64,7 +64,7 @@ def arrived(service: str) -> bool:
 
 
 @pytest.fixture
-def exporting(make_settings: Any) -> Iterator[str]:
+def exporting(make_settings: MakeSettings) -> Iterator[str]:
     """A telemetry service exporting to the collector, under the module's name."""
     settings = make_settings(
         TelemetrySettingsMixin,
@@ -120,7 +120,7 @@ def test_the_collector_is_the_one_being_reached() -> None:
         pass
 
 
-async def test_a_disabled_service_exports_nothing(make_settings: Any) -> None:
+async def test_a_disabled_service_exports_nothing(make_settings: MakeSettings) -> None:
     """Off must mean off: no exporter, no span, nothing sent anywhere."""
     name = f"test-disabled-{uuid.uuid4().hex[:10]}"
     settings = make_settings(

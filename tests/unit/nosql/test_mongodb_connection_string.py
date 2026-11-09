@@ -16,16 +16,17 @@ from pymongo.uri_parser import parse_uri
 
 from base.clients.nosql.mongodb import MongoDBClient
 from base.services.configuration.mixins import MongoSettingsMixin
+from tests.conftest import MakeSettings
 
 
-def build(make_settings: Any, **values: Any) -> str:
+def build(make_settings: MakeSettings, **values: Any) -> str:
     """The connection string for a settings object carrying `values`."""
     make_settings(MongoSettingsMixin, **values)
     return MongoDBClient._build_connection_string()
 
 
 def test_a_server_without_credentials_gets_a_uri_with_no_userinfo(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     uri = build(make_settings, mongodb_host="localhost:27017")
     assert uri == "mongodb://localhost:27017/"
@@ -33,7 +34,7 @@ def test_a_server_without_credentials_gets_a_uri_with_no_userinfo(
 
 
 def test_the_driver_accepts_the_uri_built_for_an_unauthenticated_server(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     parsed = parse_uri(build(make_settings, mongodb_host="localhost:27017"))
     assert parsed["username"] is None
@@ -42,7 +43,7 @@ def test_the_driver_accepts_the_uri_built_for_an_unauthenticated_server(
 
 
 def test_a_username_and_password_round_trip_through_the_uri(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     parsed = parse_uri(
         build(
@@ -57,7 +58,7 @@ def test_a_username_and_password_round_trip_through_the_uri(
 
 
 def test_a_username_alone_produces_an_empty_password_the_driver_accepts(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     parsed = parse_uri(
         build(make_settings, mongodb_host="db:27017", mongodb_username="appuser")
@@ -79,7 +80,7 @@ def test_a_username_alone_produces_an_empty_password_the_driver_accepts(
     ],
 )
 def test_a_password_needing_escaping_survives_the_round_trip(
-    make_settings: Any, password: str
+    make_settings: MakeSettings, password: str
 ) -> None:
     uri = build(
         make_settings,
@@ -91,7 +92,7 @@ def test_a_password_needing_escaping_survives_the_round_trip(
 
 
 def test_a_username_needing_escaping_survives_the_round_trip(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     uri = build(
         make_settings,
@@ -103,7 +104,7 @@ def test_a_username_needing_escaping_survives_the_round_trip(
 
 
 def test_a_password_without_a_username_builds_a_uri_the_driver_refuses(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """Pins current behaviour: a password alone is not a usable configuration."""
     uri = build(make_settings, mongodb_host="db:27017", mongodb_password="pw")
@@ -112,7 +113,7 @@ def test_a_password_without_a_username_builds_a_uri_the_driver_refuses(
         parse_uri(uri)
 
 
-def test_custom_params_are_appended_after_the_host(make_settings: Any) -> None:
+def test_custom_params_are_appended_after_the_host(make_settings: MakeSettings) -> None:
     uri = build(
         make_settings,
         mongodb_host="db:27017",
@@ -122,7 +123,9 @@ def test_custom_params_are_appended_after_the_host(make_settings: Any) -> None:
     assert parse_uri(uri)["options"]["replicaSet"] == "rs0"
 
 
-def test_custom_params_survive_alongside_credentials(make_settings: Any) -> None:
+def test_custom_params_survive_alongside_credentials(
+    make_settings: MakeSettings,
+) -> None:
     parsed = parse_uri(
         build(
             make_settings,
@@ -136,7 +139,7 @@ def test_custom_params_survive_alongside_credentials(make_settings: Any) -> None
     assert parsed["options"]["authSource"] == "admin"
 
 
-def test_the_base_path_chooses_the_scheme(make_settings: Any) -> None:
+def test_the_base_path_chooses_the_scheme(make_settings: MakeSettings) -> None:
     uri = build(
         make_settings,
         mongodb_base_path="mongodb+srv",
@@ -146,7 +149,7 @@ def test_the_base_path_chooses_the_scheme(make_settings: Any) -> None:
 
 
 def test_the_database_name_is_not_part_of_the_connection_string(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """The database is chosen per handle, so the URI never names one."""
     uri = build(
@@ -156,6 +159,6 @@ def test_the_database_name_is_not_part_of_the_connection_string(
     assert parse_uri(uri)["database"] is None
 
 
-def test_several_hosts_become_a_node_list(make_settings: Any) -> None:
+def test_several_hosts_become_a_node_list(make_settings: MakeSettings) -> None:
     parsed = parse_uri(build(make_settings, mongodb_host="a:27017,b:27018"))
     assert parsed["nodelist"] == [("a", 27017), ("b", 27018)]

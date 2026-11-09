@@ -9,8 +9,6 @@ Time is injected rather than slept through, so the sliding window is tested at
 exact boundaries instead of approximately.
 """
 
-from typing import Any
-
 import pytest
 
 from base.models.definitions.rate_limiting import RateLimitPolicy
@@ -18,6 +16,7 @@ from base.models.view_models.rate_limiting import RateDecision
 from base.services.configuration.mixins import RateLimitSettingsMixin
 from base.services.rate_limiting import WINDOW_SECONDS, AbstractRateLimiter
 from base.services.rate_limiting.memory import InMemoryRateLimiter
+from tests.conftest import MakeSettings
 
 
 class Clock:
@@ -41,7 +40,7 @@ def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
 
 
 @pytest.fixture
-def limiter(make_settings: Any) -> InMemoryRateLimiter:
+def limiter(make_settings: MakeSettings) -> InMemoryRateLimiter:
     make_settings(
         RateLimitSettingsMixin,
         rate_limit_requests_per_minute=5,

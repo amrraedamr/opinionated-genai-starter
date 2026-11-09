@@ -31,6 +31,7 @@ from base.services.common.meta import KeyedSingleton, Singleton, purge_all
 from base.services.configuration.mixins import SQLSettingsMixin
 from base.services.sql.service import SQLService
 from base.services.store.sql import SQLStore
+from tests.conftest import MakeSettings
 
 HERE: pathlib.Path = pathlib.Path(__file__).resolve().parent
 
@@ -72,7 +73,7 @@ def sqlite_path(unique: str) -> Iterator[pathlib.Path]:
 
 
 @pytest.fixture
-def sqlite_settings(make_settings: Any, sqlite_path: pathlib.Path) -> Any:
+def sqlite_settings(make_settings: MakeSettings, sqlite_path: pathlib.Path) -> Any:
     """Registered settings pointing every SQL subsystem at that file."""
     return make_settings(
         SQLSettingsMixin,

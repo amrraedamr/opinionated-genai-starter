@@ -22,6 +22,7 @@ from azure.cosmos import CosmosClient, PartitionKey
 
 from base.services.configuration.mixins import CosmosSettingsMixin
 from base.services.nosql.cosmosdb import CosmosDBService
+from tests.conftest import MakeSettings
 
 pytestmark = pytest.mark.integration
 
@@ -42,7 +43,9 @@ def database() -> Iterator[str]:
 
 
 @pytest.fixture
-async def cosmos(make_settings: Any, database: str) -> AsyncIterator[CosmosDBService]:
+async def cosmos(
+    make_settings: MakeSettings, database: str
+) -> AsyncIterator[CosmosDBService]:
     """A service pointed at the emulator, with both clients closed afterwards."""
     make_settings(
         CosmosSettingsMixin,

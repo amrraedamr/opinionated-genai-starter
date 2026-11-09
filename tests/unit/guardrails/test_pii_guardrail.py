@@ -6,19 +6,18 @@ protects nothing, so the false positives are pinned as carefully as the true
 ones.
 """
 
-from typing import Any
-
 import pytest
 
 from base.models.definitions.guardrails import GuardrailOutcome, GuardrailStage
 from base.services.configuration.mixins import GuardrailSettingsMixin
 from base.services.guardrails.pii import PatternPiiGuardrail
+from tests.conftest import MakeSettings
 
 STAGES = list(GuardrailStage)
 
 
 @pytest.fixture
-def guardrail(make_settings: Any) -> PatternPiiGuardrail:
+def guardrail(make_settings: MakeSettings) -> PatternPiiGuardrail:
     make_settings(GuardrailSettingsMixin)
     return PatternPiiGuardrail()
 
@@ -162,7 +161,7 @@ async def test_both_counterparts_agree(guardrail: PatternPiiGuardrail) -> None:
     assert sync.content == asynchronous.content
 
 
-def test_an_extra_pattern_is_honoured(make_settings: Any) -> None:
+def test_an_extra_pattern_is_honoured(make_settings: MakeSettings) -> None:
     """A deployment knows about identifiers this library cannot guess."""
     make_settings(
         GuardrailSettingsMixin,

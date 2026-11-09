@@ -15,6 +15,7 @@ from base.models.definitions.vector_search import DistanceMetric
 from base.models.view_models.vector_search import VectorRecord
 from base.services.configuration.mixins import SQLSettingsMixin
 from base.services.vector_search.pgvector import PgVectorSearchService
+from tests.conftest import MakeSettings
 
 INJECTIONS: list[str] = [
     'chunks"; DROP TABLE users; --',
@@ -38,7 +39,7 @@ class Row:
 
 
 @pytest.fixture
-def service(make_settings: Any) -> PgVectorSearchService:
+def service(make_settings: MakeSettings) -> PgVectorSearchService:
     """The adapter with no engine behind it: nothing here opens a connection."""
     make_settings(SQLSettingsMixin)
     return PgVectorSearchService()

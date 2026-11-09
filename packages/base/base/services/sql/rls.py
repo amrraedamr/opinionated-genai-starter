@@ -21,7 +21,7 @@ for the Postgres dialect. That is what gets identifiers quoted by the dialect's
 own preparer rather than pasted into a string.
 """
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from base.models.definitions.tenancy import RLS_POLICY_NAME, RLS_SETTING
 from base.services.configuration import settings_for
@@ -39,6 +39,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Connection
+    from sqlalchemy.orm import SessionTransaction
+    from sqlalchemy.sql.compiler import DDLCompiler
 
 
 class _TableDDL(DDLElement):
@@ -81,28 +83,36 @@ class CreateTenantPolicy(DDLElement):
 
 
 @compiles(EnableRowLevelSecurity, "postgresql")
-def _compile_enable(element: EnableRowLevelSecurity, compiler: Any, **kw: Any) -> str:
+def _compile_enable(
+    element: EnableRowLevelSecurity, compiler: "DDLCompiler", **kw: object
+) -> str:
     del kw
     quoted = compiler.preparer.quote(element.table)
     return f"ALTER TABLE {quoted} ENABLE ROW LEVEL SECURITY"
 
 
 @compiles(ForceRowLevelSecurity, "postgresql")
-def _compile_force(element: ForceRowLevelSecurity, compiler: Any, **kw: Any) -> str:
+def _compile_force(
+    element: ForceRowLevelSecurity, compiler: "DDLCompiler", **kw: object
+) -> str:
     del kw
     quoted = compiler.preparer.quote(element.table)
     return f"ALTER TABLE {quoted} FORCE ROW LEVEL SECURITY"
 
 
 @compiles(DisableRowLevelSecurity, "postgresql")
-def _compile_disable(element: DisableRowLevelSecurity, compiler: Any, **kw: Any) -> str:
+def _compile_disable(
+    element: DisableRowLevelSecurity, compiler: "DDLCompiler", **kw: object
+) -> str:
     del kw
     quoted = compiler.preparer.quote(element.table)
     return f"ALTER TABLE {quoted} DISABLE ROW LEVEL SECURITY"
 
 
 @compiles(UnforceRowLevelSecurity, "postgresql")
-def _compile_unforce(element: UnforceRowLevelSecurity, compiler: Any, **kw: Any) -> str:
+def _compile_unforce(
+    element: UnforceRowLevelSecurity, compiler: "DDLCompiler", **kw: object
+) -> str:
     del kw
     quoted = compiler.preparer.quote(element.table)
     return f"ALTER TABLE {quoted} NO FORCE ROW LEVEL SECURITY"
@@ -110,7 +120,7 @@ def _compile_unforce(element: UnforceRowLevelSecurity, compiler: Any, **kw: Any)
 
 @compiles(CreateTenantPolicy, "postgresql")
 def _compile_create_policy(
-    element: CreateTenantPolicy, compiler: Any, **kw: Any
+    element: CreateTenantPolicy, compiler: "DDLCompiler", **kw: object
 ) -> str:
     """`WITH CHECK` as well as `USING`, or a write could cross the fence."""
     del kw
@@ -123,7 +133,9 @@ def _compile_create_policy(
 
 
 @compiles(DropTenantPolicy, "postgresql")
-def _compile_drop_policy(element: DropTenantPolicy, compiler: Any, **kw: Any) -> str:
+def _compile_drop_policy(
+    element: DropTenantPolicy, compiler: "DDLCompiler", **kw: object
+) -> str:
     del kw
     quote = compiler.preparer.quote
     return f"DROP POLICY IF EXISTS {quote(RLS_POLICY_NAME)} ON {quote(element.table)}"
@@ -148,7 +160,11 @@ class RowLevelSecurity:
         cls._installed = True
 
     @staticmethod
-    def _apply(session: Session, transaction: Any, connection: "Connection") -> None:
+    def _apply(
+        session: Session,
+        transaction: "SessionTransaction",
+        connection: "Connection",
+    ) -> None:
         """Tell this transaction which tenant it is acting for.
 
         `set_config(..., true)` rather than `SET LOCAL`, because `SET` takes no

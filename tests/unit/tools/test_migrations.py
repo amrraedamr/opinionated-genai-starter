@@ -18,6 +18,7 @@ from base.services.configuration import get_settings
 from base.services.configuration.mixins import SQLSettingsMixin
 from base.tools import migrations
 from base.tools.migrations import _arun_online, _run_offline, _run_sync, _sync_url
+from tests.conftest import MakeSettings
 
 
 class FakeContext:
@@ -79,7 +80,7 @@ class FakeEngine:
 
 
 @pytest.fixture
-def sqlite_settings(make_settings: Any) -> Any:
+def sqlite_settings(make_settings: MakeSettings) -> Any:
     return make_settings(
         SQLSettingsMixin, sql_backend="sqlite", sqlite_db_path="database/app.db"
     )
@@ -109,7 +110,7 @@ def test_the_offline_url_carries_the_synchronous_driver(sqlite_settings: Any) ->
 
 
 def test_a_postgres_service_migrates_offline_through_psycopg2(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     from base.services.configuration.mixins import PostgresSettingsMixin
 
@@ -196,7 +197,7 @@ async def test_an_online_run_disposes_of_the_engine_it_opened(
 
 
 def test_running_migrations_registers_the_settings_it_was_handed(
-    context: FakeContext, engines: list[FakeEngine], make_settings: Any
+    context: FakeContext, engines: list[FakeEngine], make_settings: MakeSettings
 ) -> None:
     """A service's `env.py` is its composition root, so nothing else will."""
     settings = make_settings(

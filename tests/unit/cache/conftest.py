@@ -6,13 +6,13 @@ bound to a closed event loop. Each test here gets a fresh one.
 """
 
 from collections.abc import Iterator
-from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 
 from base.services.cache.memory import InMemoryCacheService
 from base.services.common.meta import purge_all
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +24,7 @@ def _fresh_singletons() -> Iterator[None]:
 
 
 @pytest.fixture
-def memory_cache(make_settings: Any) -> InMemoryCacheService:
+def memory_cache(make_settings: MakeSettings) -> InMemoryCacheService:
     """An in-process cache with no Redis configured."""
     from base.services.configuration.mixins import RedisSettingsMixin
 

@@ -28,6 +28,7 @@ from base.services.prompt.decorator import register_prompt
 from base.services.prompt.loader import PromptLoader
 from base.services.prompt.protocol import PromptTemplateStore
 from base.services.prompt.service import PromptService
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture(autouse=True)
@@ -141,7 +142,7 @@ def test_templates_are_only_loaded_once(tmp_path: Any) -> None:
 
 
 async def test_initialize_loads_code_templates_and_ignores_a_store_by_default(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=False)
     loader = PromptLoader()
@@ -155,7 +156,7 @@ async def test_initialize_loads_code_templates_and_ignores_a_store_by_default(
 
 
 async def test_a_stored_template_overrides_the_one_in_code(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=True)
     loader = PromptLoader()
@@ -170,7 +171,7 @@ async def test_a_stored_template_overrides_the_one_in_code(
 
 
 async def test_an_override_keeps_the_name_and_description_from_code(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=True)
     loader = PromptLoader()
@@ -184,7 +185,7 @@ async def test_an_override_keeps_the_name_and_description_from_code(
 
 
 async def test_a_stored_key_nobody_declared_in_code_is_skipped(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=True)
     loader = PromptLoader()
@@ -198,7 +199,7 @@ async def test_a_stored_key_nobody_declared_in_code_is_skipped(
 
 
 async def test_reloading_counts_only_the_overrides_it_applied(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=True)
     loader = PromptLoader()
@@ -215,7 +216,7 @@ async def test_reloading_without_a_store_applies_nothing() -> None:
 
 
 async def test_opting_in_without_a_store_still_serves_the_code_templates(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=True)
     loader = PromptLoader()
@@ -227,7 +228,7 @@ async def test_opting_in_without_a_store_still_serves_the_code_templates(
     assert loader._watcher is None
 
 
-async def test_shutdown_stops_following_reloads(make_settings: Any) -> None:
+async def test_shutdown_stops_following_reloads(make_settings: MakeSettings) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=True)
     loader = PromptLoader()
     loader.register(prompt())
@@ -247,7 +248,9 @@ async def test_shutdown_without_a_watcher_is_harmless() -> None:
     assert loader._watcher is None
 
 
-def test_the_reload_channel_is_namespaced_by_service(make_settings: Any) -> None:
+def test_the_reload_channel_is_namespaced_by_service(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(PromptSettingsMixin, service_name="chat_api")
     assert PromptLoader()._channel() == "chat_api:prompt_reload"
 

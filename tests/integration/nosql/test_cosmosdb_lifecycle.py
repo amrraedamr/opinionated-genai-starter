@@ -8,7 +8,6 @@ resources, and closing one must leave the other alone.
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
 
 import pytest
 from azure.cosmos import PartitionKey, exceptions
@@ -16,6 +15,7 @@ from azure.cosmos import PartitionKey, exceptions
 from base.clients.nosql.cosmosdb import CosmosDBClient
 from base.services.configuration.mixins import CosmosSettingsMixin
 from base.services.nosql.cosmosdb import CosmosDBService
+from tests.conftest import MakeSettings
 
 from . import test_cosmosdb_crud
 
@@ -33,7 +33,9 @@ def client(cosmos: CosmosDBService) -> CosmosDBClient:
 
 
 @pytest.fixture
-async def unreachable_client(make_settings: Any) -> AsyncIterator[CosmosDBClient]:
+async def unreachable_client(
+    make_settings: MakeSettings,
+) -> AsyncIterator[CosmosDBClient]:
     """A client pointed at a port nothing is listening on."""
     make_settings(
         CosmosSettingsMixin,

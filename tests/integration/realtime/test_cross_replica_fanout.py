@@ -26,6 +26,7 @@ from base.services.common.meta import Singleton
 from base.services.rate_limiting.memory import InMemoryRateLimiter
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.manager import ConnectionManager
+from tests.conftest import CoreSettings
 
 pytestmark = pytest.mark.integration
 
@@ -77,7 +78,7 @@ def connection(device: str, user: str = USER) -> tuple[RealtimeConnection, FakeS
 
 
 @pytest.fixture
-async def replicas(infra_settings: Any) -> AsyncIterator[tuple[Any, Any]]:
+async def replicas(infra_settings: CoreSettings) -> AsyncIterator[tuple[Any, Any]]:
     """Two managers over one Redis, both listening."""
     del infra_settings
     first, second = replica(), replica()

@@ -20,6 +20,7 @@ from base.models.view_models.exceptions.sql import SQLBadRequestError, SQLError
 from base.services.configuration.mixins import SQLSettingsMixin
 from base.services.sql.service import SQLService
 from base.tools.errors import ServiceHealthCheckError
+from tests.conftest import MakeSettings
 
 
 def count_rows(service: SQLService, model: type[Any]) -> int:
@@ -246,7 +247,7 @@ async def test_ahealth_check_passes_against_a_reachable_database(
 
 
 def test_health_check_names_the_service_when_the_database_is_unreachable(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         SQLSettingsMixin,
@@ -258,7 +259,7 @@ def test_health_check_names_the_service_when_the_database_is_unreachable(
 
 
 async def test_ahealth_check_names_the_service_when_the_database_is_unreachable(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         SQLSettingsMixin,

@@ -25,6 +25,7 @@ from base.services.configuration.mixins import RateLimitSettingsMixin
 from base.services.rate_limiting.memory import InMemoryRateLimiter
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.manager import ConnectionManager
+from tests.conftest import MakeSettings
 
 USER = uuid4()
 
@@ -60,7 +61,7 @@ def ticket(device: str, user: Any = USER) -> ConnectionTicket:
 
 
 @pytest.fixture
-def manager(make_settings: Any) -> ConnectionManager:
+def manager(make_settings: MakeSettings) -> ConnectionManager:
     make_settings(RateLimitSettingsMixin)
     return ConnectionManager(InMemoryCacheService())
 

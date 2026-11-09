@@ -14,6 +14,7 @@ from base.models.definitions.vector_search import VECTOR_UPSERT_BATCH_SIZE
 from base.models.view_models.vector_search import VectorRecord
 from base.services.configuration.mixins import QdrantSettingsMixin
 from base.services.vector_search.qdrant import QdrantVectorSearchService
+from tests.conftest import MakeSettings
 from tests.unit.vector_search.test_qdrant_shaping import (
     CountResponse,
     Point,
@@ -78,7 +79,7 @@ class AsyncRecordingClient:
 
 
 @pytest.fixture
-def service(make_settings: Any) -> QdrantVectorSearchService:
+def service(make_settings: MakeSettings) -> QdrantVectorSearchService:
     make_settings(QdrantSettingsMixin, qdrant_url="http://localhost:6333")
     return QdrantVectorSearchService()
 

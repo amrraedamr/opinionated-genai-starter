@@ -43,6 +43,7 @@ from base.services.telemetry import Telemetry
 from base.tools.tenancy import TenantContext
 from base.tools.tracing import OptionalTelemetry
 from contracts.events import Event
+from tests.conftest import MakeSettings
 
 
 class ScriptedLLM(AbstractLLMService):
@@ -75,7 +76,7 @@ class ScriptedLLM(AbstractLLMService):
 
 
 @pytest.fixture
-def exporter(make_settings: Any) -> InMemorySpanExporter:
+def exporter(make_settings: MakeSettings) -> InMemorySpanExporter:
     """A provider whose spans stay in this process, installed on Telemetry."""
 
     def _build(*, capture_content: bool = False, **extra: Any) -> InMemorySpanExporter:

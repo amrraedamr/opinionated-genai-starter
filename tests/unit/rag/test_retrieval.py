@@ -19,6 +19,7 @@ from base.services.rag.ingestion import (
     TEXT_FIELD,
 )
 from base.services.rag.retrieval import RagRetrievalService
+from tests.conftest import MakeSettings
 from tests.unit.rag.fakes import (
     FakeEmbeddings,
     FakeVectorStore,
@@ -258,7 +259,7 @@ async def test_a_missing_chunk_index_reads_back_as_minus_one() -> None:
 
 
 def test_the_overfetch_falls_back_to_settings_when_the_caller_names_none(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     from base.services.configuration.mixins import RedisSettingsMixin
 

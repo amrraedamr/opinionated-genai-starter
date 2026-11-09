@@ -30,6 +30,7 @@ from base.services.sql.service import SQLService
 from contracts.events import Event
 from contracts.v1 import identity
 from ingestion_worker.models.inbox import InboxEventDTO
+from tests.conftest import CoreSettings
 
 pytestmark = pytest.mark.integration
 
@@ -72,7 +73,7 @@ def _fresh_singletons() -> Any:
 
 
 @pytest.fixture
-async def worker_inbox(infra_settings: Any) -> AsyncIterator[SQLService]:
+async def worker_inbox(infra_settings: CoreSettings) -> AsyncIterator[SQLService]:
     """An empty `inbox_event`, created by the migration and dropped afterwards."""
     del infra_settings
     from alembic.operations import Operations

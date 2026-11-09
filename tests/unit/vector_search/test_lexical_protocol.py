@@ -19,6 +19,7 @@ from base.services.vector_search import SupportsLexicalSearch
 from base.services.vector_search.azure_ai_search import AzureAISearchService
 from base.services.vector_search.pgvector import PgVectorSearchService
 from base.services.vector_search.qdrant import QdrantVectorSearchService
+from tests.conftest import MakeSettings
 
 
 class LexicalStub:
@@ -58,12 +59,14 @@ def test_azure_ai_search_satisfies_the_protocol() -> None:
     assert issubclass(AzureAISearchService, SupportsLexicalSearch)
 
 
-def test_a_qdrant_instance_is_not_a_lexical_backend(make_settings: Any) -> None:
+def test_a_qdrant_instance_is_not_a_lexical_backend(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(QdrantSettingsMixin, qdrant_url="http://localhost:6333")
     assert not isinstance(QdrantVectorSearchService(), SupportsLexicalSearch)
 
 
-def test_an_azure_instance_is_a_lexical_backend(make_settings: Any) -> None:
+def test_an_azure_instance_is_a_lexical_backend(make_settings: MakeSettings) -> None:
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="https://x.search.windows.net",
@@ -82,7 +85,7 @@ def test_a_dense_only_backend_does_not() -> None:
 
 
 def test_retrieval_finds_the_lexical_half_of_a_backend_that_has_one(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     from base.services.rag.retrieval import RagRetrievalService
 
@@ -96,7 +99,7 @@ def test_retrieval_finds_the_lexical_half_of_a_backend_that_has_one(
 
 
 def test_retrieval_falls_back_to_dense_only_for_a_backend_without_one(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     from base.services.rag.retrieval import RagRetrievalService
 
@@ -111,7 +114,7 @@ def test_retrieval_falls_back_to_dense_only_for_a_backend_without_one(
 
 @pytest.mark.parametrize("query", ["", "   ", "\n\t"])
 async def test_retrieval_of_a_blank_question_searches_nothing(
-    make_settings: Any, query: str
+    make_settings: MakeSettings, query: str
 ) -> None:
     from base.services.rag.retrieval import RagRetrievalService
 

@@ -20,10 +20,11 @@ from base.services.configuration.mixins import (
     SQLSettingsMixin,
 )
 from base.tools.migrations import _async_url, _client, _compare_type, run_migrations
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def postgres_settings(make_settings: Any) -> Any:
+def postgres_settings(make_settings: MakeSettings) -> Any:
     return make_settings(
         SQLSettingsMixin,
         PostgresSettingsMixin,
@@ -52,7 +53,7 @@ def test_the_async_url_points_at_the_service_s_own_database(
     assert _async_url(postgres_settings).endswith("@db.internal:5432/appdb")
 
 
-def test_a_sqlite_service_migrates_its_own_file(make_settings: Any) -> None:
+def test_a_sqlite_service_migrates_its_own_file(make_settings: MakeSettings) -> None:
     settings = make_settings(
         SQLSettingsMixin, sql_backend="sqlite", sqlite_db_path="database/app.db"
     )
@@ -60,7 +61,7 @@ def test_a_sqlite_service_migrates_its_own_file(make_settings: Any) -> None:
 
 
 def test_settings_without_the_sql_mixin_are_refused_by_name(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(RedisSettingsMixin, redis_url="redis://x:1/0")
     with pytest.raises(TypeError, match="cannot run migrations; compose SQLMixin"):

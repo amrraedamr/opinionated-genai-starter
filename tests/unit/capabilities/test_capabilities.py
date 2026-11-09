@@ -9,7 +9,6 @@ what `astartup` builds, and what `aprobe` reports when it cannot.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -23,6 +22,7 @@ from base.models.view_models.prompt import Prompt, PromptTemplate, SystemMessage
 from base.services.common.meta import Singleton
 from base.services.configuration.mixins import PromptSettingsMixin
 from base.services.prompt.loader import PromptLoader
+from tests.conftest import MakeSettings
 
 APP = FastAPI()
 
@@ -207,7 +207,7 @@ async def test_loaded_prompts_are_counted_in_the_probe() -> None:
 
 
 async def test_starting_the_prompts_capability_initializes_the_registry(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(PromptSettingsMixin, load_prompts_from_db=False)
     capability = Prompts()
