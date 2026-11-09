@@ -97,6 +97,9 @@ class RealtimeCloseCode:
     POLICY_VIOLATION: Final = 1008
     TOO_LARGE: Final = 1009
     TRY_LATER: Final = 1013
+    INTERNAL_ERROR: Final = 1011
+    """Something this end broke. Distinct from a policy refusal, which the
+    client caused and can correct."""
     UNAUTHORIZED: Final = 4401
     """4000-4999 is the application range. A handshake refused for want of a
     valid ticket is not a protocol error, so it does not borrow one."""

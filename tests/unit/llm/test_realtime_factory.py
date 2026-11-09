@@ -7,14 +7,20 @@ the point: a caller can ask for a session only where one exists.
 import pytest
 
 from base.models.definitions.model import ProviderType
+from base.models.definitions.realtime_session import RealtimeModality
 from base.models.view_models.realtime_session import RealtimeSessionConfig
+from base.services.configuration import settings_for
+from base.services.configuration.mixins import RealtimeSettingsMixin
+from base.services.configuration.protocols import SupportsRealtimeConfig
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.llm.realtime.factory import (
     REALTIME_PROVIDERS,
     build_realtime_session,
+    session_from,
 )
 from base.services.llm.realtime.gemini import GeminiLiveSession
 from base.services.llm.realtime.openai import OpenAIRealtimeSession
+from tests.conftest import MakeSettings
 
 CONFIG = RealtimeSessionConfig(model="m")
 
@@ -65,3 +71,63 @@ def test_tool_schemas_reach_the_session() -> None:
     schemas = [{"name": "lookup"}]
     built = build_realtime_session(ProviderType.GEMINI, CONFIG, tool_schemas=schemas)
     assert built._tool_schemas == schemas  # type: ignore[attr-defined]
+
+
+# Falling back to settings
+
+
+def test_a_caller_with_nothing_to_say_still_gets_a_session(
+    make_settings: MakeSettings,
+) -> None:
+    """Which model answers is a deployment's business, not a handler's.
+
+    Without this a route has to read settings and assemble a session itself,
+    which puts configuration in the one place that should only be wiring.
+    """
+    make_settings(RealtimeSettingsMixin, realtime_provider="gemini")
+    assert isinstance(build_realtime_session(), GeminiLiveSession)
+
+
+def test_the_configured_model_is_the_one_opened(
+    make_settings: MakeSettings,
+) -> None:
+    make_settings(RealtimeSettingsMixin, realtime_model="gpt-realtime-mini")
+    assert build_realtime_session().model == "gpt-realtime-mini"
+
+
+def test_a_session_speaks_when_the_deployment_asked_for_audio(
+    make_settings: MakeSettings,
+) -> None:
+    make_settings(RealtimeSettingsMixin, realtime_audio_enabled=True)
+    built = session_from(settings_for(SupportsRealtimeConfig))
+    assert built.modalities == [RealtimeModality.AUDIO]
+
+
+def test_a_session_stays_typed_when_it_did_not(
+    make_settings: MakeSettings,
+) -> None:
+    """Cheaper, and sometimes all a service wants."""
+    make_settings(RealtimeSettingsMixin, realtime_audio_enabled=False)
+    built = session_from(settings_for(SupportsRealtimeConfig))
+    assert built.modalities == [RealtimeModality.TEXT]
+
+
+def test_an_empty_voice_is_left_unset_rather_than_sent_blank(
+    make_settings: MakeSettings,
+) -> None:
+    make_settings(RealtimeSettingsMixin, realtime_voice="")
+    assert session_from(settings_for(SupportsRealtimeConfig)).voice is None
+
+
+def test_an_explicit_provider_is_not_overridden_by_settings(
+    make_settings: MakeSettings,
+) -> None:
+    """A caller that named one means it, whatever the deployment prefers."""
+    make_settings(RealtimeSettingsMixin, realtime_provider="gemini")
+    built = build_realtime_session(ProviderType.OPENAI, CONFIG)
+    assert isinstance(built, OpenAIRealtimeSession)
+
+
+def test_a_fully_explicit_call_needs_no_settings_at_all() -> None:
+    """So a worker with no realtime settings can still open one deliberately."""
+    assert build_realtime_session(ProviderType.GEMINI, CONFIG) is not None

@@ -48,6 +48,7 @@ from base.services.configuration.protocols.prompt import SupportsPromptConfig
 from base.services.configuration.protocols.rate_limiting import (
     SupportsRateLimitConfig,
 )
+from base.services.configuration.protocols.realtime import SupportsRealtimeConfig
 from base.services.configuration.protocols.rerank import SupportsRerankConfig
 from base.services.configuration.protocols.rerank.cohere import SupportsCohereConfig
 from base.services.configuration.protocols.server import SupportsServerConfig
@@ -99,6 +100,7 @@ __all__ = [
     "SupportsPromptConfig",
     "SupportsQdrantConfig",
     "SupportsRateLimitConfig",
+    "SupportsRealtimeConfig",
     "SupportsRedisBrokerConfig",
     "SupportsRedisConfig",
     "SupportsRerankConfig",

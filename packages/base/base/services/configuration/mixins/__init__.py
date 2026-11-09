@@ -38,6 +38,7 @@ from base.services.configuration.mixins.oauth.microsoft import (
 )
 from base.services.configuration.mixins.prompt import PromptSettingsMixin
 from base.services.configuration.mixins.rate_limiting import RateLimitSettingsMixin
+from base.services.configuration.mixins.realtime import RealtimeSettingsMixin
 from base.services.configuration.mixins.rerank import RerankSettingsMixin
 from base.services.configuration.mixins.rerank.cohere import CohereSettingsMixin
 from base.services.configuration.mixins.server import ServerSettingsMixin
@@ -85,6 +86,7 @@ __all__ = [
     "PromptSettingsMixin",
     "QdrantSettingsMixin",
     "RateLimitSettingsMixin",
+    "RealtimeSettingsMixin",
     "RedisSettingsMixin",
     "RerankSettingsMixin",
     "SQLSettingsMixin",
