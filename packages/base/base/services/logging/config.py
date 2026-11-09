@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from base.models.definitions.environment import Environment
+from base.services.guardrails.sinks import redact_pii
 from base.tools.correlation import current_correlation_id
 
 _QUOTED_VALUE = re.compile(
@@ -22,8 +23,16 @@ _AUTHORIZATION = re.compile(
 
 
 def redact(value: Any) -> str:
+    """Strip credentials, and personal data where a service asked for it.
+
+    Credentials go unconditionally: nothing is gained by logging one and a
+    leaked key is an incident on its own. Personal data is the guardrail's
+    business and follows whatever that service configured, so the two are not
+    the same decision and are not made in the same place.
+    """
     redacted = _AUTHORIZATION.sub(r"\1[REDACTED]", str(value))
-    return _QUOTED_VALUE.sub(r"\1[REDACTED]", redacted)
+    redacted = _QUOTED_VALUE.sub(r"\1[REDACTED]", redacted)
+    return redact_pii(redacted)
 
 
 class RedactionFilter(logging.Filter):

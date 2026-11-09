@@ -18,6 +18,7 @@ from base.models.definitions.telemetry import CORRELATION_ID, TENANT_ID
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsTelemetryConfig
+from base.services.telemetry.redaction import RedactingSpanExporter
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -72,7 +73,11 @@ class Telemetry(metaclass=Singleton):
         )
         provider.add_span_processor(
             BatchSpanProcessor(
-                OTLPSpanExporter(endpoint=config.otel_exporter_endpoint, insecure=True)
+                RedactingSpanExporter(
+                    OTLPSpanExporter(
+                        endpoint=config.otel_exporter_endpoint, insecure=True
+                    )
+                )
             )
         )
         trace.set_tracer_provider(provider)
