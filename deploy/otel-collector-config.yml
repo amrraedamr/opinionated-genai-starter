@@ -1,0 +1,33 @@
+# Receives OTLP from the services and forwards it to Jaeger.
+#
+# The collector is in the path on purpose rather than pointing services
+# straight at Jaeger, which also speaks OTLP. A deployment nearly always has
+# one — to batch, sample, strip attributes or fan out to more than one backend
+# — so running without it locally would be testing a shape nobody ships.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    # Short, because a test that has to wait ten seconds for a span to appear
+    # gets deleted by whoever is waiting.
+    timeout: 1s
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]

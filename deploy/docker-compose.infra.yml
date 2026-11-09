@@ -79,6 +79,28 @@ services:
     ports:
       - "8081:8081"
 
+  otel-collector:
+    # Contrib, not core: core ships a narrow set of components and the
+    # processors worth having locally are only in contrib.
+    image: otel/opentelemetry-collector-contrib:0.165.0
+    command: ["--config=/etc/otel/config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel/config.yml:ro
+    ports:
+      # Only the collector binds these on the host. Jaeger speaks OTLP on the
+      # same port, so exposing both would be a conflict and a question about
+      # which one a service was actually reaching.
+      - "4317:4317"
+      - "4318:4318"
+    depends_on:
+      - jaeger
+
+  jaeger:
+    # Jaeger v2: one binary, OTLP in, and the UI on 16686.
+    image: jaegertracing/jaeger:2.23.0
+    ports:
+      - "16686:16686"
+
 volumes:
   pgdata:
   redisdata:
