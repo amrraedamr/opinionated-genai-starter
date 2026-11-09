@@ -15,7 +15,11 @@ from uuid import uuid4
 import pytest
 
 from base.clients.redis_client import RedisClient
-from base.models.definitions.realtime import REALTIME_PRESENCE_NAMESPACE
+from base.models.definitions.realtime import (
+    REALTIME_PRESENCE_NAMESPACE,
+    ChannelDelivery,
+    RealtimeMessageType,
+)
 from base.models.view_models.realtime import ConnectionTicket, RealtimeEnvelope
 from base.services.cache.redis import RedisCacheService
 from base.services.common.meta import Singleton
@@ -200,3 +204,76 @@ async def test_draining_one_replica_leaves_the_other_serving(
     await second.apublish_to_user(USER, RealtimeEnvelope(payload={"n": 6}))
     await asyncio.sleep(SETTLE)
     assert any(f.payload == {"n": 6} for f in staying_socket.frames())
+
+
+# Durable delivery across replicas
+
+
+async def test_a_device_reconnecting_to_another_replica_still_gets_its_gap(
+    replicas: tuple[Any, Any],
+) -> None:
+    """The reason the inbox is in Redis and not in the process.
+
+    A load balancer sends a reconnect wherever it likes, which is rarely the
+    replica that held the socket before. An in-process inbox would leave the
+    device catching up against a replica that never saw the messages, and it
+    would receive nothing at all.
+    """
+    first, second = replicas
+    user = str(uuid4())
+    for _ in range(3):
+        await first.apublish_to_user(
+            user,
+            RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={}),
+            ChannelDelivery.DURABLE,
+        )
+    await asyncio.sleep(SETTLE)
+
+    phone, socket = connection("phone", user)
+    await second.aregister(phone)
+    sent = await second.aresume(phone, last_seq=1)
+
+    assert sent == 2
+    assert [f.seq for f in socket.frames()] == [2, 3]
+    await first._inbox.aclear(user)
+
+
+async def test_an_acknowledgement_on_one_replica_is_seen_by_the_other(
+    replicas: tuple[Any, Any],
+) -> None:
+    """Cursors are shared too, or a reconnect elsewhere replays what was read."""
+    first, second = replicas
+    user = str(uuid4())
+    await first.apublish_to_user(
+        user,
+        RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={}),
+        ChannelDelivery.DURABLE,
+    )
+    laptop, _ = connection("laptop", user)
+
+    await first.aacknowledge(laptop, 1)
+
+    assert await second.acursor_of(laptop) == 1
+    await first._inbox.aclear(user)
+
+
+async def test_two_replicas_publishing_at_once_never_reuse_a_sequence(
+    replicas: tuple[Any, Any],
+) -> None:
+    """Two messages sharing a number would make every cursor ambiguous."""
+    first, second = replicas
+    user = str(uuid4())
+
+    stored = await asyncio.gather(
+        *(
+            (first if n % 2 == 0 else second).apublish_to_user(
+                user,
+                RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={"n": n}),
+                ChannelDelivery.DURABLE,
+            )
+            for n in range(12)
+        )
+    )
+
+    assert sorted(m.seq for m in stored) == list(range(1, 13))
+    await first._inbox.aclear(user)

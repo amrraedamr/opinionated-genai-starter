@@ -12,11 +12,13 @@ message reaches them is the connection manager's job, which is separate.
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.context import RealtimeContext
 from base.services.realtime.handshake import accept_connection
+from base.services.realtime.inbox import DurableInbox
 from base.services.realtime.manager import ConnectionManager
 from base.services.realtime.tickets import TicketService
 
 __all__ = [
     "ConnectionManager",
+    "DurableInbox",
     "RealtimeConnection",
     "RealtimeContext",
     "TicketService",

@@ -15,6 +15,7 @@ import pytest
 
 from base.models.definitions.realtime import (
     REALTIME_PRESENCE_NAMESPACE,
+    ChannelDelivery,
     RealtimeCloseCode,
     RealtimeMessageType,
 )
@@ -62,6 +63,10 @@ def ticket(device: str, user: Any = USER) -> ConnectionTicket:
 def manager(make_settings: Any) -> ConnectionManager:
     make_settings(RateLimitSettingsMixin)
     return ConnectionManager(InMemoryCacheService())
+
+
+def envelope(kind: RealtimeMessageType) -> RealtimeEnvelope:
+    return RealtimeEnvelope(type=kind, payload={})
 
 
 def connect(device: str, user: Any = USER) -> tuple[RealtimeConnection, FakeSocket]:
@@ -266,3 +271,188 @@ async def test_an_anonymous_socket_is_still_addressable(
     )
     await manager.aregister(anonymous)
     assert await manager.adeliver_locally("service-account", RealtimeEnvelope()) == 1
+
+
+# Durable delivery
+
+
+async def test_an_ephemeral_message_leaves_nothing_to_catch_up_on(
+    manager: ConnectionManager,
+) -> None:
+    """A typing indicator nobody saw is not owed to anyone later."""
+    user = str(uuid4())
+    await manager.apublish_to_user(
+        user, envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.EPHEMERAL
+    )
+    assert await manager._inbox.asince(user, after_seq=0) == []
+
+
+async def test_a_durable_message_is_recorded_before_it_is_sent(
+    manager: ConnectionManager,
+) -> None:
+    """Recording second would lose exactly the messages durability is for."""
+    user = str(uuid4())
+    stored = await manager.apublish_to_user(
+        user, envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+    )
+    assert stored.seq == 1
+    assert len(await manager._inbox.asince(user, after_seq=0)) == 1
+
+
+async def test_a_device_that_was_offline_is_sent_the_gap_on_reconnect(
+    manager: ConnectionManager,
+) -> None:
+    user = uuid4()
+    for _ in range(3):
+        await manager.apublish_to_user(
+            str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+        )
+
+    phone, socket = connect("phone", user)
+    await manager.aregister(phone)
+    sent = await manager.aresume(phone, last_seq=1)
+
+    assert sent == 2
+    assert [frame.seq for frame in socket.frames()] == [2, 3]
+
+
+async def test_a_device_that_missed_nothing_is_sent_nothing(
+    manager: ConnectionManager,
+) -> None:
+    user = uuid4()
+    await manager.apublish_to_user(
+        str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+    )
+    laptop, socket = connect("laptop", user)
+    await manager.aregister(laptop)
+
+    assert await manager.aresume(laptop, last_seq=1) == 0
+    assert socket.frames() == []
+
+
+async def test_acknowledging_moves_only_the_acknowledging_device(
+    manager: ConnectionManager,
+) -> None:
+    user = uuid4()
+    for _ in range(2):
+        await manager.apublish_to_user(
+            str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+        )
+    laptop, _ = connect("laptop", user)
+    phone, _ = connect("phone", user)
+
+    await manager.aacknowledge(laptop, 2)
+
+    assert await manager.acursor_of(laptop) == 2
+    assert await manager.acursor_of(phone) == 0
+
+
+async def test_both_devices_are_owed_the_same_messages(
+    manager: ConnectionManager,
+) -> None:
+    """One inbox, one cursor each: a laptop reading does not consume the phone's."""
+    user = uuid4()
+    for _ in range(2):
+        await manager.apublish_to_user(
+            str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+        )
+    laptop, laptop_socket = connect("laptop", user)
+    phone, phone_socket = connect("phone", user)
+    await manager.aregister(laptop)
+    await manager.aregister(phone)
+
+    await manager.aresume(laptop, last_seq=0)
+    await manager.aacknowledge(laptop, 2)
+    await manager.aresume(phone, last_seq=0)
+
+    assert [f.seq for f in laptop_socket.frames()] == [1, 2]
+    assert [f.seq for f in phone_socket.frames()] == [1, 2]
+
+
+async def test_catching_up_arrives_in_the_order_it_was_published(
+    manager: ConnectionManager,
+) -> None:
+    user = uuid4()
+    for n in range(8):
+        await manager.apublish_to_user(
+            str(user),
+            RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={"n": n}),
+            ChannelDelivery.DURABLE,
+        )
+    laptop, socket = connect("laptop", user)
+    await manager.aregister(laptop)
+    await manager.aresume(laptop, last_seq=0)
+
+    assert [f.payload["n"] for f in socket.frames()] == list(range(8))
+
+
+async def test_an_ack_frame_advances_the_cursor_and_goes_no_further(
+    manager: ConnectionManager,
+) -> None:
+    """Delivery frames are the manager's business, not the application's."""
+    user = uuid4()
+    await manager.apublish_to_user(
+        str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+    )
+    laptop, _ = connect("laptop", user)
+
+    handled = await manager.ahandle(
+        laptop, RealtimeEnvelope(type=RealtimeMessageType.ACK, seq=1)
+    )
+
+    assert handled is None
+    assert await manager.acursor_of(laptop) == 1
+
+
+async def test_a_resume_frame_sends_the_gap_and_goes_no_further(
+    manager: ConnectionManager,
+) -> None:
+    user = uuid4()
+    for _ in range(2):
+        await manager.apublish_to_user(
+            str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+        )
+    laptop, socket = connect("laptop", user)
+    await manager.aregister(laptop)
+
+    handled = await manager.ahandle(
+        laptop, RealtimeEnvelope(type=RealtimeMessageType.RESUME, seq=1)
+    )
+
+    assert handled is None
+    assert [f.seq for f in socket.frames()] == [2]
+
+
+async def test_a_resume_without_a_sequence_replays_everything(
+    manager: ConnectionManager,
+) -> None:
+    """A client that has never connected holds nothing and says so."""
+    user = uuid4()
+    await manager.apublish_to_user(
+        str(user), envelope(RealtimeMessageType.MESSAGE), ChannelDelivery.DURABLE
+    )
+    laptop, socket = connect("laptop", user)
+    await manager.aregister(laptop)
+
+    await manager.ahandle(laptop, RealtimeEnvelope(type=RealtimeMessageType.RESUME))
+
+    assert [f.seq for f in socket.frames()] == [1]
+
+
+async def test_an_application_frame_is_handed_back_untouched(
+    manager: ConnectionManager,
+) -> None:
+    laptop, _ = connect("laptop")
+    frame = RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={"a": 1})
+    assert await manager.ahandle(laptop, frame) is frame
+
+
+async def test_an_ack_without_a_sequence_is_ignored_rather_than_fatal(
+    manager: ConnectionManager,
+) -> None:
+    """A malformed ack is one bad client, not a reason to drop the socket."""
+    laptop, _ = connect("laptop", uuid4())
+    assert (
+        await manager.ahandle(laptop, RealtimeEnvelope(type=RealtimeMessageType.ACK))
+        is None
+    )
