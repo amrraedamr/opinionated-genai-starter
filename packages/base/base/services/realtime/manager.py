@@ -22,6 +22,7 @@ from base.models.definitions.realtime import (
     PRESENCE_TTL_SECONDS,
     REALTIME_FANOUT_CHANNEL,
     REALTIME_PRESENCE_NAMESPACE,
+    ChannelDelivery,
     RealtimeCloseCode,
     RealtimeMessageType,
 )
@@ -35,6 +36,7 @@ from base.services.cache.factory import get_cache_service
 from base.services.common.meta import Singleton
 from base.services.logging.console import ConsoleLoggerService
 from base.services.realtime.connection import RealtimeConnection
+from base.services.realtime.inbox import DurableInbox
 
 
 class ConnectionManager(metaclass=Singleton):
@@ -46,6 +48,7 @@ class ConnectionManager(metaclass=Singleton):
         self._by_user: dict[str, dict[str, RealtimeConnection]] = defaultdict(dict)
         self._listener: asyncio.Task[None] | None = None
         self._draining = False
+        self._inbox = DurableInbox(cache)
 
     @property
     def cache(self) -> AbstractCacheService:
@@ -103,12 +106,72 @@ class ConnectionManager(metaclass=Singleton):
             self._by_user.pop(user, None)
             await self.cache.aremove(user, namespace=REALTIME_PRESENCE_NAMESPACE)
 
-    async def apublish_to_user(self, user_id: str, envelope: RealtimeEnvelope) -> None:
-        """Send to every device this user has, wherever it is connected."""
+    async def apublish_to_user(
+        self,
+        user_id: str,
+        envelope: RealtimeEnvelope,
+        delivery: ChannelDelivery = ChannelDelivery.EPHEMERAL,
+    ) -> RealtimeEnvelope:
+        """Send to every device this user has, wherever it is connected.
+
+        A durable message is recorded before it is fanned out, and comes back
+        carrying its sequence. Writing first is the point: fanning out first
+        and recording after would lose exactly the messages that arrived while
+        nobody was connected, which are the ones durability is for.
+        """
+        if delivery == ChannelDelivery.DURABLE:
+            envelope = await self._inbox.aappend(user_id, envelope)
         await self.cache.apublish(
             REALTIME_FANOUT_CHANNEL,
             FanoutMessage(user_id=user_id, envelope=envelope).jsonify(),
         )
+        return envelope
+
+    async def aresume(self, connection: RealtimeConnection, last_seq: int = 0) -> int:
+        """Send a reconnecting device whatever it missed. Returns how many.
+
+        The device says the last sequence it holds rather than the server
+        guessing from its cursor: a message can be delivered and the
+        acknowledgement lost, and the device is the only one that knows.
+        """
+        user = self._user_key(connection)
+        missed = await self._inbox.asince(user, last_seq)
+        for envelope in missed:
+            await connection.asend(envelope)
+        return len(missed)
+
+    async def aacknowledge(self, connection: RealtimeConnection, seq: int) -> int:
+        """Record that one device has read up to `seq`. Returns its cursor."""
+        return await self._inbox.aadvance(
+            self._user_key(connection), connection.device_id, seq
+        )
+
+    async def acursor_of(self, connection: RealtimeConnection) -> int:
+        """How far this device has acknowledged."""
+        return await self._inbox.acursor(
+            self._user_key(connection), connection.device_id
+        )
+
+    async def ahandle(
+        self, connection: RealtimeConnection, envelope: RealtimeEnvelope
+    ) -> RealtimeEnvelope | None:
+        """Settle the delivery frames here; hand application frames back.
+
+        Acknowledgements and resumes need the inbox, which a connection has no
+        business holding. Routing them here keeps every service from writing
+        its own cursor arithmetic, and keeps the two that get it subtly wrong
+        from existing at all.
+        """
+        match envelope.type:
+            case RealtimeMessageType.ACK:
+                if envelope.seq is not None:
+                    await self.aacknowledge(connection, envelope.seq)
+                return None
+            case RealtimeMessageType.RESUME:
+                await self.aresume(connection, envelope.seq or 0)
+                return None
+            case _:
+                return envelope
 
     async def adeliver_locally(self, user_id: str, envelope: RealtimeEnvelope) -> int:
         """Write to the sockets this replica holds. Returns how many took it."""

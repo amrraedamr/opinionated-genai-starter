@@ -36,6 +36,33 @@ PRESENCE_TTL_SECONDS: Final = 90
 """Longer than a heartbeat, so an idle-but-live user does not flicker offline,
 and short enough that a replica killed without warning stops claiming them."""
 
+REALTIME_INBOX_NAMESPACE: Final = "realtime:inbox"
+REALTIME_INBOX_LOCK_NAMESPACE: Final = "realtime:inbox:lock"
+"""Separate from the inbox itself. Redis has one keyspace, so a lock sharing a
+key with the list it guards is a `SET` against a LIST, which it refuses."""
+
+REALTIME_CURSOR_NAMESPACE: Final = "realtime:cursor"
+
+INBOX_RETENTION_SECONDS: Final = 86_400
+"""A day. Long enough for a phone that was off overnight, short enough that an
+inbox nobody ever reconnects to does not grow forever."""
+
+INBOX_LOCK_TTL_SECONDS: Final = 5
+"""Only held across one append. If a replica dies mid-append, the next writer
+waits this long rather than until someone notices."""
+
+
+class ChannelDelivery(StrEnum):
+    """What a channel promises about a message nobody was there to receive."""
+
+    EPHEMERAL = "ephemeral"
+    """Reaches whoever is connected now. Right for a cursor or a typing
+    indicator, where yesterday's is worse than none."""
+
+    DURABLE = "durable"
+    """Recorded first, so a device that was offline can ask for what it
+    missed. Right for anything a user is owed."""
+
 
 class RealtimeMessageType(StrEnum):
     """What a frame is for."""
@@ -45,6 +72,12 @@ class RealtimeMessageType(StrEnum):
 
     ACK = "ack"
     """A client confirming delivery, which advances its cursor."""
+
+    RESUME = "resume"
+    """A reconnecting client saying the last sequence it holds, so the server
+    can send the gap. The client states it rather than the server reading its
+    cursor, because a message can be delivered and its ack lost, and only the
+    device knows which of the two happened."""
 
     PING = "ping"
     PONG = "pong"
