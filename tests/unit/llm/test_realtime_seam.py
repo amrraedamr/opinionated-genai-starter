@@ -15,7 +15,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from base.models.definitions.model import FinishReason
 from base.models.definitions.realtime_session import (
-    AUDIO_SAMPLE_RATE_HZ,
+    AUDIO_OUTPUT_SAMPLE_RATE_HZ,
     RealtimeEventType,
     RealtimeModality,
 )
@@ -175,9 +175,15 @@ def test_a_session_reaches_no_tool_it_was_not_given() -> None:
     assert RealtimeSessionConfig(model="m").tool_names == []
 
 
-def test_the_sample_rate_is_stated_once() -> None:
-    """So an adapter resamples rather than each caller guessing."""
-    assert AUDIO_SAMPLE_RATE_HZ == 24_000
+def test_the_output_rate_is_stated_once() -> None:
+    """Both providers speak at it, so a caller plays back at one rate."""
+    assert AUDIO_OUTPUT_SAMPLE_RATE_HZ == 24_000
+
+
+def test_the_input_rate_is_asked_of_the_session_not_assumed() -> None:
+    """The providers disagree, and the wrong rate is silent: the model hears
+    a voice at the wrong pitch rather than raising anything."""
+    assert "input_sample_rate" in AbstractRealtimeSession.__abstractmethods__
 
 
 # The seam itself
@@ -195,6 +201,10 @@ def test_a_conforming_session_satisfies_the_seam() -> None:
         @property
         def model(self) -> str:
             return "m"
+
+        @property
+        def input_sample_rate(self) -> int:
+            return 24_000
 
         def get_service_name(self) -> str:
             return "conforming"

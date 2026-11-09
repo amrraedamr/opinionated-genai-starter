@@ -17,10 +17,7 @@ from typing import Any
 import pytest
 
 from base.models.definitions.model import FinishReason, ProviderType
-from base.models.definitions.realtime_session import (
-    AUDIO_SAMPLE_RATE_HZ,
-    RealtimeModality,
-)
+from base.models.definitions.realtime_session import RealtimeModality
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.realtime_session import (
     RealtimeAudioDelta,
@@ -38,8 +35,18 @@ from base.services.llm.realtime.openai import OpenAIRealtimeSession
 from tests.conftest import credential
 
 MODEL = "gpt-realtime"
-TRAILING_SILENCE = bytes(2 * AUDIO_SAMPLE_RATE_HZ)
-"""One second of it, at two bytes a sample."""
+
+
+def trailing_silence(session: OpenAIRealtimeSession) -> bytes:
+    """One second of it, at the rate this provider listens at.
+
+    Asked of the session rather than assumed, because the providers disagree
+    and the wrong rate is silent: the model hears a voice at the wrong pitch
+    rather than raising anything.
+    """
+    return bytes(2 * session.input_sample_rate)
+
+
 CONNECT_TIMEOUT = 45.0
 TURN_TIMEOUT = 90.0
 
@@ -336,6 +343,6 @@ async def _speech_of(session: OpenAIRealtimeSession, words: str) -> bytes:
         await asyncio.wait_for(until_turn_end(speaker, events), timeout=TURN_TIMEOUT)
         spoken = b"".join(e.audio for e in events if isinstance(e, RealtimeAudioDelta))
         assert spoken, "the provider generated no speech to feed back"
-        return spoken + TRAILING_SILENCE
+        return spoken + trailing_silence(session)
     finally:
         await speaker.aclose()
