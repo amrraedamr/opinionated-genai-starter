@@ -107,8 +107,6 @@ def create_app(
     app.add_middleware(
         TrafficControlMiddleware,
         concurrency=settings.request_concurrency_limit,
-        per_minute=settings.request_rate_limit_per_minute,
-        auth_per_minute=settings.auth_rate_limit_per_minute,
     )
     app.middleware("http")(request_context)
 
