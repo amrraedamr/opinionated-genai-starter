@@ -26,6 +26,16 @@ HEARTBEAT_TIMEOUT_SECONDS: Final = 60.0
 """Three missed heartbeats. A socket whose peer vanished without a close frame
 looks identical to an idle one until something asks."""
 
+REALTIME_FANOUT_CHANNEL: Final = "realtime:fanout"
+"""One channel for every replica. A message names the user it is for, and each
+replica delivers to whichever of that user's devices it happens to hold."""
+
+REALTIME_PRESENCE_NAMESPACE: Final = "realtime:presence"
+
+PRESENCE_TTL_SECONDS: Final = 90
+"""Longer than a heartbeat, so an idle-but-live user does not flicker offline,
+and short enough that a replica killed without warning stops claiming them."""
+
 
 class RealtimeMessageType(StrEnum):
     """What a frame is for."""
