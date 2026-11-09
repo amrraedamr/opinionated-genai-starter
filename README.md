@@ -89,8 +89,14 @@ worker's image has no web server in it.
 
 ```bash
 uv sync --all-packages
-docker compose -f deploy/docker-compose.infra.yml up -d   # Postgres, Redis, Mongo, Qdrant, Azurite, Cosmos
+docker compose -f deploy/docker-compose.infra.yml up -d   # Postgres, Redis, Mongo, Qdrant, Azurite, Cosmos, OTel collector, Jaeger
 ```
+
+Set `OTEL_ENABLED=true` in a service's `.env` and its traces appear at
+**http://localhost:16686**. Services export to the collector rather than
+straight to Jaeger, because a real deployment has one in the path to batch,
+sample and strip attributes — running without it locally would be exercising a
+shape nobody ships.
 
 Then one service, from its own directory so its `.env` resolves:
 

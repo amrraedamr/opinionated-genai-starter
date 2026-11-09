@@ -121,6 +121,23 @@ jobs:
         with:
           version: "0.12.18"
       - run: uv sync --all-extras --all-packages
+      - name: Start the tracing stack
+        # From the compose file rather than as service containers above. The
+        # collector needs its config mounted, and a service container starts
+        # before the checkout exists — so the file it would read is not there
+        # yet. Running the same compose file also means the tags cannot drift
+        # from the ones people run locally, which is the whole point of
+        # pinning them.
+        run: |
+          docker compose -f deploy/docker-compose.infra.yml up -d otel-collector jaeger
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:16686/api/v3/services; then
+              echo "jaeger ready"; break
+            fi
+            sleep 2
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:16686/api/v3/services \
+            || { echo "jaeger never answered"; exit 1; }
       - name: Wait for the emulators
         # The Cosmos emulator takes appreciably longer to answer than the
         # databases. Without this the tier would skip itself and pass.

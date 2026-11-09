@@ -77,6 +77,8 @@ CONTAINERS: dict[str, tuple[str, int]] = {
     "qdrant": ("localhost", 6333),
     "azurite": ("localhost", 10100),
     "cosmos": ("localhost", 8081),
+    "otel-collector": ("localhost", 4317),
+    "jaeger": ("localhost", 16686),
 }
 
 
