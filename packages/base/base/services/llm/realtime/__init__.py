@@ -28,6 +28,17 @@ class AbstractRealtimeSession(ABC):
     @abstractmethod
     def model(self) -> str: ...
 
+    @property
+    @abstractmethod
+    def input_sample_rate(self) -> int:
+        """What this provider listens at, in hertz.
+
+        Asked rather than assumed, because the two disagree: OpenAI wants
+        24 kHz and Gemini 16 kHz. Sending the wrong one raises nothing — the
+        model simply hears a voice at the wrong pitch and speed, and answers
+        a question nobody asked.
+        """
+
     @abstractmethod
     def get_service_name(self) -> str: ...
 

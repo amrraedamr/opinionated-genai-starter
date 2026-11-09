@@ -9,9 +9,14 @@ that into a prompt-in/result-out shape would misdescribe both.
 from enum import StrEnum
 from typing import Final
 
-AUDIO_SAMPLE_RATE_HZ: Final = 24_000
-"""What both OpenAI and Gemini expect for PCM audio. Stated once so an adapter
-resamples rather than each caller guessing."""
+AUDIO_OUTPUT_SAMPLE_RATE_HZ: Final = 24_000
+"""What both providers speak at.
+
+Only the output rate is shared. Input rates differ — OpenAI listens at 24 kHz
+and Gemini at 16 kHz — so a caller holding a microphone asks the session it
+opened rather than assuming, and the wrong rate is not an error: the model
+hears a chipmunk and answers the wrong question.
+"""
 
 
 class RealtimeModality(StrEnum):
@@ -53,7 +58,7 @@ class RealtimeEventType(StrEnum):
 
 
 __all__ = [
-    "AUDIO_SAMPLE_RATE_HZ",
+    "AUDIO_OUTPUT_SAMPLE_RATE_HZ",
     "RealtimeEventType",
     "RealtimeModality",
 ]

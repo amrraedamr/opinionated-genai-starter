@@ -51,6 +51,9 @@ FUNCTION_CALL_DONE: Final = "response.function_call_arguments.done"
 RESPONSE_DONE: Final = "response.done"
 ERROR: Final = "error"
 
+INPUT_SAMPLE_RATE_HZ: Final = 24_000
+"""What OpenAI listens at. Gemini listens at 16 kHz; neither resamples."""
+
 TRANSCRIPTION_MODEL: Final = "whisper-1"
 """Input transcription is off unless a session asks for it, and without it
 `conversation.item.input_audio_transcription.delta` never arrives — the seam
@@ -88,6 +91,10 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
     @property
     def model(self) -> str:
         return self._session.model
+
+    @property
+    def input_sample_rate(self) -> int:
+        return INPUT_SAMPLE_RATE_HZ
 
     def get_service_name(self) -> str:
         return "openai_realtime"
