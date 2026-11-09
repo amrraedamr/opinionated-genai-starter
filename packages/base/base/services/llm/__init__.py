@@ -10,6 +10,7 @@ from base.models.view_models.chat_history import StoredMessage
 from base.models.view_models.llm_result import LLMResult, ParsedResult
 from base.models.view_models.model import CacheHint
 from base.models.view_models.prompt import RenderedPrompt
+from base.services.rate_limiting.llm_budget import TokenBudget
 from base.services.tool_calling import Tool
 from base.tools.stream import StreamIterator
 
@@ -110,7 +111,9 @@ class AbstractLLMService(ABC):
         when it does. Running them and asking again is the caller's loop.
         """
         self._require_input(prompt, messages, "complete")
-        return self._complete(
+        budget = self._budget
+        budget.check()
+        result = self._complete(
             prompt,
             messages,
             tools,
@@ -121,6 +124,8 @@ class AbstractLLMService(ABC):
             cache_hint,
             **kwargs,
         )
+        budget.spend(result.usage.total_tokens if result.usage else 0)
+        return result
 
     @final
     async def acomplete(
@@ -142,7 +147,9 @@ class AbstractLLMService(ABC):
         when it does. Running them and asking again is the caller's loop.
         """
         self._require_input(prompt, messages, "acomplete")
-        return await self._acomplete(
+        budget = self._budget
+        await budget.acheck()
+        result = await self._acomplete(
             prompt,
             messages,
             tools,
@@ -153,6 +160,8 @@ class AbstractLLMService(ABC):
             cache_hint,
             **kwargs,
         )
+        await budget.aspend(result.usage.total_tokens if result.usage else 0)
+        return result
 
     @abstractmethod
     def _parse[T: BaseModel](
@@ -198,7 +207,9 @@ class AbstractLLMService(ABC):
         Takes no stream iterator: a parsed call returns one object, not deltas.
         """
         self._require_input(prompt, messages, "parse")
-        return self._parse(
+        budget = self._budget
+        budget.check()
+        result = self._parse(
             schema,
             prompt,
             messages,
@@ -208,6 +219,8 @@ class AbstractLLMService(ABC):
             cache_hint,
             **kwargs,
         )
+        budget.spend(result.usage.total_tokens if result.usage else 0)
+        return result
 
     @final
     async def aparse[T: BaseModel](
@@ -227,7 +240,9 @@ class AbstractLLMService(ABC):
         Takes no stream iterator: a parsed call returns one object, not deltas.
         """
         self._require_input(prompt, messages, "aparse")
-        return await self._aparse(
+        budget = self._budget
+        await budget.acheck()
+        result = await self._aparse(
             schema,
             prompt,
             messages,
@@ -237,6 +252,21 @@ class AbstractLLMService(ABC):
             cache_hint,
             **kwargs,
         )
+        await budget.aspend(result.usage.total_tokens if result.usage else 0)
+        return result
+
+    @property
+    def _budget(self) -> TokenBudget:
+        """Resolved on first use, because a service may be built before settings.
+
+        Held per service instance rather than per call: it is stateless, and
+        the limiter behind it is the shared one.
+        """
+        existing = getattr(self, "_token_budget", None)
+        if existing is None:
+            existing = TokenBudget()
+            self._token_budget = existing
+        return existing
 
     @staticmethod
     def _require_input(
