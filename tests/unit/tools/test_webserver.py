@@ -16,12 +16,13 @@ from base.models.definitions.environment import Environment
 from base.services.configuration.mixins.server import ServerSettingsMixin
 from base.tools import webserver
 from base.tools.webserver import run_gunicorn, run_uvicorn, run_webserver
+from tests.conftest import MakeSettings
 
 APP_PATH = "base.tools.webserver:run_webserver"
 
 
 @pytest.fixture
-def server_settings(make_settings: Any) -> Any:
+def server_settings(make_settings: MakeSettings) -> Any:
     return make_settings(
         ServerSettingsMixin,
         api_host="10.0.0.1",
@@ -124,7 +125,7 @@ def test_port_zero_is_honoured_rather_than_read_as_unset(
 
 
 def test_the_registered_settings_are_used_when_none_are_passed(
-    chosen: dict[str, Any], make_settings: Any
+    chosen: dict[str, Any], make_settings: MakeSettings
 ) -> None:
     make_settings(ServerSettingsMixin, api_host="0.0.0.0", api_port=8080)
 
@@ -134,7 +135,9 @@ def test_the_registered_settings_are_used_when_none_are_passed(
     assert chosen["args"] == (APP_PATH, "0.0.0.0", 8080)
 
 
-def test_settings_without_the_server_mixin_are_refused(make_settings: Any) -> None:
+def test_settings_without_the_server_mixin_are_refused(
+    make_settings: MakeSettings,
+) -> None:
     from base.tools.errors import MissingSettingsError
 
     make_settings()
@@ -223,7 +226,7 @@ def test_an_app_path_that_names_nothing_fails_before_a_worker_is_forked(
 
 
 def test_the_worker_count_never_exceeds_the_configured_ceiling(
-    served: list[Any], make_settings: Any
+    served: list[Any], make_settings: MakeSettings
 ) -> None:
     settings = make_settings(ServerSettingsMixin, max_gunicorn_workers=1)
 
@@ -233,7 +236,7 @@ def test_the_worker_count_never_exceeds_the_configured_ceiling(
 
 
 def test_the_worker_count_follows_the_machine_when_the_ceiling_is_high(
-    served: list[Any], make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    served: list[Any], make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(webserver.multiprocessing, "cpu_count", lambda: 3)
     settings = make_settings(ServerSettingsMixin, max_gunicorn_workers=99)
@@ -270,7 +273,7 @@ def test_the_request_timeouts_reach_gunicorn(
 
 
 def test_gunicorn_falls_back_to_the_registered_settings(
-    served: list[Any], make_settings: Any
+    served: list[Any], make_settings: MakeSettings
 ) -> None:
     make_settings(ServerSettingsMixin, max_gunicorn_workers=1)
 

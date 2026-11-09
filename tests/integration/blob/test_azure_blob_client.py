@@ -12,6 +12,7 @@ import pytest
 from base.clients.blob.azure_blob import AzureBlobClient
 from base.services.blob.azure_blob import AzureBlobService
 from base.services.configuration.mixins.blob.azure import AzureBlobSettingsMixin
+from tests.conftest import MakeSettings
 
 from .conftest import ACCOUNT_KEY
 
@@ -32,7 +33,9 @@ async def test_a_shared_key_reaches_the_account_asynchronously(azurite: Any) -> 
     await client.aclose()
 
 
-def test_an_account_nothing_is_listening_on_pings_false(make_settings: Any) -> None:
+def test_an_account_nothing_is_listening_on_pings_false(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(
         AzureBlobSettingsMixin,
         azure_blob_account_url="http://127.0.0.1:10199/devstoreaccount1",
@@ -44,7 +47,7 @@ def test_an_account_nothing_is_listening_on_pings_false(make_settings: Any) -> N
 
 
 async def test_an_account_nothing_is_listening_on_pings_false_asynchronously(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         AzureBlobSettingsMixin,

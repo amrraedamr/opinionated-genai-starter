@@ -23,10 +23,11 @@ from base.models.view_models.auth import Principal
 from base.models.view_models.realtime import ConnectionTicket
 from base.services.cache.memory import InMemoryCacheService
 from base.services.realtime.tickets import TICKET_NAMESPACE, TicketService
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def tickets(make_settings: Any) -> TicketService:
+def tickets(make_settings: MakeSettings) -> TicketService:
     make_settings()
     return TicketService(InMemoryCacheService())
 

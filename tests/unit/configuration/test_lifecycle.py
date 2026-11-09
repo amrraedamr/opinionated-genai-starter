@@ -6,8 +6,6 @@ singleton metaclass makes a second construction of the same class hand back
 the first instance — the trap every test in this area has to work around.
 """
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -19,7 +17,7 @@ from base.services.configuration import (
 )
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import RedisSettingsMixin, SQLSettingsMixin
-from tests.conftest import settings_class
+from tests.conftest import MakeSettings, settings_class
 
 
 def test_nothing_is_configured_at_the_start_of_a_test() -> None:
@@ -120,6 +118,6 @@ def test_a_composed_settings_object_is_a_core_settings() -> None:
     assert isinstance(settings, SQLSettingsMixin)
 
 
-def test_make_settings_registers_what_it_builds(make_settings: Any) -> None:
+def test_make_settings_registers_what_it_builds(make_settings: MakeSettings) -> None:
     built = make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     assert get_settings() is built

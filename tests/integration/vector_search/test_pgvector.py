@@ -22,12 +22,15 @@ from base.models.view_models.exceptions.vector_search import (
 )
 from base.models.view_models.vector_search import VectorRecord
 from base.services.vector_search.pgvector import PgVectorSearchService
+from tests.conftest import CoreSettings
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-async def pgvector(infra_settings: Any) -> AsyncIterator[PgVectorSearchService]:
+async def pgvector(
+    infra_settings: CoreSettings,
+) -> AsyncIterator[PgVectorSearchService]:
     """A service on the local Postgres, with both pools closed afterwards."""
     service = PgVectorSearchService()
     yield service

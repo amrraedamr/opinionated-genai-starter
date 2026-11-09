@@ -11,10 +11,11 @@ from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from base.models.definitions.oauth import OAUTH_NONCE_COOKIE
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch, make_settings: Any) -> TestClient:
+def client(monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings) -> TestClient:
     """The real route, with only the OAuth service replaced."""
     import identity.routers.auth as auth_module
 

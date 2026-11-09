@@ -33,6 +33,7 @@ from base.services.guardrails.factory import build_guardrail_pipeline
 from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.tool_calling import Tool, Toolbox
 from base.services.tool_calling.runner import ToolRunner
+from tests.conftest import MakeSettings
 
 CONVERSATION = ConversationId(uuid.UUID(int=7))
 
@@ -214,27 +215,29 @@ async def test_a_tool_result_is_checked_at_the_tool_stage() -> None:
     assert ("plain", GuardrailStage.TOOL_RESULT) in recorder.seen
 
 
-def test_guardrails_are_off_unless_a_service_asks(make_settings: Any) -> None:
+def test_guardrails_are_off_unless_a_service_asks(make_settings: MakeSettings) -> None:
     """Enabling changes what the model is shown; that is not a default."""
     make_settings(GuardrailSettingsMixin)
     assert build_guardrail_pipeline().guardrails == ()
 
 
-def test_enabling_turns_on_the_ones_that_cost_nothing(make_settings: Any) -> None:
+def test_enabling_turns_on_the_ones_that_cost_nothing(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(GuardrailSettingsMixin, guardrails_enabled=True)
     names = [g.name for g in build_guardrail_pipeline().guardrails]
     assert "pattern-pii" in names
     assert "injection-heuristic" in names
 
 
-def test_moderation_stays_off_because_it_bills(make_settings: Any) -> None:
+def test_moderation_stays_off_because_it_bills(make_settings: MakeSettings) -> None:
     """A starter that quietly spends money on every message is a bad starter."""
     make_settings(GuardrailSettingsMixin, guardrails_enabled=True)
     names = [g.name for g in build_guardrail_pipeline().guardrails]
     assert "openai-moderation" not in names
 
 
-def test_an_empty_pipeline_applies_to_no_stage(make_settings: Any) -> None:
+def test_an_empty_pipeline_applies_to_no_stage(make_settings: MakeSettings) -> None:
     """`applies_to` is how a caller skips the work, so it must be false."""
     make_settings(GuardrailSettingsMixin)
     pipeline = build_guardrail_pipeline()
@@ -242,7 +245,7 @@ def test_an_empty_pipeline_applies_to_no_stage(make_settings: Any) -> None:
 
 
 def test_a_service_that_never_composed_the_mixin_gets_nothing(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """Falling back to defaults must not switch guardrails on by surprise."""
     make_settings()

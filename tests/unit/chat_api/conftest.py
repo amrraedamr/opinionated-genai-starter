@@ -45,6 +45,7 @@ from chat_api.models.orm.conversation import ConversationDTO  # noqa: F401
 from chat_api.models.orm.outbox import OutboxEventDTO  # noqa: F401
 from chat_api.models.orm.prompt import ActivePromptDTO, PromptDTO  # noqa: F401
 from chat_api.routers import conversation as conversation_router
+from tests.conftest import MakeSettings
 
 HERE: pathlib.Path = pathlib.Path(__file__).resolve().parent
 
@@ -113,7 +114,7 @@ def key_paths(rsa_pem: tuple[str, str], tmp_path: pathlib.Path) -> tuple[str, st
 
 @pytest.fixture
 def chat_settings(
-    make_settings: Any, sqlite_path: pathlib.Path, key_paths: tuple[str, str]
+    make_settings: MakeSettings, sqlite_path: pathlib.Path, key_paths: tuple[str, str]
 ) -> Any:
     """Registered settings covering every subsystem this service reads."""
     private_path, public_path = key_paths

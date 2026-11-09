@@ -23,6 +23,7 @@ from base.services.configuration.mixins import (
     OAuthSettingsMixin,
 )
 from base.tools.errors import ErrorsException, MissingSettingsMixinError
+from tests.conftest import MakeSettings
 
 ALL_PROVIDER_MIXINS: tuple[type, ...] = (
     OAuthSettingsMixin,
@@ -52,42 +53,48 @@ CREDENTIALS: dict[str, Any] = {
 }
 
 
-def _configured(make_settings: Any, providers: str, **overrides: Any) -> Any:
+def _configured(make_settings: MakeSettings, providers: str, **overrides: Any) -> Any:
     values = {**CREDENTIALS, **overrides}
     return make_settings(*ALL_PROVIDER_MIXINS, oauth_providers=providers, **values)
 
 
-def test_only_the_named_providers_are_offered(make_settings: Any) -> None:
+def test_only_the_named_providers_are_offered(make_settings: MakeSettings) -> None:
     _configured(make_settings, "google,github")
     assert sorted(load_oauth_provider_configs()) == ["github", "google"]
 
 
-def test_provider_names_are_matched_case_insensitively(make_settings: Any) -> None:
+def test_provider_names_are_matched_case_insensitively(
+    make_settings: MakeSettings,
+) -> None:
     _configured(make_settings, "GOOGLE,MicroSoft")
     assert sorted(load_oauth_provider_configs()) == ["google", "microsoft"]
 
 
-def test_surrounding_whitespace_in_the_list_is_dropped(make_settings: Any) -> None:
+def test_surrounding_whitespace_in_the_list_is_dropped(
+    make_settings: MakeSettings,
+) -> None:
     _configured(make_settings, "  google ,   github  ,")
     assert sorted(load_oauth_provider_configs()) == ["github", "google"]
 
 
-def test_a_duplicated_name_yields_one_provider(make_settings: Any) -> None:
+def test_a_duplicated_name_yields_one_provider(make_settings: MakeSettings) -> None:
     _configured(make_settings, "google,google,GOOGLE")
     assert list(load_oauth_provider_configs()) == ["google"]
 
 
-def test_an_empty_list_offers_nothing(make_settings: Any) -> None:
+def test_an_empty_list_offers_nothing(make_settings: MakeSettings) -> None:
     _configured(make_settings, "")
     assert load_oauth_provider_configs() == {}
 
 
-def test_a_list_of_only_separators_offers_nothing(make_settings: Any) -> None:
+def test_a_list_of_only_separators_offers_nothing(make_settings: MakeSettings) -> None:
     _configured(make_settings, " , , ")
     assert load_oauth_provider_configs() == {}
 
 
-def test_every_known_provider_can_be_enabled_at_once(make_settings: Any) -> None:
+def test_every_known_provider_can_be_enabled_at_once(
+    make_settings: MakeSettings,
+) -> None:
     _configured(make_settings, "google,microsoft,github,facebook,apple")
     assert sorted(load_oauth_provider_configs()) == [
         "apple",
@@ -99,7 +106,7 @@ def test_every_known_provider_can_be_enabled_at_once(make_settings: Any) -> None
 
 
 def test_an_unnamed_provider_is_never_constructed(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pins the fix: building all five then filtering read settings it should not."""
     built: list[str] = []
@@ -119,7 +126,7 @@ def test_an_unnamed_provider_is_never_constructed(
 
 
 def test_enabling_a_provider_whose_mixin_is_absent_names_the_mixin(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(OAuthSettingsMixin, oauth_providers="apple")
     with pytest.raises(MissingSettingsMixinError) as caught:
@@ -141,7 +148,7 @@ def test_enabling_a_provider_whose_mixin_is_absent_names_the_mixin(
     ],
 )
 def test_each_provider_names_its_own_mixin_when_it_is_absent(
-    make_settings: Any, provider: str, mixin_name: str
+    make_settings: MakeSettings, provider: str, mixin_name: str
 ) -> None:
     make_settings(OAuthSettingsMixin, oauth_providers=provider)
     with pytest.raises(MissingSettingsMixinError) as caught:
@@ -150,7 +157,7 @@ def test_each_provider_names_its_own_mixin_when_it_is_absent(
 
 
 def test_a_missing_mixin_is_reported_before_any_provider_is_built(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         OAuthSettingsMixin,
@@ -164,7 +171,7 @@ def test_a_missing_mixin_is_reported_before_any_provider_is_built(
         load_oauth_provider_configs()
 
 
-def test_an_unknown_provider_name_is_refused(make_settings: Any) -> None:
+def test_an_unknown_provider_name_is_refused(make_settings: MakeSettings) -> None:
     _configured(make_settings, "myspace")
     with pytest.raises(ErrorsException) as caught:
         load_oauth_provider_configs()
@@ -172,7 +179,7 @@ def test_an_unknown_provider_name_is_refused(make_settings: Any) -> None:
 
 
 def test_an_unknown_name_beside_a_known_one_is_still_refused(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     _configured(make_settings, "google,myspace")
     with pytest.raises(ErrorsException):
@@ -184,24 +191,28 @@ def test_an_unknown_name_beside_a_known_one_is_still_refused(
     ["oauth_google_client_id", "oauth_google_client_secret"],
 )
 def test_a_provider_missing_a_credential_is_dropped(
-    make_settings: Any, missing: str
+    make_settings: MakeSettings, missing: str
 ) -> None:
     _configured(make_settings, "google", **{missing: ""})
     assert load_oauth_provider_configs() == {}
 
 
-def test_a_provider_without_a_redirect_uri_is_dropped(make_settings: Any) -> None:
+def test_a_provider_without_a_redirect_uri_is_dropped(
+    make_settings: MakeSettings,
+) -> None:
     _configured(make_settings, "google", oauth_google_redirect_uri="")
     assert load_oauth_provider_configs() == {}
 
 
-def test_a_dropped_provider_does_not_hide_a_usable_one(make_settings: Any) -> None:
+def test_a_dropped_provider_does_not_hide_a_usable_one(
+    make_settings: MakeSettings,
+) -> None:
     _configured(make_settings, "google,github", oauth_google_client_secret="")
     assert list(load_oauth_provider_configs()) == ["github"]
 
 
 def test_apple_is_usable_from_signing_material_without_a_static_secret(
-    make_settings: Any, ec_private_pem: str
+    make_settings: MakeSettings, ec_private_pem: str
 ) -> None:
     _configured(
         make_settings,
@@ -217,14 +228,14 @@ def test_apple_is_usable_from_signing_material_without_a_static_secret(
 
 
 def test_apple_without_a_secret_or_signing_material_is_dropped(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     _configured(make_settings, "apple", oauth_apple_client_secret="")
     assert load_oauth_provider_configs() == {}
 
 
 def test_apple_with_partial_signing_material_is_dropped(
-    make_settings: Any, ec_private_pem: str
+    make_settings: MakeSettings, ec_private_pem: str
 ) -> None:
     _configured(
         make_settings,
@@ -254,6 +265,8 @@ def test_every_registry_entry_pairs_a_protocol_a_mixin_name_and_a_builder() -> N
         assert name in mixin.lower().replace("oauthsettingsmixin", "")
 
 
-def test_a_loaded_config_is_an_oauth_provider_config(make_settings: Any) -> None:
+def test_a_loaded_config_is_an_oauth_provider_config(
+    make_settings: MakeSettings,
+) -> None:
     _configured(make_settings, "google")
     assert isinstance(load_oauth_provider_configs()["google"], OAuthProviderConfig)

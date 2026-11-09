@@ -17,7 +17,7 @@ mouth.
 
 import base64
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final
 
 from base.models.definitions.model import FinishReason, ProviderType
 from base.models.definitions.realtime_session import RealtimeModality
@@ -41,7 +41,18 @@ from base.services.logging.console import ConsoleLoggerService
 from base.tools.openai_clients import create_openai_clients
 
 if TYPE_CHECKING:
-    from openai.resources.realtime.realtime import AsyncRealtimeConnection
+    from openai.resources.realtime.realtime import (
+        AsyncRealtimeConnection,
+        AsyncRealtimeConnectionManager,
+    )
+    from openai.types.realtime import (
+        RealtimeFunctionToolParam,
+        RealtimeServerEvent,
+        ResponseDoneEvent,
+    )
+    from openai.types.realtime.realtime_session_create_request_param import (
+        RealtimeSessionCreateRequestParam,
+    )
 
 TEXT_DELTA: Final = "response.output_text.delta"
 AUDIO_DELTA: Final = "response.output_audio.delta"
@@ -79,13 +90,13 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         self,
         session: RealtimeSessionConfig,
         config: ModelConfigurations | None = None,
-        tool_schemas: list[dict[str, Any]] | None = None,
+        tool_schemas: "list[RealtimeFunctionToolParam] | None" = None,
     ) -> None:
         self._session = session
         self._config = config
         self._tool_schemas = tool_schemas or []
         self._logger = ConsoleLoggerService()
-        self._manager: Any = None
+        self._manager: "AsyncRealtimeConnectionManager | None" = None
         self._connection: AsyncRealtimeConnection | None = None
 
     @property
@@ -126,9 +137,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
             {"type": "session.update", "session": self._session_payload()}
         )
 
-    def _session_payload(self) -> dict[str, Any]:
+    def _session_payload(self) -> "RealtimeSessionCreateRequestParam":
         """What this session negotiates, in OpenAI's spelling."""
-        payload: dict[str, Any] = {
+        payload: "RealtimeSessionCreateRequestParam" = {
             "type": "realtime",
             "output_modalities": [m.value for m in self._session.modalities],
             "audio": {"input": {"transcription": {"model": TRANSCRIPTION_MODEL}}},
@@ -184,7 +195,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
             if translated is not None:
                 yield translated
 
-    def _translate(self, event: Any) -> RealtimeOutput | None:
+    def _translate(self, event: "RealtimeServerEvent") -> RealtimeOutput | None:
         kind = getattr(event, "type", None)
         if kind in (TEXT_DELTA, ASSISTANT_TRANSCRIPT_DELTA):
             return RealtimeTextDelta(text=event.delta)
@@ -208,7 +219,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         return None
 
     @staticmethod
-    def _turn_end(event: Any) -> RealtimeTurnEnd:
+    def _turn_end(event: "ResponseDoneEvent") -> RealtimeTurnEnd:
         response = event.response
         usage = response.usage
         return RealtimeTurnEnd(

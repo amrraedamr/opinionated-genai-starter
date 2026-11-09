@@ -6,12 +6,12 @@ only on one of them is broken for half its callers.
 """
 
 import uuid
-from typing import Any
 
 import pytest
 
 from base.models.view_models.exceptions.vector_search import VectorSearchError
 from base.services.vector_search.qdrant import QdrantVectorSearchService
+from tests.conftest import CoreSettings
 
 pytestmark = pytest.mark.integration
 
@@ -146,7 +146,7 @@ async def test_a_collection_of_a_different_width_rejects_the_wrong_vector(
 
 
 def test_the_client_prefers_grpc_against_the_local_container(
-    qdrant: QdrantVectorSearchService, infra_settings: Any
+    qdrant: QdrantVectorSearchService, infra_settings: CoreSettings
 ) -> None:
     """The stricter transport, and the one the id rules below are about."""
     assert qdrant._client._prefer_grpc is True

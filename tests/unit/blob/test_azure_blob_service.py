@@ -37,6 +37,7 @@ from base.services.blob import AbstractBlobService
 from base.services.blob.azure_blob import AzureBlobService
 from base.services.common.meta import purge_all
 from base.services.configuration.mixins import AzureBlobSettingsMixin
+from tests.conftest import MakeSettings
 
 ACCOUNT_URL = "https://account.blob.core.windows.net/"
 
@@ -172,7 +173,7 @@ def http_error(status: int, headers: dict[str, str] | None = None) -> HttpRespon
 
 
 def build(
-    make_settings: Any,
+    make_settings: MakeSettings,
     blob: FakeBlobClient | None = None,
     container: FakeContainerClient | None = None,
 ) -> tuple[AzureBlobService, FakeServiceClient]:
@@ -184,14 +185,16 @@ def build(
     return service, service_client
 
 
-def test_the_service_implements_the_neutral_contract(make_settings: Any) -> None:
+def test_the_service_implements_the_neutral_contract(
+    make_settings: MakeSettings,
+) -> None:
     service, _ = build(make_settings)
     assert isinstance(service, AbstractBlobService)
     assert service.get_service_name() == "Azure Blob Storage"
 
 
 def test_uploading_sends_the_bytes_the_content_type_and_the_metadata(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     blob = FakeBlobClient()
     service, client = build(make_settings, blob)
@@ -211,7 +214,7 @@ def test_uploading_sends_the_bytes_the_content_type_and_the_metadata(
 
 
 def test_uploading_defaults_to_overwriting_with_an_opaque_content_type(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     blob = FakeBlobClient()
     service, _ = build(make_settings, blob)
@@ -222,20 +225,20 @@ def test_uploading_defaults_to_overwriting_with_an_opaque_content_type(
     assert sent["metadata"] is None
 
 
-def test_uploading_can_be_told_not_to_overwrite(make_settings: Any) -> None:
+def test_uploading_can_be_told_not_to_overwrite(make_settings: MakeSettings) -> None:
     blob = FakeBlobClient()
     service, _ = build(make_settings, blob)
     service.upload("reports", "q1.pdf", b"x", overwrite=False)
     assert blob.uploads[0]["overwrite"] is False
 
 
-def test_downloading_reads_the_whole_blob(make_settings: Any) -> None:
+def test_downloading_reads_the_whole_blob(make_settings: MakeSettings) -> None:
     service, client = build(make_settings)
     assert service.download("reports", "q1.pdf") == b"stored bytes"
     assert client.blob_requests == [("reports", "q1.pdf")]
 
 
-def test_deleting_addresses_the_named_blob(make_settings: Any) -> None:
+def test_deleting_addresses_the_named_blob(make_settings: MakeSettings) -> None:
     blob = FakeBlobClient()
     service, client = build(make_settings, blob)
     service.delete("reports", "q1.pdf")
@@ -243,7 +246,9 @@ def test_deleting_addresses_the_named_blob(make_settings: Any) -> None:
     assert client.blob_requests == [("reports", "q1.pdf")]
 
 
-def test_existence_is_reported_as_the_sdk_answered_it(make_settings: Any) -> None:
+def test_existence_is_reported_as_the_sdk_answered_it(
+    make_settings: MakeSettings,
+) -> None:
     blob = FakeBlobClient()
     service, _ = build(make_settings, blob)
     assert service.exists("reports", "q1.pdf") is True
@@ -251,7 +256,9 @@ def test_existence_is_reported_as_the_sdk_answered_it(make_settings: Any) -> Non
     assert service.exists("reports", "q1.pdf") is False
 
 
-def test_properties_are_returned_in_the_neutral_shape(make_settings: Any) -> None:
+def test_properties_are_returned_in_the_neutral_shape(
+    make_settings: MakeSettings,
+) -> None:
     service, _ = build(make_settings)
     props = service.get_properties("reports", "q1.pdf")
     assert isinstance(props, BlobProperties)
@@ -263,7 +270,9 @@ def test_properties_are_returned_in_the_neutral_shape(make_settings: Any) -> Non
     assert props.metadata == {"owner": "ada"}
 
 
-def test_properties_fall_back_when_the_sdk_reports_nothing(make_settings: Any) -> None:
+def test_properties_fall_back_when_the_sdk_reports_nothing(
+    make_settings: MakeSettings,
+) -> None:
     service, _ = build(make_settings)
     props = AzureBlobService._to_blob_properties(SimpleNamespace())
     assert props.name == ""
@@ -273,7 +282,9 @@ def test_properties_fall_back_when_the_sdk_reports_nothing(make_settings: Any) -
     assert props.metadata == {}
 
 
-def test_creating_a_container_that_exists_does_nothing(make_settings: Any) -> None:
+def test_creating_a_container_that_exists_does_nothing(
+    make_settings: MakeSettings,
+) -> None:
     container = FakeContainerClient()
     container.exists_value = True
     service, _ = build(make_settings, container=container)
@@ -281,7 +292,9 @@ def test_creating_a_container_that_exists_does_nothing(make_settings: Any) -> No
     assert container.created == 0
 
 
-def test_creating_a_container_that_is_absent_creates_it(make_settings: Any) -> None:
+def test_creating_a_container_that_is_absent_creates_it(
+    make_settings: MakeSettings,
+) -> None:
     container = FakeContainerClient()
     container.exists_value = False
     service, _ = build(make_settings, container=container)
@@ -289,14 +302,14 @@ def test_creating_a_container_that_is_absent_creates_it(make_settings: Any) -> N
     assert container.created == 1
 
 
-def test_deleting_a_container_addresses_it_by_name(make_settings: Any) -> None:
+def test_deleting_a_container_addresses_it_by_name(make_settings: MakeSettings) -> None:
     service, client = build(make_settings)
     service.delete_container("reports")
     assert client.deleted_containers == ["reports"]
 
 
 def test_listing_passes_the_prefix_through_as_a_name_filter(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     container = FakeContainerClient(
         blobs=[
@@ -318,7 +331,7 @@ def test_listing_passes_the_prefix_through_as_a_name_filter(
 
 
 def test_a_listed_blob_missing_its_settings_gets_the_opaque_content_type(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     container = FakeContainerClient(
         blobs=[
@@ -369,7 +382,7 @@ def test_every_single_shot_method_is_retry_decorated() -> None:
 
 
 def test_a_failure_while_listing_is_translated_even_without_the_decorator(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """A generator cannot be retried, but it can still translate."""
 
@@ -389,7 +402,7 @@ def test_a_failure_while_listing_is_translated_even_without_the_decorator(
 
 
 def test_listing_asks_azure_for_the_metadata_it_otherwise_leaves_out(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     container = FakeContainerClient()
     service, _ = build(make_settings, container=container)
@@ -409,7 +422,7 @@ def test_listing_asks_azure_for_the_metadata_it_otherwise_leaves_out(
     ),
 )
 def test_an_sdk_error_becomes_the_matching_blob_error(
-    make_settings: Any, sdk_error: AzureError, domain_error: type[BlobError]
+    make_settings: MakeSettings, sdk_error: AzureError, domain_error: type[BlobError]
 ) -> None:
     service, _ = build(make_settings, FakeBlobClient(error=sdk_error))
     with pytest.raises(domain_error) as caught:
@@ -426,7 +439,7 @@ def test_an_sdk_error_becomes_the_matching_blob_error(
 )
 def test_a_transient_sdk_error_ends_as_a_retry_exhausted_blob_error(
     monkeypatch: pytest.MonkeyPatch,
-    make_settings: Any,
+    make_settings: MakeSettings,
     sdk_error: AzureError,
     domain_error: type[BlobError],
 ) -> None:
@@ -441,7 +454,7 @@ def test_a_transient_sdk_error_ends_as_a_retry_exhausted_blob_error(
 
 
 def test_a_throttled_account_ends_as_a_rate_limit_error(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -455,7 +468,7 @@ def test_a_throttled_account_ends_as_a_rate_limit_error(
 
 
 def test_a_failed_server_ends_as_a_server_error(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -466,7 +479,7 @@ def test_a_failed_server_ends_as_a_server_error(
 
 
 def test_something_the_sdk_never_promised_becomes_an_unexpected_blob_error(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings, FakeBlobClient(error=KeyError("surprise")))
     with pytest.raises(BlobUnexpectedError) as caught:
@@ -475,7 +488,7 @@ def test_something_the_sdk_never_promised_becomes_an_unexpected_blob_error(
 
 
 def test_a_retryable_failure_is_tried_the_handlers_full_budget(
-    monkeypatch: pytest.MonkeyPatch, make_settings: Any
+    monkeypatch: pytest.MonkeyPatch, make_settings: MakeSettings
 ) -> None:
     from tests.fakes import no_sleep
 
@@ -493,7 +506,7 @@ def test_a_retryable_failure_is_tried_the_handlers_full_budget(
     assert attempts["count"] == service._error_handler.DEFAULT_RETRIES + 1
 
 
-def test_an_unretryable_failure_is_tried_once(make_settings: Any) -> None:
+def test_an_unretryable_failure_is_tried_once(make_settings: MakeSettings) -> None:
     attempts = {"count": 0}
 
     class Counting(FakeBlobClient):
@@ -507,14 +520,14 @@ def test_an_unretryable_failure_is_tried_once(make_settings: Any) -> None:
     assert attempts["count"] == 1
 
 
-def test_disposing_closes_the_client_it_owns(make_settings: Any) -> None:
+def test_disposing_closes_the_client_it_owns(make_settings: MakeSettings) -> None:
     service, _ = build(make_settings)
     service.dispose()
     assert service._client.closed == 1  # type: ignore[attr-defined]
 
 
 async def test_disposing_asynchronously_closes_the_async_client(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build(make_settings)
     await service.adispose()
@@ -600,7 +613,7 @@ class AsyncFakeServiceClient:
 
 
 def build_async(
-    make_settings: Any, blob: Any = None, container: Any = None
+    make_settings: MakeSettings, blob: Any = None, container: Any = None
 ) -> tuple[AzureBlobService, AsyncFakeServiceClient]:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     client = AsyncFakeServiceClient(blob or AsyncFakeBlobClient(), container)
@@ -610,7 +623,7 @@ def build_async(
 
 
 async def test_uploading_asynchronously_sends_the_same_request(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     blob = AsyncFakeBlobClient()
     service, client = build_async(make_settings, blob)
@@ -620,14 +633,14 @@ async def test_uploading_asynchronously_sends_the_same_request(
 
 
 async def test_downloading_asynchronously_reads_the_whole_blob(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     service, _ = build_async(make_settings)
     assert await service.adownload("reports", "q1.pdf") == b"stored bytes"
 
 
 async def test_deleting_and_checking_asynchronously_reach_the_same_blob(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     blob = AsyncFakeBlobClient()
     service, _ = build_async(make_settings, blob)
@@ -637,7 +650,7 @@ async def test_deleting_and_checking_asynchronously_reach_the_same_blob(
 
 
 async def test_listing_asynchronously_passes_the_prefix_through(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     container = AsyncFakeContainerClient(
         blobs=[
@@ -657,7 +670,9 @@ async def test_listing_asynchronously_passes_the_prefix_through(
     assert [b.name for b in listed] == ["2026/q1.pdf"]
 
 
-async def test_an_async_sdk_error_becomes_a_blob_error(make_settings: Any) -> None:
+async def test_an_async_sdk_error_becomes_a_blob_error(
+    make_settings: MakeSettings,
+) -> None:
     error = ResourceNotFoundError("gone")
     service, _ = build_async(make_settings, AsyncFakeBlobClient(error=error))
     with pytest.raises(BlobNotFoundError) as caught:
@@ -666,7 +681,7 @@ async def test_an_async_sdk_error_becomes_a_blob_error(make_settings: Any) -> No
 
 
 async def test_a_failure_while_listing_asynchronously_is_translated_too(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     class Exploding:
         def list_blobs(
@@ -680,7 +695,7 @@ async def test_a_failure_while_listing_asynchronously_is_translated_too(
 
 
 async def test_listing_asynchronously_asks_for_the_metadata_too(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     container = AsyncFakeContainerClient()
     service, _ = build_async(make_settings, container=container)
@@ -715,7 +730,7 @@ class AsyncSigningServiceClient(SigningServiceClient):
 
 
 def build_signing(
-    make_settings: Any,
+    make_settings: MakeSettings,
     monkeypatch: pytest.MonkeyPatch,
     account_key: str,
     client: SigningServiceClient | None = None,
@@ -736,7 +751,7 @@ def build_signing(
 
 
 def test_a_shared_key_signs_the_token_itself(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, client, signed = build_signing(make_settings, monkeypatch, "the-key")
     service.generate_url("reports", "q1.pdf")
@@ -746,7 +761,7 @@ def test_a_shared_key_signs_the_token_itself(
 
 
 def test_an_identity_mints_a_user_delegation_key_instead(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, client, signed = build_signing(make_settings, monkeypatch, "")
     service.generate_url("reports", "q1.pdf")
@@ -756,7 +771,7 @@ def test_an_identity_mints_a_user_delegation_key_instead(
 
 
 def test_the_token_grants_a_read_and_expires_when_it_was_told_to(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, _, signed = build_signing(make_settings, monkeypatch, "the-key")
     service.generate_url("reports", "q1.pdf", expiry_seconds=60)
@@ -765,7 +780,7 @@ def test_the_token_grants_a_read_and_expires_when_it_was_told_to(
 
 
 def test_a_url_escapes_a_blob_name_the_token_signs_unescaped(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The signature is over the name as stored; the address must be escaped."""
     service, _, signed = build_signing(make_settings, monkeypatch, "the-key")
@@ -777,7 +792,7 @@ def test_a_url_escapes_a_blob_name_the_token_signs_unescaped(
 
 
 def test_a_url_keeps_the_slashes_a_nested_name_is_addressed_by(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, _, _ = build_signing(make_settings, monkeypatch, "the-key")
     url = service.generate_url("reports", "2026/q1.pdf")
@@ -785,7 +800,7 @@ def test_a_url_keeps_the_slashes_a_nested_name_is_addressed_by(
 
 
 async def test_a_shared_key_signs_the_token_itself_asynchronously(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, client, signed = build_signing(
         make_settings, monkeypatch, "the-key", AsyncSigningServiceClient()
@@ -798,7 +813,7 @@ async def test_a_shared_key_signs_the_token_itself_asynchronously(
 
 
 async def test_an_identity_mints_a_user_delegation_key_asynchronously(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, client, signed = build_signing(
         make_settings, monkeypatch, "", AsyncSigningServiceClient()
@@ -809,7 +824,7 @@ async def test_an_identity_mints_a_user_delegation_key_asynchronously(
 
 
 async def test_the_async_url_escapes_the_blob_name_too(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     service, _, _ = build_signing(
         make_settings, monkeypatch, "the-key", AsyncSigningServiceClient()

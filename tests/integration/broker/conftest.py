@@ -17,6 +17,7 @@ from base.services.configuration.mixins import (
     BrokerSettingsMixin,
     RedisSettingsMixin,
 )
+from tests.conftest import MakeSettings
 
 REDIS_URL = "redis://localhost:6379/1"
 
@@ -42,7 +43,7 @@ async def await_until(predicate: Callable[[], bool], *, timeout: float = 10.0) -
 class StreamsHarness:
     """Builds brokers, names streams, and cleans up what it named."""
 
-    def __init__(self, unique: str, make_settings: Any) -> None:
+    def __init__(self, unique: str, make_settings: MakeSettings) -> None:
         self._unique = unique
         self._make_settings = make_settings
         self._configured = False
@@ -94,7 +95,9 @@ class StreamsHarness:
 
 
 @pytest.fixture
-async def streams(make_settings: Any, unique: str) -> AsyncIterator[StreamsHarness]:
+async def streams(
+    make_settings: MakeSettings, unique: str
+) -> AsyncIterator[StreamsHarness]:
     harness = StreamsHarness(unique, make_settings)
     try:
         yield harness

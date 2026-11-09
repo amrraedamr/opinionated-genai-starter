@@ -16,6 +16,7 @@ from base.models.definitions.tenancy import RLS_POLICY_NAME, RLS_SETTING, Tenant
 from base.services.configuration.mixins import TenancySettingsMixin
 from base.services.sql.rls import RowLevelSecurity
 from base.tools.tenancy import TenantContext
+from tests.conftest import MakeSettings
 
 DIALECT = postgresql.dialect()
 
@@ -107,12 +108,12 @@ def test_the_policy_is_dropped_before_the_table_is_unforced() -> None:
     )
 
 
-def test_it_is_off_unless_a_deployment_asks(make_settings: Any) -> None:
+def test_it_is_off_unless_a_deployment_asks(make_settings: MakeSettings) -> None:
     make_settings(TenancySettingsMixin)
     assert RowLevelSecurity.enabled() is False
 
 
-def test_it_is_on_when_a_deployment_asks(make_settings: Any) -> None:
+def test_it_is_on_when_a_deployment_asks(make_settings: MakeSettings) -> None:
     make_settings(TenancySettingsMixin, tenancy_rls_enabled=True)
     assert RowLevelSecurity.enabled() is True
 
@@ -131,7 +132,7 @@ def test_installing_twice_registers_one_listener() -> None:
 
 @pytest.mark.parametrize("tenant", [TenantId("acme"), None])
 def test_the_hook_ignores_backends_without_row_level_security(
-    make_settings: Any, tenant: TenantId | None
+    make_settings: MakeSettings, tenant: TenantId | None
 ) -> None:
     """SQLite has no such thing, so the hook must leave it alone."""
     make_settings(TenancySettingsMixin, tenancy_rls_enabled=True)
@@ -149,7 +150,7 @@ def test_the_hook_ignores_backends_without_row_level_security(
         RowLevelSecurity._apply(None, None, Connection())  # type: ignore[arg-type]
 
 
-def test_the_tenant_travels_as_a_bound_parameter(make_settings: Any) -> None:
+def test_the_tenant_travels_as_a_bound_parameter(make_settings: MakeSettings) -> None:
     """A tenant pasted into SQL is how injection gets in, so it is bound."""
     make_settings(TenancySettingsMixin, tenancy_rls_enabled=True)
     captured: list[Any] = []

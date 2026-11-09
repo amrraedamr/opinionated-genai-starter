@@ -27,6 +27,7 @@ from base.services.rate_limiting.memory import InMemoryRateLimiter
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.handshake import accept_connection
 from base.services.realtime.tickets import TicketService
+from tests.conftest import MakeSettings
 
 
 class FakeSocket:
@@ -68,7 +69,7 @@ def ticket() -> ConnectionTicket:
 
 
 @pytest.fixture
-def limited(make_settings: Any) -> Any:
+def limited(make_settings: MakeSettings) -> Any:
     def _build(per_minute: int = 100) -> InMemoryRateLimiter:
         make_settings(
             RateLimitSettingsMixin, rate_limit_ws_messages_per_minute=per_minute
@@ -218,7 +219,7 @@ async def test_sending_after_close_is_a_no_op(limited: Any) -> None:
 
 
 @pytest.fixture
-def issuing(make_settings: Any) -> TicketService:
+def issuing(make_settings: MakeSettings) -> TicketService:
     make_settings()
     service = TicketService(InMemoryCacheService())
     return service

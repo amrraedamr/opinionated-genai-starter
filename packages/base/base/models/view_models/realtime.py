@@ -1,7 +1,6 @@
 """The frame a socket carries, and the ticket that opens one."""
 
 from datetime import UTC, datetime
-from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import Field, field_validator
@@ -12,7 +11,7 @@ from base.models.definitions.realtime import (
     RealtimeMessageType,
 )
 from base.models.definitions.tenancy import TenantId
-from base.models.view_models import BaseModel
+from base.models.view_models import BaseModel, JSONObject
 
 
 class RealtimeEnvelope(BaseModel):
@@ -30,7 +29,7 @@ class RealtimeEnvelope(BaseModel):
     """Position in a durable channel. Absent on an ephemeral one, which has no
     order worth resuming from."""
 
-    payload: dict[str, Any] = Field(default_factory=dict)
+    payload: JSONObject = Field(default_factory=dict)
     schema_version: int = CURRENT_REALTIME_VERSION
 
     @field_validator("schema_version")

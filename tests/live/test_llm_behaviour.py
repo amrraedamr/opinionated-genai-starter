@@ -42,7 +42,7 @@ from base.services.llm.anthropic import AnthropicService
 from base.services.llm.gemini import GeminiService
 from base.services.llm.openai import OpenAIService
 from base.services.tool_calling import Tool
-from tests.conftest import credential
+from tests.conftest import MakeSettings, credential
 
 pytestmark = pytest.mark.live
 
@@ -85,7 +85,7 @@ def ask(question: str, instruction: str = "Answer in one word.") -> RenderedProm
     )
 
 
-def configure_all(make_settings: Any) -> None:
+def configure_all(make_settings: MakeSettings) -> None:
     """One gateway and one key serve every provider here."""
     make_settings(
         LLMSettingsMixin,
@@ -126,7 +126,9 @@ def every_provider() -> list[tuple[str, Any]]:
     ]
 
 
-async def test_every_provider_answers_the_same_neutral_call(make_settings: Any) -> None:
+async def test_every_provider_answers_the_same_neutral_call(
+    make_settings: MakeSettings,
+) -> None:
     """The seam's whole claim: one call shape, whoever is behind it."""
     configure_all(make_settings)
     answers: dict[str, str] = {}
@@ -141,7 +143,7 @@ async def test_every_provider_answers_the_same_neutral_call(make_settings: Any) 
     assert all("paris" in answer for answer in answers.values()), answers
 
 
-async def test_usage_is_reported_and_adds_up(make_settings: Any) -> None:
+async def test_usage_is_reported_and_adds_up(make_settings: MakeSettings) -> None:
     """Both cache counts are shares of the input, and reasoning of the output."""
     configure_all(make_settings)
     for name, service in every_provider():
@@ -159,7 +161,7 @@ async def test_usage_is_reported_and_adds_up(make_settings: Any) -> None:
 
 
 async def test_a_finish_reason_is_normalised_for_every_provider(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """A caller branches on this, so it must never arrive provider-shaped."""
     configure_all(make_settings)
@@ -172,7 +174,9 @@ async def test_a_finish_reason_is_normalised_for_every_provider(
         )
 
 
-async def test_a_truncated_reply_says_it_was_truncated(make_settings: Any) -> None:
+async def test_a_truncated_reply_says_it_was_truncated(
+    make_settings: MakeSettings,
+) -> None:
     """LENGTH is the one finish reason a caller must act on."""
     configure_all(make_settings)
     service = AnthropicService(config_for(ProviderType.ANTHROPIC, ANTHROPIC_MODEL))
@@ -183,7 +187,7 @@ async def test_a_truncated_reply_says_it_was_truncated(make_settings: Any) -> No
     assert result.finish_reason is FinishReason.LENGTH
 
 
-async def test_reasoning_effort_buys_reasoning(make_settings: Any) -> None:
+async def test_reasoning_effort_buys_reasoning(make_settings: MakeSettings) -> None:
     """A higher effort must reach the provider, not just the request body."""
     configure_all(make_settings)
     service = openai_service(responses=True, label="effort")
@@ -200,7 +204,7 @@ async def test_reasoning_effort_buys_reasoning(make_settings: Any) -> None:
     [ReasoningEffort.NONE, ReasoningEffort.LOW, ReasoningEffort.HIGH],
 )
 async def test_every_effort_level_is_accepted_by_anthropic(
-    make_settings: Any, effort: ReasoningEffort
+    make_settings: MakeSettings, effort: ReasoningEffort
 ) -> None:
     """`output_config.effort` replaced a token budget its models now reject."""
     configure_all(make_settings)
@@ -214,7 +218,7 @@ async def test_every_effort_level_is_accepted_by_anthropic(
 
 
 async def test_the_maximum_effort_reaches_the_responses_surface(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """`max` is the level this repo added last; Chat Completions rejects it."""
     configure_all(make_settings)
@@ -227,7 +231,9 @@ async def test_the_maximum_effort_reaches_the_responses_surface(
     assert result.content and "madrid" in result.content.lower()
 
 
-async def test_a_repeated_prefix_is_actually_cached(make_settings: Any) -> None:
+async def test_a_repeated_prefix_is_actually_cached(
+    make_settings: MakeSettings,
+) -> None:
     """The point of a cache hint, and the only way to know it worked.
 
     A hit needs a head long enough to clear each provider's minimum and a
@@ -265,7 +271,9 @@ async def test_a_repeated_prefix_is_actually_cached(make_settings: Any) -> None:
         assert read > 0 or written > 0, f"{name} reported no cache activity: {reported}"
 
 
-async def test_a_cache_hint_never_changes_the_answer(make_settings: Any) -> None:
+async def test_a_cache_hint_never_changes_the_answer(
+    make_settings: MakeSettings,
+) -> None:
     """Asking to cache must not alter what the prompt means."""
     configure_all(make_settings)
     service = AnthropicService(config_for(ProviderType.ANTHROPIC, ANTHROPIC_MODEL))
@@ -283,7 +291,7 @@ async def test_a_cache_hint_never_changes_the_answer(make_settings: Any) -> None
 
 
 async def test_a_tool_call_round_trips_through_a_second_turn(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """The multi-step shape a real agent uses, end to end.
 
@@ -341,7 +349,9 @@ async def test_a_tool_call_round_trips_through_a_second_turn(
         )
 
 
-async def test_a_conversation_carries_its_own_history(make_settings: Any) -> None:
+async def test_a_conversation_carries_its_own_history(
+    make_settings: MakeSettings,
+) -> None:
     """Several turns, with the answer depending on an earlier one."""
     configure_all(make_settings)
     from uuid import UUID
@@ -376,7 +386,7 @@ async def test_a_conversation_carries_its_own_history(make_settings: Any) -> Non
         )
 
 
-async def test_unicode_survives_the_round_trip(make_settings: Any) -> None:
+async def test_unicode_survives_the_round_trip(make_settings: MakeSettings) -> None:
     """Content is carried, not re-encoded, whatever is in it."""
     configure_all(make_settings)
     service = AnthropicService(config_for(ProviderType.ANTHROPIC, ANTHROPIC_MODEL))
@@ -388,7 +398,7 @@ async def test_unicode_survives_the_round_trip(make_settings: Any) -> None:
     assert "مرحبا" in result.content or "🌍" in result.content
 
 
-async def test_both_provider_types_reach_a_gateway(make_settings: Any) -> None:
+async def test_both_provider_types_reach_a_gateway(make_settings: MakeSettings) -> None:
     """A gateway publishes its own path, and must not have one appended.
 
     Configuring the same endpoint as Azure used to rewrite it to `/openai/v1`
@@ -404,7 +414,9 @@ async def test_both_provider_types_reach_a_gateway(make_settings: Any) -> None:
         assert result.content and "paris" in result.content.lower(), provider
 
 
-async def test_an_unknown_model_becomes_a_domain_error(make_settings: Any) -> None:
+async def test_an_unknown_model_becomes_a_domain_error(
+    make_settings: MakeSettings,
+) -> None:
     """A provider's refusal must arrive as this library's error, not the SDK's."""
     configure_all(make_settings)
     from base.models.view_models.exceptions.llm import LLMError
@@ -416,7 +428,7 @@ async def test_an_unknown_model_becomes_a_domain_error(make_settings: Any) -> No
 
 
 async def test_a_rejected_credential_becomes_a_domain_error(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """The same, for the one failure every deployment eventually hits."""
     configure_all(make_settings)
@@ -429,7 +441,9 @@ async def test_a_rejected_credential_becomes_a_domain_error(
         await OpenAIService(config).acomplete(prompt=ask("hello"), max_output_tokens=64)
 
 
-async def test_structured_output_returns_the_schema(make_settings: Any) -> None:
+async def test_structured_output_returns_the_schema(
+    make_settings: MakeSettings,
+) -> None:
     """Every provider must parse into the model the caller asked for."""
     configure_all(make_settings)
     for name, service in every_provider():
@@ -446,7 +460,7 @@ async def test_structured_output_returns_the_schema(make_settings: Any) -> None:
         assert "japan" in parsed.parsed.country.lower(), f"{name}: {parsed.parsed}"
 
 
-async def test_several_calls_can_run_concurrently(make_settings: Any) -> None:
+async def test_several_calls_can_run_concurrently(make_settings: MakeSettings) -> None:
     """Services are keyed singletons, so one must serve many callers at once."""
     configure_all(make_settings)
     service = AnthropicService(config_for(ProviderType.ANTHROPIC, ANTHROPIC_MODEL))

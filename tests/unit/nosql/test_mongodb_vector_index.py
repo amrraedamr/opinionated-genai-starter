@@ -14,6 +14,7 @@ from pymongo.errors import OperationFailure
 from base.models.view_models.exceptions.nosql import NoSqlBadRequestError
 from base.services.configuration.mixins import MongoSettingsMixin
 from base.services.nosql.mongodb import MongoDBService
+from tests.conftest import MakeSettings
 from tests.unit.nosql.mongo_doubles import (
     AsyncFakeCollection,
     AsyncFakeDatabase,
@@ -23,7 +24,7 @@ from tests.unit.nosql.mongo_doubles import (
 
 
 @pytest.fixture
-def service(make_settings: Any) -> MongoDBService:
+def service(make_settings: MakeSettings) -> MongoDBService:
     make_settings(MongoSettingsMixin, mongodb_host="db:27017", mongodb_database="app")
     return MongoDBService()
 

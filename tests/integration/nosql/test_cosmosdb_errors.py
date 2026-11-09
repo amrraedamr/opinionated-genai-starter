@@ -9,7 +9,6 @@ handling turned out to be inert.
 """
 
 from collections.abc import AsyncIterator
-from typing import Any
 
 import pytest
 from azure.core.exceptions import AzureError
@@ -27,6 +26,7 @@ from base.services.configuration.mixins import CosmosSettingsMixin
 from base.services.error_handling.nosql.cosmos import CosmosErrorHandler
 from base.services.nosql.cosmosdb import CosmosDBService
 from base.tools.errors import ServiceHealthCheckError
+from tests.conftest import MakeSettings
 
 from . import test_cosmosdb_crud
 
@@ -40,7 +40,7 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-async def unreachable(make_settings: Any) -> AsyncIterator[CosmosDBService]:
+async def unreachable(make_settings: MakeSettings) -> AsyncIterator[CosmosDBService]:
     """A service pointed at a port nothing is listening on, retried once."""
     make_settings(
         CosmosSettingsMixin,
@@ -94,7 +94,7 @@ def test_a_missing_container_is_a_not_found_error_on_the_sync_path(
 
 
 async def test_a_missing_database_is_a_not_found_error(
-    make_settings: Any, database: str
+    make_settings: MakeSettings, database: str
 ) -> None:
     make_settings(
         CosmosSettingsMixin,
@@ -384,7 +384,7 @@ def test_an_unreachable_account_fails_its_health_check_on_the_sync_path(
 
 
 async def test_a_wrong_account_key_cannot_be_told_apart_here(
-    make_settings: Any, database: str
+    make_settings: MakeSettings, database: str
 ) -> None:
     """The emulator accepts any key, so the auth path has no local coverage.
 

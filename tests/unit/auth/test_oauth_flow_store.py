@@ -14,12 +14,13 @@ from base.services.auth.oauth.flow import OAuthFlowStore
 from base.services.cache.memory import InMemoryCacheService
 from base.tools.errors import ErrorsException
 from base.tools.security import pkce_pair
+from tests.conftest import MakeSettings
 
 TTL = 300
 
 
 @pytest.fixture
-def store(make_settings: Any) -> OAuthFlowStore:
+def store(make_settings: MakeSettings) -> OAuthFlowStore:
     make_settings()
     return OAuthFlowStore(cache=InMemoryCacheService())
 

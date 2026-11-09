@@ -12,6 +12,15 @@ def to_camel(string: str) -> str:
     return camelize(string)
 
 
+JSONObject = dict[str, object]
+"""A decoded JSON object whose shape is not known here.
+
+`object` rather than `Any`, so a reader has to narrow a value before using
+it. `Any` would silently accept a typo, which is exactly the mistake these
+appear in: data that crossed a wire and was never checked.
+"""
+
+
 class BaseModel(PydanticBaseModel):
     model_config = ConfigDict(
         arbitrary_types_allowed=True,

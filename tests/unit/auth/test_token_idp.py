@@ -23,6 +23,7 @@ from base.services.configuration.mixins import (
     TokenIssuingSettingsMixin,
 )
 from base.tools.errors import ErrorsException
+from tests.conftest import MakeSettings
 from tests.unit.auth.conftest import KeyPair
 
 ISSUER = "https://login.example.com/tenant/v2.0"
@@ -44,7 +45,7 @@ class FakeJWKSClient:
         return SimpleNamespace(key=self.key)
 
 
-def _idp_settings(make_settings: Any, keys: KeyPair, **values: Any) -> Any:
+def _idp_settings(make_settings: MakeSettings, keys: KeyPair, **values: Any) -> Any:
     values.setdefault("idp_resource_server_enabled", True)
     values.setdefault("idp_issuer", ISSUER)
     values.setdefault("idp_audience", AUDIENCE)
@@ -86,7 +87,7 @@ def _verifier_with(keys: KeyPair, client: FakeJWKSClient) -> TokenVerifier:
 
 
 def test_enabling_the_resource_server_without_an_issuer_refuses_to_start(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys, idp_issuer="")
     with pytest.raises(ValueError, match="IDP_ISSUER and IDP_AUDIENCE"):
@@ -94,7 +95,7 @@ def test_enabling_the_resource_server_without_an_issuer_refuses_to_start(
 
 
 def test_enabling_the_resource_server_without_an_audience_refuses_to_start(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys, idp_audience="")
     with pytest.raises(ValueError, match="IDP_ISSUER and IDP_AUDIENCE"):
@@ -102,7 +103,7 @@ def test_enabling_the_resource_server_without_an_audience_refuses_to_start(
 
 
 def test_an_explicit_jwks_url_is_used_without_a_discovery_request(
-    make_settings: Any, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _idp_settings(make_settings, keys, idp_jwks_url="https://keys.example.com/jwks")
     monkeypatch.setattr(
@@ -117,7 +118,7 @@ def test_an_explicit_jwks_url_is_used_without_a_discovery_request(
 
 
 def test_a_discovery_document_supplies_the_jwks_url(
-    make_settings: Any, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _idp_settings(
         make_settings,
@@ -136,7 +137,7 @@ def test_a_discovery_document_supplies_the_jwks_url(
 
 
 def test_the_issuer_is_asked_for_its_discovery_document_as_a_last_resort(
-    make_settings: Any, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _idp_settings(make_settings, keys, idp_jwks_url="", idp_discovery_url="")
     asked = _stub_discovery(
@@ -148,7 +149,7 @@ def test_the_issuer_is_asked_for_its_discovery_document_as_a_last_resort(
 
 
 def test_a_failed_discovery_request_refuses_to_start(
-    make_settings: Any, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _idp_settings(
         make_settings,
@@ -163,7 +164,7 @@ def test_a_failed_discovery_request_refuses_to_start(
 
 
 def test_a_discovery_document_without_a_jwks_uri_refuses_to_start(
-    make_settings: Any, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, keys: KeyPair, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _idp_settings(
         make_settings,
@@ -178,7 +179,7 @@ def test_a_discovery_document_without_a_jwks_uri_refuses_to_start(
 
 
 def test_settings_with_no_idp_mixin_leave_the_resource_server_off(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     make_settings(
         TokenIssuingSettingsMixin,
@@ -192,7 +193,7 @@ def test_settings_with_no_idp_mixin_leave_the_resource_server_off(
 
 
 def test_an_idp_token_is_verified_against_the_jwks_key(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     client = FakeJWKSClient(key=other_keys.public_pem)
@@ -209,7 +210,7 @@ def test_an_idp_token_is_verified_against_the_jwks_key(
 
 
 def test_a_first_party_token_still_verifies_while_the_idp_is_enabled(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     local = TokenIssuer().issue_access({"user_id": "local-subject"})
@@ -220,7 +221,7 @@ def test_a_first_party_token_still_verifies_while_the_idp_is_enabled(
 
 
 def test_an_idp_token_is_refused_where_a_refresh_token_is_wanted(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """An IdP bearer token is an access token, whatever the caller asked for."""
     _idp_settings(make_settings, keys)
@@ -232,7 +233,7 @@ def test_an_idp_token_is_refused_where_a_refresh_token_is_wanted(
 
 
 def test_an_idp_token_is_still_accepted_where_an_access_token_is_wanted(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     client = FakeJWKSClient(key=other_keys.public_pem)
@@ -243,7 +244,7 @@ def test_an_idp_token_is_still_accepted_where_an_access_token_is_wanted(
 
 
 def test_a_token_from_another_issuer_is_not_taken_for_an_idp_token(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """It falls through to local verification, which refuses it."""
     _idp_settings(make_settings, keys)
@@ -257,7 +258,7 @@ def test_a_token_from_another_issuer_is_not_taken_for_an_idp_token(
 
 
 def test_a_malformed_token_is_not_taken_for_an_idp_token(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient())
@@ -265,7 +266,7 @@ def test_a_malformed_token_is_not_taken_for_an_idp_token(
 
 
 def test_a_token_from_another_issuer_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """A rejected claim is this library's error, not PyJWT's.
 
@@ -283,7 +284,7 @@ def test_a_token_from_another_issuer_is_refused(
 
 
 def test_a_token_minted_for_another_audience_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """The one that matters most: a valid token for a different service."""
     _idp_settings(make_settings, keys)
@@ -296,7 +297,7 @@ def test_a_token_minted_for_another_audience_is_refused(
 
 
 def test_a_token_with_no_audience_claim_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """A claim the verifier required and the token never carried."""
     _idp_settings(make_settings, keys)
@@ -318,7 +319,7 @@ def test_a_token_with_no_audience_claim_is_refused(
 
 
 def test_an_expired_idp_token_is_refused_as_expired(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
@@ -330,7 +331,7 @@ def test_an_expired_idp_token_is_refused_as_expired(
 
 
 def test_an_idp_token_signed_by_an_unknown_key_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=keys.public_pem))
@@ -342,7 +343,7 @@ def test_an_idp_token_signed_by_an_unknown_key_is_refused(
 
 
 def test_a_jwks_lookup_failure_is_refused_rather_than_raised_raw(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     client = FakeJWKSClient(error=PyJWKClientError("no matching kid"))
@@ -354,7 +355,7 @@ def test_a_jwks_lookup_failure_is_refused_rather_than_raised_raw(
 
 
 def test_an_idp_token_without_a_subject_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
@@ -365,7 +366,7 @@ def test_an_idp_token_without_a_subject_is_refused(
 
 
 def test_an_idp_token_without_the_configured_email_claim_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
@@ -377,7 +378,7 @@ def test_an_idp_token_without_the_configured_email_claim_is_refused(
 
 
 def test_the_email_claim_name_is_configurable(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys, idp_email_claim="preferred_username")
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
@@ -389,7 +390,7 @@ def test_the_email_claim_name_is_configurable(
 
 
 def test_the_allowed_algorithms_come_from_the_setting(
-    make_settings: Any, keys: KeyPair, ec_private_pem: str, ec_public_pem: str
+    make_settings: MakeSettings, keys: KeyPair, ec_private_pem: str, ec_public_pem: str
 ) -> None:
     """Spacing around a name is dropped; the name itself is passed through."""
     _idp_settings(make_settings, keys, idp_algorithms="  ES256  ")
@@ -400,7 +401,7 @@ def test_the_allowed_algorithms_come_from_the_setting(
 
 
 def test_several_algorithms_can_be_allowed_at_once(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair, ec_private_pem: str
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair, ec_private_pem: str
 ) -> None:
     _idp_settings(make_settings, keys, idp_algorithms="RS256,ES256")
     rsa_client = FakeJWKSClient(key=other_keys.public_pem)
@@ -411,7 +412,7 @@ def test_several_algorithms_can_be_allowed_at_once(
 
 
 def test_an_algorithm_name_in_the_wrong_case_is_refused(
-    make_settings: Any, keys: KeyPair, ec_private_pem: str, ec_public_pem: str
+    make_settings: MakeSettings, keys: KeyPair, ec_private_pem: str, ec_public_pem: str
 ) -> None:
     """`split_csv` is called without `lower`, so names are not normalised."""
     _idp_settings(make_settings, keys, idp_algorithms="es256")
@@ -423,7 +424,7 @@ def test_an_algorithm_name_in_the_wrong_case_is_refused(
 
 
 def test_an_algorithm_outside_the_setting_is_refused(
-    make_settings: Any, keys: KeyPair, ec_private_pem: str, ec_public_pem: str
+    make_settings: MakeSettings, keys: KeyPair, ec_private_pem: str, ec_public_pem: str
 ) -> None:
     _idp_settings(make_settings, keys, idp_algorithms="RS256")
     verifier = _verifier_with(keys, FakeJWKSClient(key=ec_public_pem))
@@ -434,7 +435,7 @@ def test_an_algorithm_outside_the_setting_is_refused(
 
 
 def test_an_empty_algorithms_setting_falls_back_to_rs256(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys, idp_algorithms="")
     verifier = _verifier_with(keys, FakeJWKSClient(key=other_keys.public_pem))
@@ -443,14 +444,14 @@ def test_an_empty_algorithms_setting_falls_back_to_rs256(
 
 
 def test_the_algorithms_setting_defaults_to_rs256(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     settings = _idp_settings(make_settings, keys)
     assert settings.idp_algorithms == "RS256"
 
 
 def test_a_verifier_with_no_jwks_client_says_the_idp_is_not_configured(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _idp_settings(make_settings, keys)
     verifier = TokenVerifier()
@@ -480,7 +481,7 @@ def _stub_discovery(
 
 
 def test_a_token_not_yet_valid_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """`nbf` in the future. Its error is a sibling of the ones above.
 
@@ -508,7 +509,7 @@ def test_a_token_not_yet_valid_is_refused(
 
 
 def test_every_claim_failure_pyjwt_can_raise_is_mapped(
-    make_settings: Any,
+    make_settings: MakeSettings,
     keys: KeyPair,
     other_keys: KeyPair,
     monkeypatch: pytest.MonkeyPatch,
@@ -555,7 +556,7 @@ def test_every_claim_failure_pyjwt_can_raise_is_mapped(
 
 
 def test_a_malformed_jwks_document_is_refused(
-    make_settings: Any,
+    make_settings: MakeSettings,
     keys: KeyPair,
     other_keys: KeyPair,
     monkeypatch: pytest.MonkeyPatch,
@@ -583,7 +584,7 @@ def test_a_malformed_jwks_document_is_refused(
 
 
 def test_a_key_the_algorithm_cannot_use_is_refused(
-    make_settings: Any,
+    make_settings: MakeSettings,
     keys: KeyPair,
     other_keys: KeyPair,
     monkeypatch: pytest.MonkeyPatch,

@@ -30,6 +30,7 @@ from base.services.configuration.mixins import (
 from base.services.sql.rls import RowLevelSecurity
 from base.services.sql.service import SQLService
 from base.tools.tenancy import TenantContext
+from tests.conftest import MakeSettings
 
 pytestmark = pytest.mark.integration
 
@@ -51,7 +52,7 @@ class Note(TenantScopedMixin, Base):
     body: Mapped[str] = mapped_column(String(200))
 
 
-def configure(make_settings: Any, *, rls: bool) -> Any:
+def configure(make_settings: MakeSettings, *, rls: bool) -> Any:
     return make_settings(
         SQLSettingsMixin,
         PostgresSettingsMixin,
@@ -69,7 +70,7 @@ def configure(make_settings: Any, *, rls: bool) -> Any:
 
 
 @pytest.fixture
-async def notes(make_settings: Any) -> AsyncIterator[SQLService]:
+async def notes(make_settings: MakeSettings) -> AsyncIterator[SQLService]:
     """A fenced table with rows for two tenants, dropped afterwards."""
     configure(make_settings, rls=True)
     service = SQLService()
@@ -189,7 +190,7 @@ async def test_the_tenant_does_not_leak_between_transactions(
         assert result.scalar() in ("", None)
 
 
-async def test_disabled_changes_nothing(make_settings: Any) -> None:
+async def test_disabled_changes_nothing(make_settings: MakeSettings) -> None:
     """Opt-in means a deployment that never asked sees no behaviour change."""
     configure(make_settings, rls=False)
     service = SQLService()

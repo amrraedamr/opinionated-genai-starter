@@ -30,6 +30,7 @@ from base.models.view_models.vector_search import VectorRecord
 from base.services.configuration.mixins import SQLSettingsMixin
 from base.services.error_handling.sql import SQLErrorHandler
 from base.services.vector_search.pgvector import PgVectorSearchService
+from tests.conftest import MakeSettings
 from tests.fakes import no_sleep
 
 
@@ -144,7 +145,7 @@ class AsyncSession(Session):
 
 
 @pytest.fixture
-def service(make_settings: Any) -> PgVectorSearchService:
+def service(make_settings: MakeSettings) -> PgVectorSearchService:
     make_settings(SQLSettingsMixin)
     return PgVectorSearchService()
 

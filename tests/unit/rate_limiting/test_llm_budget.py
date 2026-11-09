@@ -33,6 +33,7 @@ from base.services.llm import AbstractLLMService
 from base.services.rate_limiting.llm_budget import LLMBudgetExhausted, TokenBudget
 from base.services.rate_limiting.memory import InMemoryRateLimiter
 from base.tools.tenancy import TenantContext
+from tests.conftest import MakeSettings
 
 CONVERSATION = ConversationId(uuid.UUID(int=11))
 
@@ -88,7 +89,7 @@ def message(content: str = "hello") -> StoredMessage:
 
 
 @pytest.fixture
-def budgeted(make_settings: Any) -> Any:
+def budgeted(make_settings: MakeSettings) -> Any:
     """A hundred tokens a minute, counted in this process."""
 
     def _build(tokens_per_minute: int = 100, **extra: Any) -> ScriptedLLM:

@@ -7,12 +7,12 @@ collection uniquely and drops it afterwards, so reruns never collide.
 """
 
 from collections.abc import AsyncIterator, Iterator
-from typing import Any
 
 import pytest
 
 from base.services.common.meta import Singleton
 from base.services.nosql.mongodb import MongoDBService
+from tests.conftest import CoreSettings
 
 
 @pytest.fixture(autouse=True)
@@ -24,7 +24,7 @@ def _purge_singletons() -> Iterator[None]:
 
 
 @pytest.fixture
-async def mongo(infra_settings: Any) -> AsyncIterator[MongoDBService]:
+async def mongo(infra_settings: CoreSettings) -> AsyncIterator[MongoDBService]:
     """A service pointed at the local container, closed afterwards."""
     service = MongoDBService()
     yield service

@@ -6,14 +6,13 @@ against a fake collection so the argument order, the keyword names and the
 field read off each result are pinned without a server.
 """
 
-from typing import Any
-
 import pytest
 from bson import ObjectId
 
 from base.models.view_models.database import PaginationParams
 from base.services.configuration.mixins import MongoSettingsMixin
 from base.services.nosql.mongodb import MongoDBService
+from tests.conftest import MakeSettings
 from tests.unit.nosql.mongo_doubles import (
     AsyncFakeDatabase,
     FakeDatabase,
@@ -22,7 +21,7 @@ from tests.unit.nosql.mongo_doubles import (
 
 
 @pytest.fixture
-def service(make_settings: Any) -> MongoDBService:
+def service(make_settings: MakeSettings) -> MongoDBService:
     make_settings(MongoSettingsMixin, mongodb_host="db:27017", mongodb_database="app")
     return MongoDBService()
 

@@ -26,6 +26,7 @@ from base.services.configuration.mixins import (
 )
 from base.services.http import HttpRequestService
 from base.tools.errors import ErrorsException
+from tests.conftest import MakeSettings
 
 DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 DISCOVERY_DOCUMENT: dict[str, Any] = {
@@ -63,7 +64,7 @@ class FakeHttp:
 
 
 def _registry(
-    make_settings: Any,
+    make_settings: MakeSettings,
     monkeypatch: pytest.MonkeyPatch,
     http: FakeHttp,
     providers: str = "google,github,facebook,apple",
@@ -96,7 +97,7 @@ def _id_token(**claims: Any) -> str:
 
 
 def test_an_enabled_provider_is_returned_by_name(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     assert registry.get("google").name == "google"
@@ -104,7 +105,7 @@ def test_an_enabled_provider_is_returned_by_name(
 
 
 def test_a_provider_that_was_not_enabled_is_refused(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp(), providers="google")
     with pytest.raises(ErrorsException) as caught:
@@ -113,14 +114,14 @@ def test_a_provider_that_was_not_enabled_is_refused(
 
 
 def test_the_enabled_names_are_sorted(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     assert registry.enabled_names() == ["apple", "facebook", "github", "google"]
 
 
 async def test_a_provider_with_explicit_endpoints_needs_no_discovery(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp()
     registry = _registry(make_settings, monkeypatch, http)
@@ -135,7 +136,7 @@ async def test_a_provider_with_explicit_endpoints_needs_no_discovery(
 
 
 async def test_a_discovery_provider_reads_its_endpoints_from_the_document(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp({DISCOVERY_URL: HttpResponse.ok(200, DISCOVERY_DOCUMENT)})
     registry = _registry(make_settings, monkeypatch, http)
@@ -150,7 +151,7 @@ async def test_a_discovery_provider_reads_its_endpoints_from_the_document(
 
 
 async def test_a_discovery_document_is_fetched_once_per_url(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp({DISCOVERY_URL: HttpResponse.ok(200, DISCOVERY_DOCUMENT)})
     registry = _registry(make_settings, monkeypatch, http)
@@ -161,7 +162,7 @@ async def test_a_discovery_document_is_fetched_once_per_url(
 
 
 async def test_a_failed_discovery_request_is_an_exchange_failure(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp({DISCOVERY_URL: HttpResponse.fail(RuntimeError("down"), 503)})
     registry = _registry(make_settings, monkeypatch, http)
@@ -172,7 +173,7 @@ async def test_a_failed_discovery_request_is_an_exchange_failure(
 
 
 async def test_a_discovery_document_missing_an_endpoint_is_an_exchange_failure(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {DISCOVERY_URL: HttpResponse.ok(200, {"token_endpoint": "https://t"})}
@@ -185,7 +186,7 @@ async def test_a_discovery_document_missing_an_endpoint_is_an_exchange_failure(
 
 
 async def test_a_provider_with_neither_discovery_nor_endpoints_is_refused(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp()
     registry = _registry(
@@ -198,7 +199,7 @@ async def test_a_provider_with_neither_discovery_nor_endpoints_is_refused(
 
 
 def test_the_authorize_url_carries_the_pkce_challenge_and_state(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from urllib.parse import parse_qs, urlsplit
 
@@ -221,7 +222,7 @@ def test_the_authorize_url_carries_the_pkce_challenge_and_state(
 
 
 def test_apple_asks_for_its_callback_to_be_posted(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     url = registry.build_authorize_url(
@@ -234,7 +235,7 @@ def test_apple_asks_for_its_callback_to_be_posted(
 
 
 def test_an_authorize_url_that_already_has_a_query_is_appended_to(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     url = registry.build_authorize_url(
@@ -248,14 +249,14 @@ def test_an_authorize_url_that_already_has_a_query_is_appended_to(
 
 
 def test_a_static_client_secret_is_used_as_is(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     assert registry.resolve_client_secret(registry.get("google")) == "google-secret"
 
 
 def test_apples_client_secret_is_minted_fresh_for_each_exchange(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch, ec_private_pem: str
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch, ec_private_pem: str
 ) -> None:
     registry = _registry(
         make_settings,
@@ -274,7 +275,7 @@ def test_apples_client_secret_is_minted_fresh_for_each_exchange(
 
 
 async def test_the_code_exchange_posts_the_authorization_code_grant(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {
@@ -305,7 +306,7 @@ async def test_the_code_exchange_posts_the_authorization_code_grant(
 
 
 async def test_a_failed_code_exchange_is_reported_as_one(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp({"https://t": HttpResponse.fail(RuntimeError("bad code"), 400)})
     registry = _registry(make_settings, monkeypatch, http)
@@ -321,7 +322,7 @@ async def test_a_failed_code_exchange_is_reported_as_one(
 
 
 async def test_a_token_reply_without_an_access_token_is_an_exchange_failure(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp({"https://t": HttpResponse.ok(200, {"error": "invalid_grant"})})
     registry = _registry(make_settings, monkeypatch, http)
@@ -337,7 +338,7 @@ async def test_a_token_reply_without_an_access_token_is_an_exchange_failure(
 
 
 async def test_an_oidc_profile_comes_from_the_id_token_when_one_is_present(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp()
     registry = _registry(make_settings, monkeypatch, http)
@@ -366,7 +367,7 @@ async def test_an_oidc_profile_comes_from_the_id_token_when_one_is_present(
 
 
 async def test_an_oidc_profile_falls_back_to_the_userinfo_endpoint(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {
@@ -393,7 +394,7 @@ async def test_an_oidc_profile_falls_back_to_the_userinfo_endpoint(
 
 
 async def test_an_oidc_id_token_without_an_email_falls_back_to_userinfo(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {
@@ -416,7 +417,7 @@ async def test_an_oidc_id_token_without_an_email_falls_back_to_userinfo(
 
 
 async def test_an_oidc_profile_with_no_userinfo_url_is_incomplete(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     with pytest.raises(ErrorsException) as caught:
@@ -429,7 +430,7 @@ async def test_an_oidc_profile_with_no_userinfo_url_is_incomplete(
 
 
 async def test_an_apple_profile_comes_from_its_id_token(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     payload = TokenResponse(
@@ -447,7 +448,7 @@ async def test_an_apple_profile_comes_from_its_id_token(
 
 
 async def test_an_apple_name_arrives_only_in_the_first_callback(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Apple posts the name once, beside the code, and never again."""
     registry = _registry(make_settings, monkeypatch, FakeHttp())
@@ -468,7 +469,7 @@ async def test_an_apple_name_arrives_only_in_the_first_callback(
 
 
 async def test_an_unparseable_apple_user_blob_is_ignored(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     payload = TokenResponse(
@@ -486,7 +487,7 @@ async def test_an_unparseable_apple_user_blob_is_ignored(
 
 
 async def test_an_apple_reply_without_an_id_token_is_incomplete(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     with pytest.raises(ErrorsException) as caught:
@@ -499,7 +500,7 @@ async def test_an_apple_reply_without_an_id_token_is_incomplete(
 
 
 async def test_a_facebook_profile_passes_the_token_in_the_query(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {
@@ -527,7 +528,7 @@ async def test_a_facebook_profile_passes_the_token_in_the_query(
 
 
 async def test_a_github_profile_splits_the_single_name_field(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {
@@ -554,7 +555,7 @@ async def test_a_github_profile_splits_the_single_name_field(
 
 
 async def test_a_github_private_address_is_read_from_the_emails_endpoint(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """GitHub omits `email` from the profile when a user hides it."""
     http = FakeHttp(
@@ -583,7 +584,7 @@ async def test_a_github_private_address_is_read_from_the_emails_endpoint(
 
 
 async def test_a_github_user_with_no_usable_address_is_incomplete(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp(
         {
@@ -605,7 +606,7 @@ async def test_a_github_user_with_no_usable_address_is_incomplete(
 
 
 async def test_an_unknown_profile_style_is_refused(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     registry = _registry(make_settings, monkeypatch, FakeHttp())
     unknown = OAuthProviderConfig(
@@ -632,7 +633,7 @@ async def test_an_unknown_profile_style_is_refused(
 
 
 async def test_an_oidc_claim_set_with_no_verification_is_not_trusted(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`email_verified` is optional in OIDC; absent means unknown."""
     http = FakeHttp()
@@ -649,7 +650,7 @@ async def test_an_oidc_claim_set_with_no_verification_is_not_trusted(
 
 
 async def test_a_userinfo_body_with_no_verification_is_not_trusted(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The same, for the endpoint used when there is no id token."""
     http = FakeHttp(
@@ -670,7 +671,7 @@ async def test_a_userinfo_body_with_no_verification_is_not_trusted(
 
 
 async def test_an_apple_claim_set_with_no_verification_is_not_trusted(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     http = FakeHttp()
     registry = _registry(make_settings, monkeypatch, http)
@@ -685,7 +686,7 @@ async def test_an_apple_claim_set_with_no_verification_is_not_trusted(
 
 
 async def test_facebook_does_not_assert_an_email_is_verified(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Facebook's profile endpoint says nothing about verification."""
     http = FakeHttp(
@@ -706,7 +707,7 @@ async def test_facebook_does_not_assert_an_email_is_verified(
 
 
 async def test_a_github_public_profile_email_is_not_taken_as_verified(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """GitHub's `/user` email is whatever the user typed, verified or not.
 
@@ -735,7 +736,7 @@ async def test_a_github_public_profile_email_is_not_taken_as_verified(
 
 
 async def test_a_github_verified_primary_email_is_trusted(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The one case GitHub does state, and the only one worth trusting."""
     http = FakeHttp(

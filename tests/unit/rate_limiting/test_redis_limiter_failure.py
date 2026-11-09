@@ -19,10 +19,11 @@ from base.services.configuration.mixins import (
     RedisSettingsMixin,
 )
 from base.services.rate_limiting.redis import RedisRateLimiter
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def limiter(make_settings: Any) -> RedisRateLimiter:
+def limiter(make_settings: MakeSettings) -> RedisRateLimiter:
     """Pointed at an address nothing answers on, deliberately.
 
     Every test here must pass with no Redis anywhere, which is also what proves

@@ -28,6 +28,7 @@ from base.models.view_models.health import ProbeResult
 from base.services.common.meta import Singleton
 from base.services.configuration.mixins import ServerSettingsMixin
 from base.tools.errors import MissingExtraError
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture(autouse=True)
@@ -38,7 +39,7 @@ def _fresh_singletons() -> Iterator[None]:
 
 
 @pytest.fixture
-def server_settings(make_settings: Any) -> Any:
+def server_settings(make_settings: MakeSettings) -> Any:
     return make_settings(ServerSettingsMixin, service_name="demo")
 
 
@@ -189,7 +190,7 @@ def test_traffic_control_sits_outside_the_body_size_limit(
 
 
 def test_the_size_limit_and_traffic_limits_come_from_settings(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """Budgets no longer come through the middleware: the limiter reads them.
 
@@ -210,7 +211,7 @@ def test_the_size_limit_and_traffic_limits_come_from_settings(
 
 
 def test_trusted_hosts_are_split_from_the_comma_separated_setting(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(
         ServerSettingsMixin,
@@ -227,7 +228,7 @@ def test_trusted_hosts_are_split_from_the_comma_separated_setting(
 
 
 def test_no_trusted_hosts_means_every_host_rather_than_none(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(ServerSettingsMixin, service_name="demo", trusted_hosts="")
     app = create_app(settings=settings)
@@ -236,7 +237,7 @@ def test_no_trusted_hosts_means_every_host_rather_than_none(
     assert by_class[TrustedHostMiddleware].kwargs["allowed_hosts"] == ["*"]
 
 
-def test_local_development_allows_any_origin(make_settings: Any) -> None:
+def test_local_development_allows_any_origin(make_settings: MakeSettings) -> None:
     settings = make_settings(
         ServerSettingsMixin, service_name="demo", environment="local"
     )
@@ -247,7 +248,7 @@ def test_local_development_allows_any_origin(make_settings: Any) -> None:
 
 
 def test_a_deployed_service_with_no_origins_refuses_cross_origin_requests(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(
         ServerSettingsMixin, service_name="demo", environment="production"
@@ -258,7 +259,7 @@ def test_a_deployed_service_with_no_origins_refuses_cross_origin_requests(
     assert by_class[CORSMiddleware].kwargs["allow_origins"] == []
 
 
-def test_explicit_origins_are_used_as_given(make_settings: Any) -> None:
+def test_explicit_origins_are_used_as_given(make_settings: MakeSettings) -> None:
     settings = make_settings(
         ServerSettingsMixin, service_name="demo", environment="production"
     )

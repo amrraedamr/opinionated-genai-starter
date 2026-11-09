@@ -6,12 +6,15 @@ currently does not. Selecting by the same enum would let a caller ask for a
 session no amount of configuration can produce.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from base.models.definitions.model import ProviderType
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.realtime_session import RealtimeSessionConfig
 from base.services.llm.realtime import AbstractRealtimeSession
+
+if TYPE_CHECKING:
+    from base.models.view_models.realtime_session import ToolSchema
 
 REALTIME_PROVIDERS = (
     ProviderType.OPENAI,
@@ -30,7 +33,7 @@ def build_realtime_session(
     provider: ProviderType,
     session: RealtimeSessionConfig,
     config: ModelConfigurations | None = None,
-    tool_schemas: list[dict[str, Any]] | None = None,
+    tool_schemas: "list[ToolSchema] | None" = None,
 ) -> AbstractRealtimeSession:
     """Construct a session for the provider asked for.
 

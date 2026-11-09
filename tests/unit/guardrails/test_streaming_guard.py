@@ -6,8 +6,6 @@ catches it, and holding rather than emitting-then-correcting is the point —
 a caller that has already rendered a card number cannot un-see it.
 """
 
-from typing import Any
-
 import pytest
 
 from base.models.definitions.guardrails import GuardrailStage
@@ -17,6 +15,7 @@ from base.services.guardrails import AbstractGuardrail
 from base.services.guardrails.pii import PatternPiiGuardrail
 from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.guardrails.streaming import RETRACTION_CODE, GuardedStream
+from tests.conftest import MakeSettings
 
 CARD = "4111111111111111"
 
@@ -42,7 +41,7 @@ class Blocker(AbstractGuardrail):
 
 
 @pytest.fixture
-def pii(make_settings: Any) -> GuardrailPipeline:
+def pii(make_settings: MakeSettings) -> GuardrailPipeline:
     make_settings(GuardrailSettingsMixin)
     return GuardrailPipeline(PatternPiiGuardrail())
 
@@ -150,7 +149,7 @@ async def test_a_redacted_reply_is_not_retracted(pii: GuardrailPipeline) -> None
     assert await stream.averdict() is None
 
 
-async def test_an_empty_pipeline_does_nothing(make_settings: Any) -> None:
+async def test_an_empty_pipeline_does_nothing(make_settings: MakeSettings) -> None:
     """Not configured must mean not in the way."""
     make_settings(GuardrailSettingsMixin)
     stream = GuardedStream(GuardrailPipeline(), tail=32)

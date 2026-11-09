@@ -17,6 +17,7 @@ from base.tools.database import SQLResultFormats
 from base.tools.migrations import run_migrations
 from base.tools.routers import init_routers
 from base.tools.webserver import _import_app
+from tests.conftest import MakeSettings
 
 
 class FakeResult:
@@ -178,7 +179,7 @@ def test_an_app_path_naming_a_missing_attribute_is_refused() -> None:
 
 
 def test_migrations_refuse_settings_that_cannot_reach_a_database(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     from sqlalchemy import MetaData
 

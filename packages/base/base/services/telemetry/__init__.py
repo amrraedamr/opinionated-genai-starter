@@ -12,12 +12,16 @@ side without a second id to carry.
 import importlib
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING
 
 from base.models.definitions.telemetry import CORRELATION_ID, TENANT_ID
 from base.services.common.meta import Singleton
 from base.services.configuration import get_settings
 from base.services.configuration.protocols import SupportsTelemetryConfig
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+    from opentelemetry.util.types import AttributeValue
 from base.tools.correlation import correlation_id
 from base.tools.errors import MissingExtraError
 from base.tools.tenancy import TenantContext
@@ -53,7 +57,9 @@ class Telemetry(metaclass=Singleton):
         """Whether prompts and completions may be recorded on a span."""
         return self._capture_content
 
-    def configure(self, config: SupportsTelemetryConfig, *, app: Any = None) -> None:
+    def configure(
+        self, config: SupportsTelemetryConfig, *, app: "FastAPI | None" = None
+    ) -> None:
         """Build the provider for this worker, and instrument what is installed."""
         self._capture_content = config.otel_capture_content
         if not config.otel_enabled or self._provider is not None:
@@ -86,7 +92,7 @@ class Telemetry(metaclass=Singleton):
         name: str,
         *,
         kind: SpanKind = SpanKind.INTERNAL,
-        attributes: Mapping[str, Any] | None = None,
+        attributes: "Mapping[str, AttributeValue] | None" = None,
     ) -> Generator[Span | None]:
         """Open a span, or hand back None where tracing is off."""
         if self._provider is None:
@@ -110,7 +116,7 @@ class Telemetry(metaclass=Singleton):
         traceparent: str | None,
         *,
         kind: SpanKind = SpanKind.INTERNAL,
-        attributes: Mapping[str, Any] | None = None,
+        attributes: "Mapping[str, AttributeValue] | None" = None,
     ) -> Generator[Span | None]:
         """A span whose parent is somewhere else entirely.
 
@@ -168,7 +174,7 @@ class Telemetry(metaclass=Singleton):
     def _service_name() -> str:
         return get_settings().service_name
 
-    def _instrument(self, app: Any) -> None:
+    def _instrument(self, app: "FastAPI | None") -> None:
         """Instrument the libraries this build installed, and skip the rest."""
         if app is not None:
             self._instrument_fastapi(app)
@@ -183,7 +189,7 @@ class Telemetry(metaclass=Singleton):
         )
 
     @staticmethod
-    def _instrument_fastapi(app: Any) -> None:
+    def _instrument_fastapi(app: "FastAPI") -> None:
         try:
             from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
         except ModuleNotFoundError:  # pragma: no cover

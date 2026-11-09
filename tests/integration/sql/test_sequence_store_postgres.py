@@ -37,6 +37,7 @@ from base.models.view_models.exceptions.sql import SQLConflictError
 from base.services.sql.service import SQLService
 from base.services.store import AbstractSequenceStore
 from base.tools.database import SQLResultFormats
+from tests.conftest import CoreSettings
 
 
 @dataclass
@@ -189,7 +190,7 @@ class SqlNoteStore(AbstractSequenceStore[uuid.UUID, Note]):
 
 
 @pytest.fixture
-def note_model(infra_settings: Any, unique: str) -> Iterator[type[Any]]:
+def note_model(infra_settings: CoreSettings, unique: str) -> Iterator[type[Any]]:
     model = build_note_model(f"note_{unique}")
     service = SQLService()
     with service._get_session() as session:

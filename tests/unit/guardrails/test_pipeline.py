@@ -5,8 +5,6 @@ wins, redactions compose in order, a guardrail is consulted only at the stages
 it declares — so each one is pinned here against stand-in guardrails.
 """
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 
@@ -15,6 +13,7 @@ from base.models.definitions.guardrails import GuardrailOutcome, GuardrailStage
 from base.models.view_models.guardrails import GuardrailReport, GuardrailVerdict
 from base.services.guardrails import AbstractGuardrail, GuardrailBlocked
 from base.services.guardrails.pipeline import GuardrailPipeline
+from tests.conftest import MakeSettings
 
 ALL_STAGES = frozenset(GuardrailStage)
 
@@ -255,7 +254,7 @@ def test_the_content_policy_error_is_unprocessable_rather_than_a_server_fault() 
 
 
 def test_a_block_raised_in_a_route_is_answered_as_a_content_policy_refusal(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """Registered for `ErrorsException`, so the subclass is handled without wiring."""
     from fastapi import FastAPI

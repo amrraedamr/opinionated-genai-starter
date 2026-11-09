@@ -5,17 +5,16 @@ returns documentation about prompts, or a support ticket quoting a user, must
 still get through. Blocking those makes the feature unusable.
 """
 
-from typing import Any
-
 import pytest
 
 from base.models.definitions.guardrails import GuardrailOutcome, GuardrailStage
 from base.services.configuration.mixins import GuardrailSettingsMixin
 from base.services.guardrails.injection import InjectionHeuristicGuardrail
+from tests.conftest import MakeSettings
 
 
 @pytest.fixture
-def guardrail(make_settings: Any) -> InjectionHeuristicGuardrail:
+def guardrail(make_settings: MakeSettings) -> InjectionHeuristicGuardrail:
     make_settings(GuardrailSettingsMixin)
     return InjectionHeuristicGuardrail()
 
@@ -150,7 +149,7 @@ async def test_both_counterparts_agree(
     assert sync.outcome == asynchronous.outcome == GuardrailOutcome.BLOCK
 
 
-def test_it_can_be_switched_off(make_settings: Any) -> None:
+def test_it_can_be_switched_off(make_settings: MakeSettings) -> None:
     """Heuristics misfire; a deployment must be able to turn them off."""
     make_settings(GuardrailSettingsMixin, injection_block_enabled=False)
     guardrail = InjectionHeuristicGuardrail()

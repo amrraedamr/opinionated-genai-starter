@@ -22,6 +22,7 @@ from base.services.configuration.mixins import (
     SQLSettingsMixin,
 )
 from base.tools.errors import UnsupportedBackendError
+from tests.conftest import MakeSettings
 
 ALL_MIXINS: tuple[type, ...] = (
     SQLSettingsMixin,
@@ -31,7 +32,7 @@ ALL_MIXINS: tuple[type, ...] = (
 
 
 @pytest.fixture
-def config(make_settings: Any) -> Any:
+def config(make_settings: MakeSettings) -> Any:
     """Settings carrying every backend's fields at once."""
     return make_settings(
         *ALL_MIXINS,
@@ -95,7 +96,9 @@ def test_sqlite_url_is_the_configured_path(config: Any) -> None:
     )
 
 
-def test_sqlite_url_takes_an_absolute_path_as_four_slashes(make_settings: Any) -> None:
+def test_sqlite_url_takes_an_absolute_path_as_four_slashes(
+    make_settings: MakeSettings,
+) -> None:
     config = make_settings(
         SQLSettingsMixin, sql_backend="sqlite", sqlite_db_path="/var/data/app.db"
     )
@@ -103,7 +106,7 @@ def test_sqlite_url_takes_an_absolute_path_as_four_slashes(make_settings: Any) -
     assert client._get_database_url("pysqlite") == "sqlite+pysqlite:////var/data/app.db"
 
 
-def test_postgresql_password_is_percent_escaped(make_settings: Any) -> None:
+def test_postgresql_password_is_percent_escaped(make_settings: MakeSettings) -> None:
     config = make_settings(
         *ALL_MIXINS,
         sql_backend="postgresql",
@@ -117,7 +120,7 @@ def test_postgresql_password_is_percent_escaped(make_settings: Any) -> None:
     assert url == "postgresql+psycopg2://user+name:p%40ss%3Aw%2Frd%231@h:5432/d"
 
 
-def test_mysql_password_is_percent_escaped(make_settings: Any) -> None:
+def test_mysql_password_is_percent_escaped(make_settings: MakeSettings) -> None:
     config = make_settings(
         *ALL_MIXINS,
         sql_backend="mysql",
@@ -130,7 +133,7 @@ def test_mysql_password_is_percent_escaped(make_settings: Any) -> None:
     assert url == "mysql+pymysql://u%2Fu:p%40ss@h/d"
 
 
-def test_a_missing_host_still_builds_a_url(make_settings: Any) -> None:
+def test_a_missing_host_still_builds_a_url(make_settings: MakeSettings) -> None:
     """Nothing validates the host, so an unset one reaches the driver empty."""
     config = make_settings(
         *ALL_MIXINS,
@@ -150,7 +153,7 @@ def test_sqlite_pool_kwargs_carry_no_pool_sizing(config: Any) -> None:
 
 @pytest.mark.parametrize("backend", [SQLBackend.POSTGRESQL, SQLBackend.MYSQL])
 def test_server_backends_pool_from_settings(
-    backend: SQLBackend, make_settings: Any
+    backend: SQLBackend, make_settings: MakeSettings
 ) -> None:
     config = make_settings(
         *ALL_MIXINS,
@@ -188,7 +191,7 @@ def test_postgresql_without_ssl_sends_timeouts_only(config: Any) -> None:
 
 
 def test_postgresql_with_ssl_sends_sslmode_to_psycopg2_and_a_context_to_asyncpg(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """The two drivers disagree on how SSL is asked for, and both are served."""
     config = make_settings(
@@ -214,14 +217,16 @@ def test_mysql_without_ssl_sends_timeouts_only(config: Any) -> None:
     assert client._get_async_connect_args() == {"connect_timeout": 10}
 
 
-def test_mysql_with_ssl_sends_a_context_on_both_paths(make_settings: Any) -> None:
+def test_mysql_with_ssl_sends_a_context_on_both_paths(
+    make_settings: MakeSettings,
+) -> None:
     config = make_settings(*ALL_MIXINS, sql_backend="mysql", db_ssl_enabled=True)
     client = client_for(SQLBackend.MYSQL, config)
     assert isinstance(client._get_sync_connect_args()["ssl"], ssl.SSLContext)
     assert isinstance(client._get_async_connect_args()["ssl"], ssl.SSLContext)
 
 
-def test_sqlite_ignores_the_ssl_setting(make_settings: Any) -> None:
+def test_sqlite_ignores_the_ssl_setting(make_settings: MakeSettings) -> None:
     config = make_settings(SQLSettingsMixin, sql_backend="sqlite", db_ssl_enabled=True)
     client = client_for(SQLBackend.SQLITE, config)
     assert "ssl" not in client._get_sync_connect_args()

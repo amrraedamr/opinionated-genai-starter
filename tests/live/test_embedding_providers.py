@@ -15,7 +15,6 @@ cheap tier.
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import pytest
 
@@ -27,7 +26,7 @@ from base.services.configuration.mixins import (
 )
 from base.services.text_embedding.openai import OpenAIEmbeddingService
 from base.services.usage import UsageTracker
-from tests.conftest import credential
+from tests.conftest import MakeSettings, credential
 
 pytestmark = pytest.mark.live
 
@@ -37,7 +36,7 @@ LARGE_MODEL = "azure.text-embedding-3-large"
 LARGE_WIDTH = 3072
 
 
-def configure_all(make_settings: Any) -> None:
+def configure_all(make_settings: MakeSettings) -> None:
     """One gateway and one key serve both embedding surfaces here."""
     make_settings(OpenAIEmbeddingSettingsMixin, AzureOpenAIEmbeddingSettingsMixin)
 
@@ -81,7 +80,9 @@ def cosine(left: list[float], right: list[float]) -> float:
     return dot / norm if norm else 0.0
 
 
-async def test_a_single_text_comes_back_as_one_vector(make_settings: Any) -> None:
+async def test_a_single_text_comes_back_as_one_vector(
+    make_settings: MakeSettings,
+) -> None:
     """The narrow path a query takes, end to end."""
     configure_all(make_settings)
     vector = service_for(SMALL_MODEL, dimensions=SMALL_WIDTH).embed_query("hello")
@@ -89,7 +90,9 @@ async def test_a_single_text_comes_back_as_one_vector(make_settings: Any) -> Non
     assert any(value != 0.0 for value in vector), "an all-zero vector is not an answer"
 
 
-async def test_both_embedding_surfaces_reach_the_gateway(make_settings: Any) -> None:
+async def test_both_embedding_surfaces_reach_the_gateway(
+    make_settings: MakeSettings,
+) -> None:
     """OpenAI and Azure OpenAI are different clients behind the same seam."""
     configure_all(make_settings)
     for provider in (ProviderType.OPENAI, ProviderType.AZURE_OPENAI):
@@ -98,7 +101,9 @@ async def test_both_embedding_surfaces_reach_the_gateway(make_settings: Any) -> 
         assert len(vector) == SMALL_WIDTH, f"{provider} returned the wrong width"
 
 
-async def test_the_configured_width_is_what_arrives(make_settings: Any) -> None:
+async def test_the_configured_width_is_what_arrives(
+    make_settings: MakeSettings,
+) -> None:
     """A vector store creates its collection from this before any text exists."""
     configure_all(make_settings)
     for model, width in ((SMALL_MODEL, SMALL_WIDTH), (LARGE_MODEL, LARGE_WIDTH)):
@@ -107,7 +112,7 @@ async def test_the_configured_width_is_what_arrives(make_settings: Any) -> None:
         assert len(await service.aembed_query("hello")) == width, model
 
 
-async def test_a_reduced_width_is_honoured(make_settings: Any) -> None:
+async def test_a_reduced_width_is_honoured(make_settings: MakeSettings) -> None:
     """Asking a wide model for narrow vectors is how storage cost is cut."""
     configure_all(make_settings)
     narrow = 256
@@ -115,7 +120,7 @@ async def test_a_reduced_width_is_honoured(make_settings: Any) -> None:
     assert len(await service.aembed_query("hello")) == narrow
 
 
-async def test_a_split_batch_keeps_its_order(make_settings: Any) -> None:
+async def test_a_split_batch_keeps_its_order(make_settings: MakeSettings) -> None:
     """The seam splits; the caller still gets one vector per input, in order.
 
     Each text is embedded alone and then as part of an oversized batch, and the
@@ -137,7 +142,7 @@ async def test_a_split_batch_keeps_its_order(make_settings: Any) -> None:
         assert cosine(alone, together) > 0.99, f"position {index} is not the same text"
 
 
-async def test_each_batch_is_recorded_once(make_settings: Any) -> None:
+async def test_each_batch_is_recorded_once(make_settings: MakeSettings) -> None:
     """Every batch is a billable request, so every batch is accounted for."""
     configure_all(make_settings)
     tracker = UsageTracker()
@@ -152,7 +157,7 @@ async def test_each_batch_is_recorded_once(make_settings: Any) -> None:
     assert all(r.error is None for r in records)
 
 
-async def test_meaning_survives_the_round_trip(make_settings: Any) -> None:
+async def test_meaning_survives_the_round_trip(make_settings: MakeSettings) -> None:
     """Related text lands closer than unrelated text, which is the whole point."""
     configure_all(make_settings)
     service = service_for(SMALL_MODEL, dimensions=SMALL_WIDTH)
@@ -162,7 +167,7 @@ async def test_meaning_survives_the_round_trip(make_settings: Any) -> None:
     assert cosine(dog, puppy) > cosine(dog, tax)
 
 
-async def test_both_counterparts_agree(make_settings: Any) -> None:
+async def test_both_counterparts_agree(make_settings: MakeSettings) -> None:
     """The async path is the same request, so it is the same answer."""
     configure_all(make_settings)
     service = service_for(SMALL_MODEL, dimensions=SMALL_WIDTH)
@@ -171,7 +176,7 @@ async def test_both_counterparts_agree(make_settings: Any) -> None:
     )
 
 
-async def test_unicode_survives_the_round_trip(make_settings: Any) -> None:
+async def test_unicode_survives_the_round_trip(make_settings: MakeSettings) -> None:
     """Non-Latin text must reach the provider intact rather than mangled."""
     configure_all(make_settings)
     service = service_for(SMALL_MODEL, dimensions=SMALL_WIDTH)
@@ -182,7 +187,9 @@ async def test_unicode_survives_the_round_trip(make_settings: Any) -> None:
     assert cosine(arabic, same) > cosine(arabic, other)
 
 
-async def test_an_empty_list_never_reaches_the_provider(make_settings: Any) -> None:
+async def test_an_empty_list_never_reaches_the_provider(
+    make_settings: MakeSettings,
+) -> None:
     """Nothing to embed is not a billable request."""
     configure_all(make_settings)
     tracker = UsageTracker()

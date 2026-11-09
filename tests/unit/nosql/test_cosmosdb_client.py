@@ -12,6 +12,7 @@ import pytest
 
 from base.clients.nosql.cosmosdb import CosmosDBClient
 from base.services.configuration.mixins import CosmosSettingsMixin
+from tests.conftest import MakeSettings
 
 
 class RecordingSdk:
@@ -70,20 +71,22 @@ def credential(monkeypatch: pytest.MonkeyPatch) -> RecordingCredential:
     return recorder
 
 
-def configure(make_settings: Any, **values: Any) -> Any:
+def configure(make_settings: MakeSettings, **values: Any) -> Any:
     values.setdefault("azure_cosmos_account_uri", "https://account.documents.azure.com")
     values.setdefault("azure_cosmos_database_name", "app")
     return make_settings(CosmosSettingsMixin, **values)
 
 
-def test_an_unset_account_uri_is_refused_at_construction(make_settings: Any) -> None:
+def test_an_unset_account_uri_is_refused_at_construction(
+    make_settings: MakeSettings,
+) -> None:
     configure(make_settings, azure_cosmos_account_uri="")
     with pytest.raises(ValueError, match="azure_cosmos_account_uri"):
         CosmosDBClient()
 
 
 def test_constructing_the_client_builds_no_sdk_client(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings)
     CosmosDBClient()
@@ -92,7 +95,7 @@ def test_constructing_the_client_builds_no_sdk_client(
 
 
 def test_an_account_key_is_used_as_the_credential(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings, azure_cosmos_account_key="the-key")
     CosmosDBClient().sync_client
@@ -100,7 +103,7 @@ def test_an_account_key_is_used_as_the_credential(
 
 
 def test_an_account_key_builds_no_identity_at_all(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     """The identity needs aiohttp on the async side, so a keyed deployment
     must not reach for one it will never use."""
@@ -110,7 +113,7 @@ def test_an_account_key_builds_no_identity_at_all(
 
 
 def test_no_account_key_falls_back_to_the_managed_identity(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings)
     CosmosDBClient().sync_client
@@ -119,7 +122,7 @@ def test_no_account_key_falls_back_to_the_managed_identity(
 
 
 def test_an_empty_account_key_counts_as_no_key(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings, azure_cosmos_account_key="")
     CosmosDBClient().sync_client
@@ -127,7 +130,7 @@ def test_an_empty_account_key_counts_as_no_key(
 
 
 def test_the_account_uri_reaches_the_sdk(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings, azure_cosmos_account_uri="https://a.documents.azure.com")
     CosmosDBClient().sync_client
@@ -135,7 +138,7 @@ def test_the_account_uri_reaches_the_sdk(
 
 
 def test_the_sync_client_is_built_once_and_reused(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings)
     client = CosmosDBClient()
@@ -144,7 +147,7 @@ def test_the_sync_client_is_built_once_and_reused(
 
 
 def test_the_async_client_is_built_separately(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings)
     client = CosmosDBClient()
@@ -154,7 +157,7 @@ def test_the_async_client_is_built_separately(
 
 
 def test_closing_drops_the_sync_client_so_the_next_use_rebuilds_it(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings)
     client = CosmosDBClient()
@@ -166,7 +169,7 @@ def test_closing_drops_the_sync_client_so_the_next_use_rebuilds_it(
 
 
 def test_closing_closes_the_sync_client_rather_than_leaving_it_to_the_collector(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     """`CosmosClient.close()` is public, and holds a transport until it runs."""
     configure(make_settings, azure_cosmos_account_key="the-key")
@@ -177,7 +180,7 @@ def test_closing_closes_the_sync_client_rather_than_leaving_it_to_the_collector(
 
 
 def test_closing_a_client_that_never_built_one_closes_nothing(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings, azure_cosmos_account_key="the-key")
     CosmosDBClient().close()
@@ -185,7 +188,7 @@ def test_closing_a_client_that_never_built_one_closes_nothing(
 
 
 def test_the_client_is_one_instance_for_the_process(
-    make_settings: Any, sdk: RecordingSdk, credential: RecordingCredential
+    make_settings: MakeSettings, sdk: RecordingSdk, credential: RecordingCredential
 ) -> None:
     configure(make_settings)
     assert CosmosDBClient() is CosmosDBClient()

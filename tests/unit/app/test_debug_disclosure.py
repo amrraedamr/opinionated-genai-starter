@@ -4,18 +4,17 @@ The gate used to read `environment != "production"`, which disclosed for
 `prod`, `Production`, `staging` and an unset variable alike.
 """
 
-from typing import Any
-
 import pydantic
 import pytest
 
 from base.models.definitions.environment import DEBUG_ENVIRONMENTS, Environment
 from base.tools.exception_handlers import AppExceptionHandler
+from tests.conftest import MakeSettings
 
 
 @pytest.mark.parametrize("environment", ["local", "development"])
 def test_a_developer_environment_may_see_the_detail(
-    make_settings: Any, environment: str
+    make_settings: MakeSettings, environment: str
 ) -> None:
     make_settings(environment=environment)
     assert AppExceptionHandler._is_debug() is True
@@ -23,13 +22,15 @@ def test_a_developer_environment_may_see_the_detail(
 
 @pytest.mark.parametrize("environment", ["production", "staging"])
 def test_a_deployed_environment_sees_nothing(
-    make_settings: Any, environment: str
+    make_settings: MakeSettings, environment: str
 ) -> None:
     make_settings(environment=environment)
     assert AppExceptionHandler._is_debug() is False
 
 
-def test_the_default_environment_is_a_developer_one(make_settings: Any) -> None:
+def test_the_default_environment_is_a_developer_one(
+    make_settings: MakeSettings,
+) -> None:
     """Unset means a laptop, which is the only safe thing it can mean."""
     assert make_settings().environment is Environment.LOCAL
 
@@ -38,7 +39,7 @@ def test_the_default_environment_is_a_developer_one(make_settings: Any) -> None:
     "environment", ["prod", "Production", "PRODUCTION", "prd", "uat", ""]
 )
 def test_a_name_the_library_does_not_know_is_refused_at_startup(
-    make_settings: Any, environment: str
+    make_settings: MakeSettings, environment: str
 ) -> None:
     """A misspelling fails loudly instead of picking an environment by accident.
 

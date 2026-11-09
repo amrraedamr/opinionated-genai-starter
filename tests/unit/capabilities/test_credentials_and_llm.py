@@ -30,6 +30,7 @@ from base.services.configuration.mixins import (
 from base.services.llm.openai import OpenAIService
 from base.tools.errors import MissingSettingsError
 from base.tools.hashing import hash_args
+from tests.conftest import MakeSettings
 
 APP = FastAPI()
 
@@ -77,7 +78,7 @@ def test_the_auth_object_carries_the_provider_it_was_given() -> None:
 
 
 def test_a_provider_is_built_from_settings_when_none_is_supplied(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         CredentialsSettingsMixin,
@@ -99,7 +100,7 @@ def test_a_provider_is_built_from_settings_when_none_is_supplied(
 
 
 def test_explicit_configuration_wins_over_the_registered_settings(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         CredentialsSettingsMixin, outbound_token_url="https://registered/token"
@@ -122,7 +123,7 @@ def test_explicit_configuration_wins_over_the_registered_settings(
 
 
 def test_a_service_that_never_composed_the_mixin_is_told_which_one(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(OpenAILLMSettingsMixin)
 
@@ -160,7 +161,7 @@ async def test_every_probe_asks_the_provider_again() -> None:
 
 
 async def test_startup_builds_the_auth_so_a_malformed_url_fails_at_boot(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         CredentialsSettingsMixin,
@@ -211,7 +212,7 @@ def test_the_default_provider_is_openai_over_azure_configuration() -> None:
 
 
 async def test_startup_installs_the_authenticated_client_where_a_bare_one_resolves(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         CredentialsSettingsMixin,
@@ -232,7 +233,7 @@ async def test_startup_installs_the_authenticated_client_where_a_bare_one_resolv
 
 
 async def test_the_installed_client_carries_the_providers_default_configuration(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         CredentialsSettingsMixin,
@@ -255,7 +256,7 @@ async def test_the_installed_client_carries_the_providers_default_configuration(
 
 
 async def test_an_explicit_model_configuration_is_used_as_given(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(CredentialsSettingsMixin)
     service_type = stand_in()
@@ -271,7 +272,7 @@ async def test_an_explicit_model_configuration_is_used_as_given(
 
 
 async def test_tls_verification_follows_the_setting_by_default(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(CredentialsSettingsMixin, outbound_verify_tls=False)
     service_type = stand_in()
@@ -285,7 +286,9 @@ async def test_tls_verification_follows_the_setting_by_default(
     assert service_type.get(CONFIGURED_SERVICE_KEY).verify is False
 
 
-async def test_an_explicit_verify_flag_beats_the_setting(make_settings: Any) -> None:
+async def test_an_explicit_verify_flag_beats_the_setting(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(CredentialsSettingsMixin, outbound_verify_tls=True)
     service_type = stand_in()
 
@@ -311,7 +314,7 @@ async def test_the_probe_fails_before_startup_has_installed_anything() -> None:
 
 
 async def test_the_probe_passes_once_the_client_is_installed(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(CredentialsSettingsMixin)
     capability = AuthenticatedLLM(
@@ -327,7 +330,7 @@ async def test_the_probe_passes_once_the_client_is_installed(
 
 
 async def test_the_probe_fails_again_if_a_bare_client_displaces_the_configured_one(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(CredentialsSettingsMixin)
     service_type = stand_in()
@@ -343,7 +346,7 @@ async def test_the_probe_fails_again_if_a_bare_client_displaces_the_configured_o
     assert (await capability.aprobe()).status is ProbeStatus.FAILED
 
 
-async def test_the_probe_never_calls_the_model(make_settings: Any) -> None:
+async def test_the_probe_never_calls_the_model(make_settings: MakeSettings) -> None:
     make_settings(CredentialsSettingsMixin)
 
     class CallCountingLLM(metaclass=KeyedSingleton):
@@ -365,7 +368,7 @@ async def test_the_probe_never_calls_the_model(make_settings: Any) -> None:
 
 
 async def test_shutdown_leaves_the_installed_client_in_place(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(CredentialsSettingsMixin)
     service_type = stand_in()

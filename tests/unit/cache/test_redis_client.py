@@ -5,21 +5,22 @@ a server: a service that forgot `REDIS_URL` should hear about it at startup
 rather than on its first cache read.
 """
 
-from typing import Any
-
 import pytest
 
 from base.clients.redis_client import RedisClient
 from base.services.configuration.mixins import RedisSettingsMixin
+from tests.conftest import MakeSettings
 
 
-def test_a_missing_redis_url_is_refused_at_construction(make_settings: Any) -> None:
+def test_a_missing_redis_url_is_refused_at_construction(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(RedisSettingsMixin, redis_url="")
     with pytest.raises(ValueError, match="redis_url must be configured"):
         RedisClient()
 
 
-def test_settings_are_read_once_at_construction(make_settings: Any) -> None:
+def test_settings_are_read_once_at_construction(make_settings: MakeSettings) -> None:
     make_settings(
         RedisSettingsMixin,
         redis_url="redis://localhost:6379/15",
@@ -40,7 +41,7 @@ def test_settings_are_read_once_at_construction(make_settings: Any) -> None:
 
 
 def test_a_blank_cert_requirement_is_left_out_of_the_connection(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """redis-py rejects `ssl_cert_reqs=""`, so the key must be absent."""
     make_settings(
@@ -51,7 +52,7 @@ def test_a_blank_cert_requirement_is_left_out_of_the_connection(
     assert "ssl_cert_reqs" not in RedisClient()._get_common_kwargs()
 
 
-def test_a_cert_requirement_is_passed_through(make_settings: Any) -> None:
+def test_a_cert_requirement_is_passed_through(make_settings: MakeSettings) -> None:
     make_settings(
         RedisSettingsMixin,
         redis_url="rediss://localhost:6379/15",
@@ -60,19 +61,19 @@ def test_a_cert_requirement_is_passed_through(make_settings: Any) -> None:
     assert RedisClient()._get_common_kwargs()["ssl_cert_reqs"] == "required"
 
 
-def test_construction_opens_no_pools(make_settings: Any) -> None:
+def test_construction_opens_no_pools(make_settings: MakeSettings) -> None:
     make_settings(RedisSettingsMixin, redis_url="redis://localhost:6379/15")
     client = RedisClient()
     assert client._sync_pool is None
     assert client._async_pool is None
 
 
-def test_one_client_is_shared_across_the_process(make_settings: Any) -> None:
+def test_one_client_is_shared_across_the_process(make_settings: MakeSettings) -> None:
     make_settings(RedisSettingsMixin, redis_url="redis://localhost:6379/15")
     assert RedisClient() is RedisClient()
 
 
-def test_closing_an_unopened_client_is_accepted(make_settings: Any) -> None:
+def test_closing_an_unopened_client_is_accepted(make_settings: MakeSettings) -> None:
     make_settings(RedisSettingsMixin, redis_url="redis://localhost:6379/15")
     client = RedisClient()
     client.close()

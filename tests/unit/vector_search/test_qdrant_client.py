@@ -12,6 +12,7 @@ import pytest
 
 from base.clients.vectors.qdrant import QdrantClient
 from base.services.configuration.mixins import QdrantSettingsMixin
+from tests.conftest import MakeSettings
 
 
 class RecordingSdk:
@@ -42,54 +43,62 @@ def sdk(monkeypatch: pytest.MonkeyPatch) -> RecordingSdk:
     return recorder
 
 
-def configure(make_settings: Any, **values: Any) -> Any:
+def configure(make_settings: MakeSettings, **values: Any) -> Any:
     values.setdefault("qdrant_url", "http://localhost:6333")
     return make_settings(QdrantSettingsMixin, **values)
 
 
 def test_constructing_the_client_builds_no_sdk_client(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     QdrantClient()
     assert sdk.calls == []
 
 
-def test_the_url_reaches_the_sdk(make_settings: Any, sdk: RecordingSdk) -> None:
+def test_the_url_reaches_the_sdk(
+    make_settings: MakeSettings, sdk: RecordingSdk
+) -> None:
     configure(make_settings, qdrant_url="http://qdrant:6333")
     QdrantClient().sync_client
     assert sdk.last["url"] == "http://qdrant:6333"
 
 
-def test_grpc_is_preferred_by_default(make_settings: Any, sdk: RecordingSdk) -> None:
+def test_grpc_is_preferred_by_default(
+    make_settings: MakeSettings, sdk: RecordingSdk
+) -> None:
     configure(make_settings)
     QdrantClient().sync_client
     assert sdk.last["prefer_grpc"] is True
     assert sdk.last["grpc_port"] == 6334
 
 
-def test_http_can_be_chosen_instead(make_settings: Any, sdk: RecordingSdk) -> None:
+def test_http_can_be_chosen_instead(
+    make_settings: MakeSettings, sdk: RecordingSdk
+) -> None:
     configure(make_settings, qdrant_prefer_grpc=False)
     QdrantClient().sync_client
     assert sdk.last["prefer_grpc"] is False
 
 
 def test_a_custom_grpc_port_reaches_the_sdk(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings, qdrant_grpc_port=7334)
     QdrantClient().sync_client
     assert sdk.last["grpc_port"] == 7334
 
 
-def test_the_timeout_reaches_the_sdk(make_settings: Any, sdk: RecordingSdk) -> None:
+def test_the_timeout_reaches_the_sdk(
+    make_settings: MakeSettings, sdk: RecordingSdk
+) -> None:
     configure(make_settings, qdrant_timeout=5)
     QdrantClient().sync_client
     assert sdk.last["timeout"] == 5
 
 
 def test_the_default_timeout_is_thirty_seconds(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     QdrantClient().sync_client
@@ -97,7 +106,7 @@ def test_the_default_timeout_is_thirty_seconds(
 
 
 def test_an_api_key_is_sent_when_there_is_one(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings, qdrant_api_key="the-key")
     QdrantClient().sync_client
@@ -105,7 +114,7 @@ def test_an_api_key_is_sent_when_there_is_one(
 
 
 def test_no_api_key_is_sent_when_there_is_none(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     """An empty credential is worse than no credential to a local container."""
     configure(make_settings)
@@ -114,7 +123,7 @@ def test_no_api_key_is_sent_when_there_is_none(
 
 
 def test_the_sync_client_is_built_once_and_reused(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     client = QdrantClient()
@@ -123,7 +132,7 @@ def test_the_sync_client_is_built_once_and_reused(
 
 
 def test_the_async_client_is_built_separately(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     client = QdrantClient()
@@ -133,7 +142,7 @@ def test_the_async_client_is_built_separately(
 
 
 def test_both_clients_are_built_from_the_same_settings(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings, qdrant_api_key="k", qdrant_timeout=11)
     client = QdrantClient()
@@ -143,7 +152,7 @@ def test_both_clients_are_built_from_the_same_settings(
 
 
 def test_closing_drops_the_sync_client_so_the_next_use_rebuilds_it(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     client = QdrantClient()
@@ -155,7 +164,7 @@ def test_closing_drops_the_sync_client_so_the_next_use_rebuilds_it(
 
 
 def test_closing_an_unused_client_does_nothing(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     QdrantClient().close()
@@ -163,7 +172,7 @@ def test_closing_an_unused_client_does_nothing(
 
 
 def test_the_client_is_one_instance_for_the_process(
-    make_settings: Any, sdk: RecordingSdk
+    make_settings: MakeSettings, sdk: RecordingSdk
 ) -> None:
     configure(make_settings)
     assert QdrantClient() is QdrantClient()

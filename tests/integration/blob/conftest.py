@@ -14,6 +14,7 @@ import pytest
 
 from base.services.blob.azure_blob import AzureBlobService
 from base.services.configuration.mixins.blob.azure import AzureBlobSettingsMixin
+from tests.conftest import MakeSettings
 
 ACCOUNT_URL = "http://127.0.0.1:10100/devstoreaccount1"
 """Azurite on the port the compose file maps, 10000 being taken here."""
@@ -26,7 +27,7 @@ ACCOUNT_KEY = (
 
 
 @pytest.fixture
-def azurite(make_settings: Any) -> Any:
+def azurite(make_settings: MakeSettings) -> Any:
     """Settings pointed at the local emulator, on a shared key."""
     return make_settings(
         AzureBlobSettingsMixin,

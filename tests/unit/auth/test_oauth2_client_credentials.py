@@ -19,6 +19,7 @@ from base.models.view_models.http import HttpResponse
 from base.services.configuration.mixins import CredentialsSettingsMixin
 from base.services.http import HttpRequestService
 from base.tools.errors import ErrorsException
+from tests.conftest import MakeSettings
 
 TOKEN_URL = "https://idp.example.com/oauth2/token"
 
@@ -368,7 +369,7 @@ def test_the_credential_placement_setting_names_the_two_supported_values() -> No
 
 
 async def test_the_refresh_skew_setting_reaches_the_provider(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch, clock: FakeClock
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch, clock: FakeClock
 ) -> None:
     """`OUTBOUND_TOKEN_REFRESH_SKEW_SECONDS` is the knob behind the window."""
     from base.capabilities.credentials import OutboundCredentials

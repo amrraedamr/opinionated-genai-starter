@@ -16,6 +16,7 @@ from base.models.definitions.model import ProviderType
 from base.models.view_models.model import ModelConfigurations
 from base.services.configuration.mixins import GuardrailSettingsMixin
 from base.services.guardrails.llm.openai import OpenAIModerationGuardrail
+from tests.conftest import MakeSettings
 
 CATEGORIES = ("hate", "violence", "self_harm", "sexual")
 REQUEST = httpx.Request("POST", "https://moderation.invalid/moderations")
@@ -76,7 +77,7 @@ def attach_async(
     return endpoint
 
 
-def build(make_settings: Any, **settings: Any) -> OpenAIModerationGuardrail:
+def build(make_settings: MakeSettings, **settings: Any) -> OpenAIModerationGuardrail:
     make_settings(GuardrailSettingsMixin, **settings)
     return OpenAIModerationGuardrail(
         model_config=ModelConfigurations(
@@ -87,14 +88,14 @@ def build(make_settings: Any, **settings: Any) -> OpenAIModerationGuardrail:
     )
 
 
-def test_clean_content_is_allowed(make_settings: Any) -> None:
+def test_clean_content_is_allowed(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings)
     attach(guardrail, Endpoint(Scores()))
     verdict = guardrail.check("hello there", GuardrailStage.INPUT)
     assert verdict.outcome == GuardrailOutcome.ALLOW
 
 
-def test_a_score_over_the_threshold_blocks(make_settings: Any) -> None:
+def test_a_score_over_the_threshold_blocks(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings, moderation_threshold=0.5)
     attach(guardrail, Endpoint(Scores(violence=0.9)))
     verdict = guardrail.check("something", GuardrailStage.INPUT)
@@ -102,7 +103,7 @@ def test_a_score_over_the_threshold_blocks(make_settings: Any) -> None:
     assert verdict.category == "violence"
 
 
-def test_a_score_under_the_threshold_is_allowed(make_settings: Any) -> None:
+def test_a_score_under_the_threshold_is_allowed(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings, moderation_threshold=0.9)
     attach(guardrail, Endpoint(Scores(violence=0.6)))
     assert (
@@ -111,21 +112,21 @@ def test_a_score_under_the_threshold_is_allowed(make_settings: Any) -> None:
     )
 
 
-def test_the_threshold_is_inclusive(make_settings: Any) -> None:
+def test_the_threshold_is_inclusive(make_settings: MakeSettings) -> None:
     """A score exactly at the configured line counts as crossing it."""
     guardrail = build(make_settings, moderation_threshold=0.5)
     attach(guardrail, Endpoint(Scores(hate=0.5)))
     assert guardrail.check("x", GuardrailStage.INPUT).outcome == GuardrailOutcome.BLOCK
 
 
-def test_the_worst_category_is_the_one_reported(make_settings: Any) -> None:
+def test_the_worst_category_is_the_one_reported(make_settings: MakeSettings) -> None:
     """With several over the line, the report names the strongest signal."""
     guardrail = build(make_settings, moderation_threshold=0.3)
     attach(guardrail, Endpoint(Scores(hate=0.4, violence=0.95, sexual=0.35)))
     assert guardrail.check("x", GuardrailStage.INPUT).category == "violence"
 
 
-def test_only_watched_categories_are_enforced(make_settings: Any) -> None:
+def test_only_watched_categories_are_enforced(make_settings: MakeSettings) -> None:
     """A deployment that only cares about one category says so."""
     guardrail = build(
         make_settings, moderation_threshold=0.5, moderation_categories=["hate"]
@@ -134,7 +135,7 @@ def test_only_watched_categories_are_enforced(make_settings: Any) -> None:
     assert guardrail.check("x", GuardrailStage.INPUT).outcome == GuardrailOutcome.ALLOW
 
 
-def test_a_watched_category_still_blocks(make_settings: Any) -> None:
+def test_a_watched_category_still_blocks(make_settings: MakeSettings) -> None:
     guardrail = build(
         make_settings, moderation_threshold=0.5, moderation_categories=["hate"]
     )
@@ -142,7 +143,7 @@ def test_a_watched_category_still_blocks(make_settings: Any) -> None:
     assert guardrail.check("x", GuardrailStage.INPUT).category == "hate"
 
 
-def test_the_configured_model_is_the_one_called(make_settings: Any) -> None:
+def test_the_configured_model_is_the_one_called(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings, moderation_model="omni-moderation-latest")
     endpoint = attach(guardrail, Endpoint(Scores()))
     guardrail.check("hello", GuardrailStage.INPUT)
@@ -150,7 +151,7 @@ def test_the_configured_model_is_the_one_called(make_settings: Any) -> None:
     assert endpoint.inputs == ["hello"]
 
 
-def test_empty_content_never_reaches_the_endpoint(make_settings: Any) -> None:
+def test_empty_content_never_reaches_the_endpoint(make_settings: MakeSettings) -> None:
     """An empty string is not worth a billable call."""
     guardrail = build(make_settings)
     endpoint = attach(guardrail, Endpoint(Scores()))
@@ -158,13 +159,15 @@ def test_empty_content_never_reaches_the_endpoint(make_settings: Any) -> None:
     assert endpoint.inputs == []
 
 
-def test_tool_results_are_not_moderated(make_settings: Any) -> None:
+def test_tool_results_are_not_moderated(make_settings: MakeSettings) -> None:
     """A tool result is checked for injection, which is a different question."""
     guardrail = build(make_settings)
     assert guardrail.stages == frozenset({GuardrailStage.INPUT, GuardrailStage.OUTPUT})
 
 
-def test_an_unreachable_endpoint_allows_the_content(make_settings: Any) -> None:
+def test_an_unreachable_endpoint_allows_the_content(
+    make_settings: MakeSettings,
+) -> None:
     """A moderation outage must not take the service down with it."""
 
     class Dead:
@@ -179,7 +182,7 @@ def test_an_unreachable_endpoint_allows_the_content(make_settings: Any) -> None:
     )
 
 
-def test_a_reply_with_no_results_is_allowed(make_settings: Any) -> None:
+def test_a_reply_with_no_results_is_allowed(make_settings: MakeSettings) -> None:
     """A malformed reply is not evidence of a violation."""
 
     class Empty:
@@ -189,11 +192,11 @@ def test_a_reply_with_no_results_is_allowed(make_settings: Any) -> None:
     assert guardrail._verdict(Empty()).outcome == GuardrailOutcome.ALLOW
 
 
-def test_the_guardrail_names_itself(make_settings: Any) -> None:
+def test_the_guardrail_names_itself(make_settings: MakeSettings) -> None:
     assert build(make_settings).name == "openai-moderation"
 
 
-async def test_the_async_path_blocks_the_same_way(make_settings: Any) -> None:
+async def test_the_async_path_blocks_the_same_way(make_settings: MakeSettings) -> None:
     """The async client is a second client, so it gets its own proof."""
     guardrail = build(make_settings, moderation_threshold=0.5)
     endpoint = attach_async(guardrail, AsyncEndpoint(Scores(hate=0.8)))
@@ -204,7 +207,7 @@ async def test_the_async_path_blocks_the_same_way(make_settings: Any) -> None:
 
 
 async def test_an_unreachable_endpoint_allows_the_content_async(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     class Dead:
         async def create(self, **_: Any) -> Response:
@@ -217,7 +220,7 @@ async def test_an_unreachable_endpoint_allows_the_content_async(
 
 
 async def test_empty_content_never_reaches_the_endpoint_async(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     guardrail = build(make_settings)
     endpoint = attach_async(guardrail, AsyncEndpoint(Scores()))
@@ -252,7 +255,7 @@ class RecordingLogger:
 
 
 def test_a_rejected_request_is_logged_as_a_misconfiguration(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """A model the endpoint will not accept disables moderation entirely.
 
@@ -274,7 +277,7 @@ def test_a_rejected_request_is_logged_as_a_misconfiguration(
 
 @pytest.mark.parametrize("status", [401, 404, 422])
 def test_every_client_error_counts_as_a_misconfiguration(
-    make_settings: Any, status: int
+    make_settings: MakeSettings, status: int
 ) -> None:
     guardrail = build(make_settings)
     error = APIStatusError(
@@ -285,7 +288,7 @@ def test_every_client_error_counts_as_a_misconfiguration(
 
 @pytest.mark.parametrize("status", [429, 500, 503])
 def test_load_and_outages_are_not_misconfigurations(
-    make_settings: Any, status: int
+    make_settings: MakeSettings, status: int
 ) -> None:
     """429 is load and 5xx is theirs; neither means the deployment is wrong."""
     guardrail = build(make_settings)
@@ -295,7 +298,7 @@ def test_load_and_outages_are_not_misconfigurations(
     assert not guardrail._is_misconfigured(error)
 
 
-def test_an_unreachable_endpoint_is_only_a_warning(make_settings: Any) -> None:
+def test_an_unreachable_endpoint_is_only_a_warning(make_settings: MakeSettings) -> None:
     """A blip is not a misconfiguration and must not cry wolf as one."""
     guardrail = build(make_settings)
 

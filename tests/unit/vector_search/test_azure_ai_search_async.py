@@ -14,6 +14,7 @@ from base.models.definitions.vector_search import VECTOR_UPSERT_BATCH_SIZE
 from base.models.view_models.vector_search import VectorRecord
 from base.services.configuration.mixins import AzureSearchSettingsMixin
 from base.services.vector_search.azure_ai_search import AzureAISearchService
+from tests.conftest import MakeSettings
 
 
 class AsyncSearchPage:
@@ -108,7 +109,7 @@ class AsyncRecordingIndexClient:
 
 
 @pytest.fixture
-def service(make_settings: Any) -> AzureAISearchService:
+def service(make_settings: MakeSettings) -> AzureAISearchService:
     make_settings(
         AzureSearchSettingsMixin,
         azure_search_endpoint="https://account.search.windows.net",

@@ -1,12 +1,15 @@
 """Asking a provider whether content crosses a policy line."""
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from base.models.definitions.guardrails import GuardrailStage
 from base.models.definitions.model import ProviderType
 from base.models.view_models.guardrails import GuardrailVerdict
 from base.models.view_models.model import ModelConfigurations
 from base.services.configuration import settings_for
+
+if TYPE_CHECKING:
+    from openai.types.moderation_create_response import ModerationCreateResponse
 from base.services.configuration.protocols import SupportsGuardrailConfig
 from base.services.guardrails import AbstractGuardrail
 from base.services.logging.console import ConsoleLoggerService
@@ -95,7 +98,7 @@ class OpenAIModerationGuardrail(AbstractGuardrail):
             return self._failed_open(exc)
         return self._verdict(response)
 
-    def _verdict(self, response: Any) -> GuardrailVerdict:
+    def _verdict(self, response: "ModerationCreateResponse") -> GuardrailVerdict:
         """Refuse on the highest-scoring category that crosses the threshold."""
         scores = self._scores(response)
         watched = self._config.moderation_categories
@@ -115,7 +118,7 @@ class OpenAIModerationGuardrail(AbstractGuardrail):
         )
 
     @staticmethod
-    def _scores(response: Any) -> dict[str, float]:
+    def _scores(response: "ModerationCreateResponse") -> dict[str, float]:
         """The SDK returns a model per result; this wants a plain mapping."""
         results = getattr(response, "results", None) or []
         if not results:

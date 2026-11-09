@@ -19,6 +19,7 @@ from base.models.view_models.exceptions.nosql import NoSqlConnectionError
 from base.services.configuration.mixins import MongoSettingsMixin
 from base.services.error_handling import AbstractErrorHandler
 from base.services.nosql.mongodb import MongoDBService
+from tests.conftest import MakeSettings
 from tests.fakes import no_sleep
 
 ATTEMPTS_WITH_RETRY = AbstractErrorHandler.DEFAULT_RETRIES + 1
@@ -60,7 +61,9 @@ class AsyncCountingDatabase(CountingDatabase):
 
 
 @pytest.fixture
-def service(make_settings: Any, monkeypatch: pytest.MonkeyPatch) -> MongoDBService:
+def service(
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
+) -> MongoDBService:
     make_settings(MongoSettingsMixin, mongodb_host="db:27017", mongodb_database="app")
     no_sleep(monkeypatch)
     return MongoDBService()

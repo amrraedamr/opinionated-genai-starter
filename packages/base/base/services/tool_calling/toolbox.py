@@ -3,14 +3,17 @@
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
-from base.models.view_models import BaseModel
+from base.models.view_models import BaseModel, JSONObject
 from base.models.view_models.chat_history import StoredToolCall
 from base.tools.errors import MissingExtraError
 from base.tools.serializers import serialize
+
+if TYPE_CHECKING:
+    from jsonschema.protocols import Validator
 
 
 class ToolError(Exception):
@@ -30,8 +33,9 @@ class Tool[T: BaseModel]:
     name: str
     description: str
     parameters: type[T] | None
-    handler: Callable[[Any], Awaitable[Any]]
-    schema: dict[str, Any] | None = field(default=None)
+    handler: Callable[..., Awaitable[object]]
+    """Called with the parsed model, or the raw object when described by schema."""
+    schema: JSONObject | None = field(default=None)
 
     def __post_init__(self) -> None:
         if (self.parameters is None) == (self.schema is None):
@@ -45,9 +49,9 @@ class Tool[T: BaseModel]:
         *,
         name: str,
         description: str,
-        schema: dict[str, Any],
-        handler: Callable[[dict[str, Any]], Awaitable[Any]],
-    ) -> "Tool[Any]":
+        schema: JSONObject,
+        handler: Callable[[JSONObject], Awaitable[object]],
+    ) -> "Tool[BaseModel]":
         """A tool whose arguments are described by raw JSON Schema rather than a model."""
         cls._schema_validator(schema)
         return cls(
@@ -59,7 +63,7 @@ class Tool[T: BaseModel]:
         )
 
     @property
-    def json_schema(self) -> dict[str, Any]:
+    def json_schema(self) -> JSONObject:
         """The argument schema as JSON Schema. Adapters reshape it per provider."""
         if self.schema is not None:
             return self.schema
@@ -76,7 +80,7 @@ class Tool[T: BaseModel]:
         result = await self.handler(parsed)
         return result if isinstance(result, str) else serialize(result)
 
-    def _parse(self, arguments: str) -> Any:
+    def _parse(self, arguments: str) -> T | JSONObject:
         if self.parameters is not None:
             try:
                 return self.parameters.model_validate_json(arguments)
@@ -84,7 +88,7 @@ class Tool[T: BaseModel]:
                 raise ToolError(f"{self.name} rejected its arguments: {exc}") from exc
         return self._parse_against_schema(arguments)
 
-    def _parse_against_schema(self, arguments: str) -> dict[str, Any]:
+    def _parse_against_schema(self, arguments: str) -> JSONObject:
         try:
             decoded = json.loads(arguments or "{}")
         except json.JSONDecodeError as exc:
@@ -102,7 +106,7 @@ class Tool[T: BaseModel]:
         return decoded
 
     @staticmethod
-    def _schema_validator(schema: dict[str, Any]) -> Any:
+    def _schema_validator(schema: JSONObject) -> "Validator":
         """A validator for `schema`, refusing a schema that is itself malformed."""
         try:
             from jsonschema import SchemaError, validators
@@ -126,6 +130,12 @@ class Toolbox:
     """
 
     def __init__(self, *tools: Tool[Any]) -> None:
+        """A registry holds tools with different argument models.
+
+        `Tool[Any]` rather than `Tool[BaseModel]` because the parameter is
+        invariant, so a `Tool[Weather]` is not a `Tool[BaseModel]` and a
+        heterogeneous registry cannot be spelled any other way.
+        """
         duplicates = {t.name for t in tools if sum(o.name == t.name for o in tools) > 1}
         if duplicates:
             raise ToolError(f"Duplicate tool names: {sorted(duplicates)}")

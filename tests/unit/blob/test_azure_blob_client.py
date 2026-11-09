@@ -15,6 +15,7 @@ from base.clients.blob.azure_blob import AzureBlobClient
 from base.models.view_models.exceptions.blob import BlobConfigError
 from base.services.common.meta import Singleton, purge_all
 from base.services.configuration.mixins import AzureBlobSettingsMixin
+from tests.conftest import MakeSettings
 
 ACCOUNT_URL = "https://account.blob.core.windows.net/"
 
@@ -27,20 +28,24 @@ def _purge_instances() -> Iterator[None]:
     purge_all()
 
 
-def test_the_account_url_is_read_once_from_settings(make_settings: Any) -> None:
+def test_the_account_url_is_read_once_from_settings(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     assert AzureBlobClient()._account_url == ACCOUNT_URL
 
 
 def test_an_unset_account_url_is_refused_as_a_configuration_error(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url="")
     with pytest.raises(BlobConfigError, match="azure_blob_account_url is required"):
         AzureBlobClient()
 
 
-def test_no_sdk_client_is_built_until_one_is_asked_for(make_settings: Any) -> None:
+def test_no_sdk_client_is_built_until_one_is_asked_for(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     client = AzureBlobClient()
     assert client._sync_client is None
@@ -49,14 +54,16 @@ def test_no_sdk_client_is_built_until_one_is_asked_for(make_settings: Any) -> No
     assert client._async_credential is None
 
 
-def test_the_client_is_one_object_for_the_whole_process(make_settings: Any) -> None:
+def test_the_client_is_one_object_for_the_whole_process(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     assert AzureBlobClient() is AzureBlobClient()
     assert type(AzureBlobClient) is Singleton
 
 
 def test_sdk_retries_are_off_because_the_handler_owns_them(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     built: dict[str, Any] = {}
@@ -80,7 +87,7 @@ def test_sdk_retries_are_off_because_the_handler_owns_them(
 
 
 def test_the_sdk_client_is_built_once_and_then_reused(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     builds = {"count": 0}
@@ -102,7 +109,7 @@ def test_the_sdk_client_is_built_once_and_then_reused(
 
 
 def test_the_async_client_is_built_with_retries_off_too(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     built: dict[str, Any] = {}
@@ -123,7 +130,7 @@ def test_the_async_client_is_built_with_retries_off_too(
 
 
 def test_a_reachable_account_pings_true(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     client = AzureBlobClient()
@@ -137,7 +144,7 @@ def test_a_reachable_account_pings_true(
 
 
 def test_an_unreachable_account_pings_false_rather_than_raising(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     client = AzureBlobClient()
@@ -151,7 +158,7 @@ def test_an_unreachable_account_pings_false_rather_than_raising(
 
 
 async def test_an_unreachable_account_pings_false_asynchronously(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     client = AzureBlobClient()
@@ -164,7 +171,9 @@ async def test_an_unreachable_account_pings_false_asynchronously(
     assert await client.aping() is False
 
 
-def test_closing_releases_the_client_and_the_credential(make_settings: Any) -> None:
+def test_closing_releases_the_client_and_the_credential(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     closed: list[str] = []
 
@@ -184,12 +193,16 @@ def test_closing_releases_the_client_and_the_credential(make_settings: Any) -> N
     assert client._credential is None
 
 
-def test_closing_a_client_that_was_never_opened_is_allowed(make_settings: Any) -> None:
+def test_closing_a_client_that_was_never_opened_is_allowed(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     AzureBlobClient().close()
 
 
-async def test_closing_everything_releases_both_halves(make_settings: Any) -> None:
+async def test_closing_everything_releases_both_halves(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     closed: list[str] = []
 
@@ -231,7 +244,7 @@ def _refuse_identity(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_the_account_key_is_read_from_settings_and_exposed(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(
         AzureBlobSettingsMixin,
@@ -241,13 +254,15 @@ def test_the_account_key_is_read_from_settings_and_exposed(
     assert AzureBlobClient().account_key == ACCOUNT_KEY
 
 
-def test_an_account_with_no_key_reports_an_empty_one(make_settings: Any) -> None:
+def test_an_account_with_no_key_reports_an_empty_one(
+    make_settings: MakeSettings,
+) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     assert AzureBlobClient().account_key == ""
 
 
 def test_a_configured_key_means_no_identity_is_ever_built(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(
         AzureBlobSettingsMixin,
@@ -272,7 +287,7 @@ def test_a_configured_key_means_no_identity_is_ever_built(
 
 
 async def test_a_configured_key_keeps_the_async_half_free_of_an_identity_too(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(
         AzureBlobSettingsMixin,
@@ -297,7 +312,7 @@ async def test_a_configured_key_keeps_the_async_half_free_of_an_identity_too(
 
 
 def test_an_account_with_no_key_falls_back_to_an_identity(
-    make_settings: Any, monkeypatch: pytest.MonkeyPatch
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
 
@@ -320,7 +335,7 @@ def test_an_account_with_no_key_falls_back_to_an_identity(
 
 
 async def test_closing_the_sync_half_leaves_the_async_credential_alone(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     closed: list[str] = []
@@ -345,7 +360,7 @@ async def test_closing_the_sync_half_leaves_the_async_credential_alone(
 
 
 async def test_closing_the_async_half_releases_its_own_client_and_credential(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     closed: list[str] = []
@@ -367,7 +382,7 @@ async def test_closing_the_async_half_releases_its_own_client_and_credential(
 
 
 async def test_closing_an_async_client_that_was_never_opened_is_allowed(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(AzureBlobSettingsMixin, azure_blob_account_url=ACCOUNT_URL)
     await AzureBlobClient().aclose()

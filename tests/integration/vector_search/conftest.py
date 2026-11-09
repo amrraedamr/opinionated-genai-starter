@@ -8,12 +8,12 @@ collide.
 
 import uuid
 from collections.abc import AsyncIterator, Iterator
-from typing import Any
 
 import pytest
 
 from base.services.common.meta import Singleton
 from base.services.vector_search.qdrant import QdrantVectorSearchService
+from tests.conftest import CoreSettings
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +25,9 @@ def _purge_singletons() -> Iterator[None]:
 
 
 @pytest.fixture
-async def qdrant(infra_settings: Any) -> AsyncIterator[QdrantVectorSearchService]:
+async def qdrant(
+    infra_settings: CoreSettings,
+) -> AsyncIterator[QdrantVectorSearchService]:
     """A service pointed at the local container, closed afterwards."""
     service = QdrantVectorSearchService()
     yield service

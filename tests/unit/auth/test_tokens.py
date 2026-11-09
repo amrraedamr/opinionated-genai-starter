@@ -20,6 +20,7 @@ from base.services.configuration.mixins import (
     TokenVerificationSettingsMixin,
 )
 from base.tools.errors import ErrorsException, InvalidSignedPayload
+from tests.conftest import MakeSettings
 from tests.unit.auth.conftest import KeyPair
 
 CLAIMS: dict[str, Any] = {
@@ -30,7 +31,7 @@ CLAIMS: dict[str, Any] = {
 }
 
 
-def _issuing_settings(make_settings: Any, keys: KeyPair, **values: Any) -> Any:
+def _issuing_settings(make_settings: MakeSettings, keys: KeyPair, **values: Any) -> Any:
     return make_settings(
         TokenIssuingSettingsMixin,
         auth_private_key_path=str(keys.private_path),
@@ -40,7 +41,7 @@ def _issuing_settings(make_settings: Any, keys: KeyPair, **values: Any) -> Any:
 
 
 def test_an_access_token_carries_the_claims_it_was_given(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_access(CLAIMS)
@@ -51,7 +52,9 @@ def test_an_access_token_carries_the_claims_it_was_given(
     assert payload["type"] == TokenType.ACCESS
 
 
-def test_a_refresh_token_is_marked_as_one(make_settings: Any, keys: KeyPair) -> None:
+def test_a_refresh_token_is_marked_as_one(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
     """The carrier type and the claim must agree; nothing else enforces it."""
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_refresh(CLAIMS)
@@ -60,7 +63,7 @@ def test_a_refresh_token_is_marked_as_one(make_settings: Any, keys: KeyPair) -> 
 
 
 def test_a_pair_drops_the_email_from_the_refresh_token(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     """A refresh token is stored for a week; it carries no address."""
     _issuing_settings(make_settings, keys)
@@ -73,7 +76,7 @@ def test_a_pair_drops_the_email_from_the_refresh_token(
 
 
 def test_a_pair_is_a_token_pair_of_both_token_types(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     pair = TokenIssuer().issue_pair(CLAIMS)
@@ -82,14 +85,14 @@ def test_a_pair_is_a_token_pair_of_both_token_types(
     assert isinstance(pair.refresh_token, str)
 
 
-def test_a_token_is_signed_rs256(make_settings: Any, keys: KeyPair) -> None:
+def test_a_token_is_signed_rs256(make_settings: MakeSettings, keys: KeyPair) -> None:
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_access(CLAIMS)
     assert jwt.get_unverified_header(token)["alg"] == "RS256"
 
 
 def test_expiry_is_issued_at_plus_the_access_expiry_setting(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys, access_token_expiry_seconds=120)
     before = datetime.now(UTC).timestamp()
@@ -103,7 +106,7 @@ def test_expiry_is_issued_at_plus_the_access_expiry_setting(
 
 
 def test_expiry_is_issued_at_plus_the_refresh_expiry_setting(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys, refresh_token_expiry_seconds=86_400)
     before = datetime.now(UTC).timestamp()
@@ -114,7 +117,9 @@ def test_expiry_is_issued_at_plus_the_refresh_expiry_setting(
     assert payload["exp"] >= before + 86_400
 
 
-def test_the_two_expiries_are_independent(make_settings: Any, keys: KeyPair) -> None:
+def test_the_two_expiries_are_independent(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
     _issuing_settings(
         make_settings,
         keys,
@@ -129,7 +134,7 @@ def test_the_two_expiries_are_independent(make_settings: Any, keys: KeyPair) -> 
 
 
 def test_the_default_expiries_are_fifteen_minutes_and_seven_days(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     settings = _issuing_settings(make_settings, keys)
     assert settings.access_token_expiry_seconds == 900
@@ -137,7 +142,7 @@ def test_the_default_expiries_are_fifteen_minutes_and_seven_days(
 
 
 def test_an_arbitrary_payload_can_be_signed_with_its_own_ttl(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     """How an OAuth state survives the round trip to a provider."""
     _issuing_settings(make_settings, keys)
@@ -149,7 +154,7 @@ def test_an_arbitrary_payload_can_be_signed_with_its_own_ttl(
 
 
 def test_verifying_a_valid_access_token_returns_the_caller_it_asserts(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_access(CLAIMS)
@@ -166,7 +171,7 @@ def test_verifying_a_valid_access_token_returns_the_caller_it_asserts(
 
 
 def test_a_subject_that_is_not_a_uuid_leaves_user_id_unset(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_access({"sub": "an-external-subject"})
@@ -177,7 +182,7 @@ def test_a_subject_that_is_not_a_uuid_leaves_user_id_unset(
 
 
 def test_a_refresh_token_is_refused_where_an_access_token_is_expected(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     refresh = TokenIssuer().issue_refresh(CLAIMS)
@@ -188,7 +193,7 @@ def test_a_refresh_token_is_refused_where_an_access_token_is_expected(
 
 
 def test_a_refresh_token_verifies_when_that_is_what_is_expected(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     refresh = TokenIssuer().issue_refresh(CLAIMS)
@@ -198,7 +203,7 @@ def test_a_refresh_token_verifies_when_that_is_what_is_expected(
 
 
 def test_a_token_with_no_subject_claim_is_refused(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_access({"email": "nobody@example.com"})
@@ -208,7 +213,9 @@ def test_a_token_with_no_subject_claim_is_refused(
     assert caught.value.error_enum is AuthErrors.USER_TOKEN_INCOMPLETE
 
 
-def test_an_expired_token_is_refused(make_settings: Any, keys: KeyPair) -> None:
+def test_an_expired_token_is_refused(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
     _issuing_settings(make_settings, keys, access_token_expiry_seconds=-10)
     token = TokenIssuer().issue_access(CLAIMS)
 
@@ -218,7 +225,7 @@ def test_an_expired_token_is_refused(make_settings: Any, keys: KeyPair) -> None:
 
 
 def test_a_token_signed_by_another_key_is_refused(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     forged = jwt.encode(
@@ -233,7 +240,7 @@ def test_a_token_signed_by_another_key_is_refused(
 
 
 def test_a_token_signed_with_an_unsupported_algorithm_is_refused(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     """A symmetric token offered where only RS256 is accepted is a forgery."""
     _issuing_settings(make_settings, keys)
@@ -248,7 +255,9 @@ def test_a_token_signed_with_an_unsupported_algorithm_is_refused(
     assert caught.value.error_enum is AuthErrors.USER_DECODE_FAILED
 
 
-def test_an_unsigned_token_is_refused(make_settings: Any, keys: KeyPair) -> None:
+def test_an_unsigned_token_is_refused(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
     _issuing_settings(make_settings, keys)
     unsigned = jwt.encode({**CLAIMS, "type": "access"}, key="", algorithm="none")
 
@@ -263,7 +272,7 @@ def test_an_unsigned_token_is_refused(make_settings: Any, keys: KeyPair) -> None
     ids=["empty", "plain", "three-junk-segments", "scheme-included", "dots", "stubs"],
 )
 def test_a_malformed_token_is_refused(
-    make_settings: Any, keys: KeyPair, token: str
+    make_settings: MakeSettings, keys: KeyPair, token: str
 ) -> None:
     _issuing_settings(make_settings, keys)
     with pytest.raises(ErrorsException) as caught:
@@ -272,7 +281,7 @@ def test_a_malformed_token_is_refused(
 
 
 def test_none_is_refused_rather_than_crashing(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     with pytest.raises(ErrorsException) as caught:
@@ -281,7 +290,7 @@ def test_none_is_refused_rather_than_crashing(
 
 
 def test_decode_local_returns_raw_claims_for_the_expected_type(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     token = TokenIssuer().issue_refresh(CLAIMS)
@@ -292,7 +301,7 @@ def test_decode_local_returns_raw_claims_for_the_expected_type(
 
 
 def test_decode_payload_reports_an_expiry_apart_from_a_tampering(
-    make_settings: Any, keys: KeyPair, other_keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair, other_keys: KeyPair
 ) -> None:
     """`InvalidSignedPayload` keeps state errors out of the caller error codes."""
     _issuing_settings(make_settings, keys)
@@ -314,7 +323,7 @@ def test_decode_payload_reports_an_expiry_apart_from_a_tampering(
 
 
 def test_decode_payload_returns_the_claims_of_a_valid_payload(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     signed = TokenIssuer().sign_payload({"nonce": "abc"}, ttl_seconds=60)
@@ -322,7 +331,7 @@ def test_decode_payload_returns_the_claims_of_a_valid_payload(
 
 
 def test_a_verifier_needs_only_the_public_key(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     """A service that verifies but never issues composes the smaller mixin."""
     make_settings(
@@ -338,7 +347,7 @@ def test_a_verifier_needs_only_the_public_key(
 
 
 def test_an_issuer_reads_its_private_key_once_at_construction(
-    make_settings: Any, keys: KeyPair
+    make_settings: MakeSettings, keys: KeyPair
 ) -> None:
     _issuing_settings(make_settings, keys)
     issuer = TokenIssuer()
@@ -347,7 +356,7 @@ def test_an_issuer_reads_its_private_key_once_at_construction(
 
 
 def test_a_missing_key_file_fails_at_construction(
-    make_settings: Any, keys: KeyPair, tmp_path: Any
+    make_settings: MakeSettings, keys: KeyPair, tmp_path: Any
 ) -> None:
     make_settings(
         TokenIssuingSettingsMixin,

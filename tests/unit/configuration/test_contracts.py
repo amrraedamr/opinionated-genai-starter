@@ -6,7 +6,7 @@ cache that both `configure` and `reset` have to clear or a stale answer
 outlives the settings it was about.
 """
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import pytest
 
@@ -28,7 +28,7 @@ from base.services.configuration.protocols import (
     SupportsSQLConfig,
 )
 from base.tools.errors import MissingSettingsError
-from tests.conftest import settings_class
+from tests.conftest import MakeSettings, settings_class
 
 
 @runtime_checkable
@@ -39,7 +39,7 @@ class SupportsNothingAnyoneDeclares(Protocol):
 
 
 def test_settings_satisfy_a_contract_structurally_not_by_inheritance(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     assert isinstance(settings, SupportsRedisConfig)
@@ -47,7 +47,7 @@ def test_settings_satisfy_a_contract_structurally_not_by_inheritance(
 
 
 def test_a_data_protocol_cannot_be_checked_with_issubclass(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """Why the seam uses `isinstance`: `issubclass` is unavailable here."""
     settings = make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
@@ -56,7 +56,7 @@ def test_a_data_protocol_cannot_be_checked_with_issubclass(
 
 
 def test_a_contract_naming_a_field_the_settings_lack_is_refused(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     with pytest.raises(MissingSettingsError):
@@ -64,7 +64,7 @@ def test_a_contract_naming_a_field_the_settings_lack_is_refused(
 
 
 def test_the_error_names_both_the_settings_class_and_the_contract(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     with pytest.raises(MissingSettingsError) as caught:
@@ -75,7 +75,7 @@ def test_the_error_names_both_the_settings_class_and_the_contract(
 
 
 def test_one_settings_object_answers_two_contracts_independently(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     settings = make_settings(
         RedisSettingsMixin,
@@ -88,7 +88,7 @@ def test_one_settings_object_answers_two_contracts_independently(
 
 
 def test_a_composed_contract_needs_every_mixin_it_unions(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """`SupportsRedisBrokerConfig` is the connection plus the delivery policy."""
     make_settings(BrokerSettingsMixin, broker="memory")
@@ -106,7 +106,7 @@ def test_a_composed_contract_needs_every_mixin_it_unions(
 
 
 def test_a_contract_that_is_not_a_class_is_passed_through_unchecked(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """The `isinstance(contract, type)` guard: a union is not checkable."""
     settings = make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
@@ -118,7 +118,9 @@ def test_reading_before_anything_is_configured_says_so() -> None:
         settings_for(SupportsRedisConfig)
 
 
-def test_the_check_is_cached_per_settings_and_contract(make_settings: Any) -> None:
+def test_the_check_is_cached_per_settings_and_contract(
+    make_settings: MakeSettings,
+) -> None:
     settings = make_settings(
         RedisSettingsMixin,
         SQLSettingsMixin,
@@ -139,7 +141,7 @@ def test_the_check_is_cached_per_settings_and_contract(make_settings: Any) -> No
     }
 
 
-def test_a_failed_check_is_not_cached(make_settings: Any) -> None:
+def test_a_failed_check_is_not_cached(make_settings: MakeSettings) -> None:
     make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     for _ in range(2):
         with pytest.raises(MissingSettingsError):
@@ -147,7 +149,7 @@ def test_a_failed_check_is_not_cached(make_settings: Any) -> None:
     assert _checked == set()
 
 
-def test_configure_clears_the_cache(make_settings: Any) -> None:
+def test_configure_clears_the_cache(make_settings: MakeSettings) -> None:
     settings = make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     settings_for(SupportsRedisConfig)
     assert _checked
@@ -156,7 +158,7 @@ def test_configure_clears_the_cache(make_settings: Any) -> None:
     assert _checked == set()
 
 
-def test_reset_clears_the_cache(make_settings: Any) -> None:
+def test_reset_clears_the_cache(make_settings: MakeSettings) -> None:
     make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
     settings_for(SupportsRedisConfig)
     assert _checked
@@ -166,7 +168,7 @@ def test_reset_clears_the_cache(make_settings: Any) -> None:
 
 
 def test_a_contract_unmet_by_the_newly_configured_settings_is_rechecked(
-    make_settings: Any,
+    make_settings: MakeSettings,
 ) -> None:
     """A cached pass must not survive the settings it was about."""
     make_settings(RedisSettingsMixin, redis_url="redis://x:6379/0")
@@ -177,7 +179,7 @@ def test_a_contract_unmet_by_the_newly_configured_settings_is_rechecked(
         settings_for(SupportsRedisConfig)
 
 
-def test_a_contract_reads_the_fields_it_declares(make_settings: Any) -> None:
+def test_a_contract_reads_the_fields_it_declares(make_settings: MakeSettings) -> None:
     make_settings(
         BrokerSettingsMixin,
         broker="redis",
