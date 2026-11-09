@@ -9,8 +9,11 @@ session no amount of configuration can produce.
 from typing import TYPE_CHECKING
 
 from base.models.definitions.model import ProviderType
+from base.models.definitions.realtime_session import RealtimeModality
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.realtime_session import RealtimeSessionConfig
+from base.services.configuration import settings_for
+from base.services.configuration.protocols import SupportsRealtimeConfig
 from base.services.llm.realtime import AbstractRealtimeSession
 
 if TYPE_CHECKING:
@@ -30,18 +33,29 @@ caller writes the code around it.
 
 
 def build_realtime_session(
-    provider: ProviderType,
-    session: RealtimeSessionConfig,
+    provider: ProviderType | None = None,
+    session: RealtimeSessionConfig | None = None,
     config: ModelConfigurations | None = None,
     tool_schemas: "list[ToolSchema] | None" = None,
 ) -> AbstractRealtimeSession:
-    """Construct a session for the provider asked for.
+    """Construct the session this service is configured for.
+
+    Both the provider and the session shape fall back to settings, the way
+    `build_broker` does, so a caller that has nothing to say about either
+    asks for a session and gets one. A route is then wiring, not
+    configuration: deciding which model answers is a deployment's business,
+    not a handler's.
 
     Each adapter imports lazily, so a service using Gemini needs no `openai`
     extra and the reverse. Dispatch is exhaustive rather than defaulting:
     falling back to a provider the caller did not name would open a session
     against the wrong model and bill it silently.
     """
+    if provider is None or session is None:
+        settings = settings_for(SupportsRealtimeConfig)
+        provider = provider or ProviderType(settings.realtime_provider)
+        session = session or session_from(settings)
+
     match provider:
         case ProviderType.OPENAI | ProviderType.AZURE_OPENAI:
             from base.services.llm.realtime.openai import OpenAIRealtimeSession
@@ -59,4 +73,16 @@ def build_realtime_session(
             )
 
 
-__all__ = ["REALTIME_PROVIDERS", "build_realtime_session"]
+def session_from(settings: SupportsRealtimeConfig) -> RealtimeSessionConfig:
+    """The session a deployment asked for, in neutral terms."""
+    return RealtimeSessionConfig(
+        model=settings.realtime_model,
+        modalities=[RealtimeModality.AUDIO]
+        if settings.realtime_audio_enabled
+        else [RealtimeModality.TEXT],
+        voice=settings.realtime_voice or None,
+        instructions=settings.realtime_instructions or None,
+    )
+
+
+__all__ = ["REALTIME_PROVIDERS", "build_realtime_session", "session_from"]

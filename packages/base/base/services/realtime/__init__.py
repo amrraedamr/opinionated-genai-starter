@@ -9,6 +9,7 @@ This package closes those, and nothing more. Who is connected and how a
 message reaches them is the connection manager's job, which is separate.
 """
 
+from base.services.realtime.bridge import RealtimeBridge
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.context import RealtimeContext
 from base.services.realtime.handshake import accept_connection
@@ -18,6 +19,7 @@ from base.services.realtime.tickets import TicketService
 
 __all__ = [
     "ConnectionManager",
+    "RealtimeBridge",
     "DurableInbox",
     "RealtimeConnection",
     "RealtimeContext",

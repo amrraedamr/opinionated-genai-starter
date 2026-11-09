@@ -151,6 +151,13 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "injection_block_enabled": True,
         "pii_stream_tail": 32,
     },
+    "RealtimeSettingsMixin": {
+        "realtime_provider": "openai",
+        "realtime_model": "gpt-realtime",
+        "realtime_voice": "alloy",
+        "realtime_instructions": "",
+        "realtime_audio_enabled": True,
+    },
     "IdpSettingsMixin": {
         "idp_resource_server_enabled": False,
         "idp_issuer": "",
