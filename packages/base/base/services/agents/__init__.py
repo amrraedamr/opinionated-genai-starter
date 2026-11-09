@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from typing import Any, ClassVar
 
 from base.models.definitions.canned_messages import CannedMessages
+from base.models.definitions.guardrails import GuardrailStage
 from base.models.definitions.message import MessageRole
 from base.models.definitions.model import ReasoningEffort
 from base.models.view_models import BaseModel
@@ -16,6 +17,8 @@ from base.models.view_models.streams import StreamEnd, StreamMessage
 from base.services.chat_history import ChatHistoryService
 from base.services.common.meta import SingletonABC
 from base.services.execution_context import ExecutionContext
+from base.services.guardrails.factory import build_guardrail_pipeline
+from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.llm import AbstractLLMService
 from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
@@ -85,6 +88,18 @@ class AbstractAgent(metaclass=SingletonABC):
             ChatHistoryConfig(), self.CHAT_HISTORY_STORE
         )
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
+        self._guardrail_pipeline: GuardrailPipeline | None = None
+
+    @property
+    def _guardrails(self) -> GuardrailPipeline:
+        """Resolved on first use, not in `__init__`.
+
+        An agent is a singleton and may be built before a service registers
+        its settings; resolving here keeps construction free of that ordering.
+        """
+        if self._guardrail_pipeline is None:
+            self._guardrail_pipeline = build_guardrail_pipeline()
+        return self._guardrail_pipeline
 
     @classmethod
     def _build_llm_service(cls) -> AbstractLLMService:
@@ -193,13 +208,15 @@ class AbstractAgent(metaclass=SingletonABC):
         """
         self._apply_stream_iterator(kwargs)
         self._apply_defaults(kwargs, label)
+        prompt, messages = await self._guarded_input(prompt, messages)
 
-        return await self._llm_service.acomplete(
+        result = await self._llm_service.acomplete(
             prompt=prompt,
             messages=messages,
             tools=tools,
             **kwargs,
         )
+        return await self._guarded_output(result)
 
     async def _aparse[T: BaseModel](
         self,
@@ -215,6 +232,7 @@ class AbstractAgent(metaclass=SingletonABC):
         No stream iterator: a parsed call returns one object.
         """
         self._apply_defaults(kwargs, label)
+        prompt, messages = await self._guarded_input(prompt, messages)
 
         return await self._llm_service.aparse(
             schema,
@@ -222,6 +240,62 @@ class AbstractAgent(metaclass=SingletonABC):
             messages=messages,
             **kwargs,
         )
+
+    async def _guarded_input(
+        self,
+        prompt: RenderedPrompt | None,
+        messages: Sequence[StoredMessage] | None,
+    ) -> tuple[RenderedPrompt | None, Sequence[StoredMessage] | None]:
+        """Check what a person wrote, before the model is shown it.
+
+        Only user turns. Instructions and prior assistant replies are this
+        service's own words — redacting them would quietly rewrite the prompt,
+        and refusing them would refuse the service's own system message.
+        """
+        if not self._guardrails.applies_to(GuardrailStage.INPUT):
+            return prompt, messages
+
+        if prompt is not None:
+            prompt = prompt.model_copy(
+                update={"messages": await self._cleaned(prompt.messages)}
+            )
+        if messages is not None:
+            messages = await self._cleaned(list(messages))
+        return prompt, messages
+
+    async def _cleaned[T: BaseModel](self, messages: Sequence[T]) -> list[T]:
+        """Every user turn, with whatever the guardrails rewrote."""
+        cleaned: list[T] = []
+        for message in messages:
+            if getattr(message, "role", None) != MessageRole.USER:
+                cleaned.append(message)
+                continue
+            content = getattr(message, "content", None)
+            if not content:
+                cleaned.append(message)
+                continue
+            checked = await self._guardrails.aenforce(content, GuardrailStage.INPUT)
+            cleaned.append(
+                message
+                if checked == content
+                else message.model_copy(update={"content": checked})
+            )
+        return cleaned
+
+    async def _guarded_output(self, result: LLMResult) -> LLMResult:
+        """Check the reply before anyone sees it.
+
+        A streamed reply has already left by the time this runs, so streaming
+        is checked where it is assembled rather than here.
+        """
+        if not result.content:
+            return result
+        if not self._guardrails.applies_to(GuardrailStage.OUTPUT):
+            return result
+        checked = await self._guardrails.aenforce(result.content, GuardrailStage.OUTPUT)
+        if checked == result.content:
+            return result
+        return result.model_copy(update={"content": checked})
 
     def _apply_defaults(self, kwargs: dict[str, Any], label: str | None) -> None:
         """This agent's ClassVars, for every knob the caller left alone."""

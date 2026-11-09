@@ -43,10 +43,14 @@ def build_rate_limiter(
 
 
 def _configured() -> SupportsRateLimitConfig:
-    """The composed budgets, or the mixin's own defaults."""
+    """The composed budgets, or the mixin's own defaults.
+
+    `RuntimeError` is the no-settings-at-all case and `MissingSettingsError`
+    the composed-without-this-mixin one; both mean nobody tuned the budgets.
+    """
     try:
         return settings_for(SupportsRateLimitConfig)
-    except MissingSettingsError:
+    except (MissingSettingsError, RuntimeError):
         return RateLimitSettingsMixin()
 
 

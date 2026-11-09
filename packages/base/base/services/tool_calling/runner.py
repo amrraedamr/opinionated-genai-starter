@@ -2,9 +2,12 @@
 
 from typing import Any
 
+from base.models.definitions.guardrails import GuardrailStage
 from base.models.definitions.message import MessageRole
 from base.models.view_models.chat_history import StoredMessage
 from base.models.view_models.llm_result import ToolRunResult
+from base.services.guardrails.factory import build_guardrail_pipeline
+from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.llm import AbstractLLMService
 from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
@@ -27,6 +30,7 @@ class ToolRunner:
         toolbox: Toolbox,
         max_rounds: int = 5,
         llm_service: AbstractLLMService | None = None,
+        guardrails: GuardrailPipeline | None = None,
     ) -> None:
         if max_rounds < 1:
             raise ToolError("max_rounds must be at least 1")
@@ -34,6 +38,9 @@ class ToolRunner:
         self._max_rounds = max_rounds
         self._llm_service: AbstractLLMService = llm_service or OpenAIService()
         self._logger: ConsoleLoggerService = ConsoleLoggerService()
+        self._guardrails: GuardrailPipeline = (
+            guardrails if guardrails is not None else build_guardrail_pipeline()
+        )
 
     async def arun(self, messages: list[StoredMessage], **kwargs: Any) -> ToolRunResult:
         """Run the turn to a final answer.
@@ -79,7 +86,7 @@ class ToolRunner:
                     conversation_id=conversation_id,
                     sequence=sequence,
                     role=MessageRole.TOOL,
-                    content=await self._toolbox.ainvoke(call),
+                    content=await self._checked(await self._toolbox.ainvoke(call)),
                     tool_call_id=call.id,
                 )
                 conversation.append(outcome)
@@ -89,3 +96,18 @@ class ToolRunner:
             f"Still calling tools after {self._max_rounds} rounds; "
             "raise max_rounds or narrow the toolbox."
         )
+
+    async def _checked(self, content: str) -> str:
+        """A tool result, checked before it becomes something the model reads.
+
+        This is the whole reason third-party tools are safe to enable. The
+        result of an MCP server nobody here reviewed arrives as text the model
+        was told to trust, so it is checked on the way in rather than only on
+        the way back out to a caller.
+
+        A refusal raises, which ends the turn. Substituting an apology would
+        leave the model to continue on a result it never received.
+        """
+        if not self._guardrails.applies_to(GuardrailStage.TOOL_RESULT):
+            return content
+        return await self._guardrails.aenforce(content, GuardrailStage.TOOL_RESULT)

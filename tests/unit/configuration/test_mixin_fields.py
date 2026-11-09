@@ -141,11 +141,15 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "oauth_google_redirect_uri": "",
     },
     "GuardrailSettingsMixin": {
+        "guardrails_enabled": False,
+        "pii_redaction_enabled": True,
+        "moderation_enabled": False,
         "pii_extra_patterns": {},
         "moderation_model": "omni-moderation-latest",
         "moderation_threshold": 0.5,
         "moderation_categories": [],
         "injection_block_enabled": True,
+        "pii_stream_tail": 32,
     },
     "IdpSettingsMixin": {
         "idp_resource_server_enabled": False,
