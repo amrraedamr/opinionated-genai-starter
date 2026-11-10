@@ -235,7 +235,10 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
     # Hashset Operations
 
     def get_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> dict | None:
         composite = self._get_key(key, namespace)
         with self._lock:
@@ -247,12 +250,15 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         return parse_json_pairs(hashset_keys, result)
 
     async def aget_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> dict | None:
         return self.get_hashset_pairs(key, namespace, *hashset_keys)
 
     def get_hashset_all(
-        self, key: CacheKeys | str, namespace: UUID | None = None
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> dict | None:
         composite = self._get_key(key, namespace)
         with self._lock:
@@ -268,14 +274,14 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         }
 
     async def aget_hashset_all(
-        self, key: CacheKeys | str, namespace: UUID | None = None
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> dict | None:
         return self.get_hashset_all(key, namespace)
 
     def set_hashset(
         self,
         key: CacheKeys | str,
-        namespace: UUID | None = None,
+        namespace: UUID | str | None = None,
         hashset: dict | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
@@ -302,14 +308,17 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
     async def aset_hashset(
         self,
         key: CacheKeys | str,
-        namespace: UUID | None = None,
+        namespace: UUID | str | None = None,
         hashset: dict | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
         self.set_hashset(key, namespace, hashset, ttl_seconds)
 
     def delete_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> None:
         composite = self._get_key(key, namespace)
         with self._lock:
@@ -319,7 +328,10 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
                     entry.value.pop(k, None)
 
     async def adelete_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> None:
         self.delete_hashset_pairs(key, namespace, *hashset_keys)
 

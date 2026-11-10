@@ -232,7 +232,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     @retrying
     def get_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> dict | None:
         result: list[str | None] = self._redis_client.sync_client.hmget(  # type: ignore
             self._get_key(key, namespace), list(hashset_keys)
@@ -243,7 +246,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     @aretrying
     async def aget_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> dict | None:
         result: list[str | None] = await self._redis_client.async_client.hmget(  # type: ignore
             self._get_key(key, namespace), list(hashset_keys)
@@ -254,7 +260,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     @retrying
     def get_hashset_all(
-        self, key: CacheKeys | str, namespace: UUID | None = None
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> dict | None:
         result: dict[str, str] = self._redis_client.sync_client.hgetall(  # type: ignore
             self._get_key(key, namespace)
@@ -268,7 +274,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     @aretrying
     async def aget_hashset_all(
-        self, key: CacheKeys | str, namespace: UUID | None = None
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> dict | None:
         result: dict[str, str] = await self._redis_client.async_client.hgetall(  # type: ignore
             self._get_key(key, namespace)
@@ -284,7 +290,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
     def set_hashset(
         self,
         key: CacheKeys | str,
-        namespace: UUID | None = None,
+        namespace: UUID | str | None = None,
         hashset: dict | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
@@ -299,7 +305,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
     async def aset_hashset(
         self,
         key: CacheKeys | str,
-        namespace: UUID | None = None,
+        namespace: UUID | str | None = None,
         hashset: dict | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
@@ -312,7 +318,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     @retrying
     def delete_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> None:
         self._redis_client.sync_client.hdel(
             self._get_key(key, namespace), *hashset_keys
@@ -320,7 +329,10 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
 
     @aretrying
     async def adelete_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> None:
         await self._redis_client.async_client.hdel(  # type: ignore
             self._get_key(key, namespace), *hashset_keys

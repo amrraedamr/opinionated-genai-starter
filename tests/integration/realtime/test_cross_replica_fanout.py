@@ -16,6 +16,7 @@ import pytest
 
 from base.clients.redis_client import RedisClient
 from base.models.definitions.realtime import (
+    REALTIME_LAST_SEEN_NAMESPACE,
     REALTIME_PRESENCE_NAMESPACE,
     ChannelDelivery,
     RealtimeMessageType,
@@ -59,6 +60,12 @@ def replica() -> ConnectionManager:
     return ConnectionManager(RedisCacheService())
 
 
+async def forget_presence(user: str) -> None:
+    cache = RedisCacheService()
+    await cache.aremove(user, namespace=REALTIME_PRESENCE_NAMESPACE)
+    await cache.aremove(user, namespace=REALTIME_LAST_SEEN_NAMESPACE)
+
+
 def connection(device: str, user: str = USER) -> tuple[RealtimeConnection, FakeSocket]:
     socket = FakeSocket()
     return (
@@ -91,9 +98,8 @@ async def replicas(infra_settings: CoreSettings) -> AsyncIterator[tuple[Any, Any
     finally:
         await first.adrain()
         await second.adrain()
-        client = RedisClient()
-        await client.async_client.delete(f"{REALTIME_PRESENCE_NAMESPACE}:{USER}")
-        await client.close_all()
+        await forget_presence(USER)
+        await RedisClient().close_all()
 
 
 async def test_a_message_reaches_a_device_on_another_replica(
@@ -172,9 +178,7 @@ async def test_another_users_devices_are_left_alone(
         assert any(f.payload == {"n": 5} for f in my_socket.frames())
         assert their_socket.sent == []
     finally:
-        await RedisClient().async_client.delete(
-            f"{REALTIME_PRESENCE_NAMESPACE}:{other}"
-        )
+        await forget_presence(other)
 
 
 async def test_presence_is_visible_from_the_other_replica(
@@ -187,6 +191,21 @@ async def test_presence_is_visible_from_the_other_replica(
     presence = await second.apresence(USER)
     assert presence.online
     assert presence.last_seen is not None
+
+
+async def test_a_device_leaving_one_replica_keeps_the_user_online_on_another(
+    replicas: tuple[Any, Any],
+) -> None:
+    """One replica's last socket closing says nothing about the other's."""
+    first, second = replicas
+    laptop, _ = connection("laptop")
+    await first.aregister(laptop)
+    await second.aregister(connection("phone")[0])
+
+    await first.aunregister(laptop)
+
+    assert (await first.apresence(USER)).online
+    assert (await second.apresence(USER)).online
 
 
 async def test_draining_one_replica_leaves_the_other_serving(

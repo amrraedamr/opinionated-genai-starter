@@ -21,8 +21,14 @@ REALTIME_FANOUT_CHANNEL: Final = "realtime:fanout"
 """One channel shared by every replica; each message names the user it is for."""
 
 REALTIME_PRESENCE_NAMESPACE: Final = "realtime:presence"
+"""One hash per user: each open socket on any replica, and when it was last refreshed."""
+REALTIME_LAST_SEEN_NAMESPACE: Final = "realtime:last-seen"
 
 PRESENCE_TTL_SECONDS: Final = 90
+"""A socket not refreshed for this long counts as gone, as a crashed replica's do."""
+PRESENCE_REFRESH_SECONDS: Final = 30.0
+PRESENCE_RETENTION_SECONDS: Final = 604_800
+"""How long a last-seen time outlives the user's last socket."""
 
 REALTIME_INBOX_NAMESPACE: Final = "realtime:inbox"
 REALTIME_INBOX_SEQUENCE_NAMESPACE: Final = "realtime:inbox:seq"
