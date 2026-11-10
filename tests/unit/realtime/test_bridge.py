@@ -25,6 +25,7 @@ from base.models.view_models.chat_history import (
     StoredToolCallFunction,
 )
 from base.models.view_models.guardrails import GuardrailVerdict
+from base.models.view_models.rate_limiting import RateDecision
 from base.models.view_models.realtime import ConnectionTicket, RealtimeEnvelope
 from base.models.view_models.realtime_session import (
     RealtimeAudioDelta,
@@ -43,6 +44,7 @@ from base.services.configuration.mixins import RateLimitSettingsMixin
 from base.services.guardrails import AbstractGuardrail
 from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.llm.realtime import AbstractRealtimeSession
+from base.services.rate_limiting.llm_budget import LLMBudgetExhausted, TokenBudget
 from base.services.rate_limiting.memory import InMemoryRateLimiter
 from base.services.realtime.bridge import RealtimeBridge
 from base.services.realtime.connection import RealtimeConnection
@@ -592,3 +594,60 @@ async def test_a_turn_without_usage_is_not_billed_as_zero(settings: None) -> Non
         billed = [r for r in UsageTracker().records if r.label == "realtime"]
 
     assert billed == []
+
+
+class Budget(TokenBudget):
+    """A token budget a test can exhaust, recording what was charged."""
+
+    def __init__(self, exhausted: bool = False) -> None:
+        super().__init__(InMemoryRateLimiter())
+        self.exhausted = exhausted
+        self.charged: list[int] = []
+
+    async def acheck(self) -> None:
+        if self.exhausted:
+            raise LLMBudgetExhausted(
+                RateDecision(allowed=False, remaining=0, retry_after_seconds=10)
+            )
+
+    async def aspend(self, tokens: int) -> None:
+        self.charged.append(tokens)
+
+
+def budgeted(
+    budget: TokenBudget,
+    client: list[str] | None = None,
+    provider: list[RealtimeOutput] | None = None,
+) -> tuple[RealtimeBridge, FakeSocket, FakeSession]:
+    socket = FakeSocket(client)
+    session = FakeSession(provider)
+    connection = RealtimeConnection(
+        socket,  # type: ignore[arg-type]
+        ticket(),
+        limiter=InMemoryRateLimiter(),
+    )
+    return RealtimeBridge(connection, session, budget=budget), socket, session
+
+
+async def test_a_turns_tokens_are_charged_to_the_budget(settings: None) -> None:
+    """A socket used to spend tokens without the budget ever hearing of it."""
+    budget = Budget()
+    live, _, _ = budgeted(
+        budget,
+        provider=[
+            RealtimeTurnEnd(usage=ProviderUsage(input_tokens=30, output_tokens=12))
+        ],
+    )
+    await run(live)
+    assert budget.charged == [42]
+
+
+async def test_an_exhausted_budget_drops_input_but_keeps_the_socket(
+    settings: None,
+) -> None:
+    budget = Budget(exhausted=True)
+    live, socket, session = budgeted(budget, client=[says(text="hello")])
+    await run(live)
+    assert session.sent == []
+    assert any(f.type == RealtimeMessageType.ERROR for f in socket.frames())
+    assert socket.closed is None or socket.closed[0] == 1000

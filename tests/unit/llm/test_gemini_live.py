@@ -22,12 +22,14 @@ from google.genai.types import (
     Transcription,
     UsageMetadata,
 )
+from google.genai.types import Tool as GeminiTool
 
 from base.models.definitions.model import FinishReason
 from base.models.definitions.realtime_session import (
     AUDIO_OUTPUT_SAMPLE_RATE_HZ,
     RealtimeModality,
 )
+from base.models.view_models import BaseModel
 from base.models.view_models.realtime_session import (
     RealtimeAudioDelta,
     RealtimeAudioInput,
@@ -42,6 +44,7 @@ from base.services.llm.realtime.gemini import (
     INPUT_SAMPLE_RATE_HZ,
     GeminiLiveSession,
 )
+from base.services.tool_calling import Tool, Toolbox
 
 
 class FakeLive:
@@ -222,6 +225,40 @@ async def test_usage_is_reported_when_the_turn_ends() -> None:
     [out] = await translate([message])
     assert out.usage is not None  # type: ignore[union-attr]
     assert out.usage.input_tokens == 12  # type: ignore[union-attr]
+
+
+async def test_cached_input_tokens_are_reported() -> None:
+    message = spoken(turn_complete=True)
+    message.usage_metadata = UsageMetadata(
+        prompt_token_count=100, response_token_count=5, cached_content_token_count=80
+    )
+    [out] = await translate([message])
+    assert out.usage.cached_input_tokens == 80  # type: ignore[union-attr]
+
+
+def test_the_toolbox_is_declared_in_the_schema_subset_gemini_accepts() -> None:
+    """Gemini rejects `title`, `$defs` and `$ref`, which Pydantic emits."""
+
+    class Inner(BaseModel):
+        city: str
+
+    class Args(BaseModel):
+        where: Inner
+
+    async def handler(_: Args) -> str:
+        return "ok"
+
+    live = GeminiLiveSession(
+        RealtimeSessionConfig(model="gemini-live"),
+        toolbox=Toolbox(
+            Tool(name="weather", description="d", parameters=Args, handler=handler)
+        ),
+    )
+    [tool] = live._connect_config().tools or []
+    [declaration] = GeminiTool.model_validate(tool).function_declarations or []
+    schema = json.dumps(declaration.parameters.model_dump(exclude_none=True))
+    assert declaration.name == "weather"
+    assert "$ref" not in schema and "$defs" not in schema and "title" not in schema
 
 
 async def test_a_message_with_nothing_in_it_yields_nothing() -> None:

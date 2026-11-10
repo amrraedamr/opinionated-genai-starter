@@ -22,7 +22,11 @@ from collections.abc import Sequence
 from pydantic import ValidationError
 
 from base.models.definitions.guardrails import RETRACTION_TEXT, GuardrailStage
-from base.models.definitions.realtime import RealtimeCloseCode, RealtimeMessageType
+from base.models.definitions.realtime import (
+    BUDGET_EXHAUSTED_REASON,
+    RealtimeCloseCode,
+    RealtimeMessageType,
+)
 from base.models.view_models.realtime import RealtimeEnvelope
 from base.models.view_models.realtime_session import (
     RealtimeAudioDelta,
@@ -40,6 +44,7 @@ from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.guardrails.streaming import GuardedStream
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.logging.console import ConsoleLoggerService
+from base.services.rate_limiting.llm_budget import LLMBudgetExhausted, TokenBudget
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.manager import ConnectionManager
 from base.services.tool_calling.toolbox import Toolbox
@@ -59,12 +64,14 @@ class RealtimeBridge:
         toolbox: Toolbox | None = None,
         guardrails: GuardrailPipeline | None = None,
         manager: ConnectionManager | None = None,
+        budget: TokenBudget | None = None,
     ) -> None:
         self._connection = connection
         self._session = session
         self._toolbox = toolbox
         self._guardrails = guardrails
         self._manager = manager
+        self._budget = budget or TokenBudget()
         self._logger = ConsoleLoggerService()
         self._speaking = False
         self._turn_started = 0.0
@@ -116,6 +123,8 @@ class RealtimeBridge:
 
     async def _aforward(self, frame: RealtimeEnvelope) -> None:
         """Pass one client frame on, unless something refuses it."""
+        if not await self._ahas_budget():
+            return
         audio = frame.payload.get("audio")
         if isinstance(audio, str):
             try:
@@ -163,6 +172,8 @@ class RealtimeBridge:
                 self._run_tool(event)
             case RealtimeTurnEnd():
                 self._end_turn(event)
+                if event.usage is not None:
+                    await self._budget.aspend(event.usage.total_tokens)
                 await self._afinish_reply()
                 await self._connection.asend(
                     RealtimeEnvelope(
@@ -272,6 +283,17 @@ class RealtimeBridge:
         await self._session.asend_tool_result(
             call.call.id, allowed if allowed is not None else "Error: blocked"
         )
+
+    async def _ahas_budget(self) -> bool:
+        """Whether the caller has tokens left; when not, say so and keep the socket open."""
+        try:
+            await self._budget.acheck()
+        except LLMBudgetExhausted:
+            await self._connection.asend(
+                RealtimeEnvelope.error(BUDGET_EXHAUSTED_REASON)
+            )
+            return False
+        return True
 
     def _begin_turn(self) -> None:
         if not self._speaking:

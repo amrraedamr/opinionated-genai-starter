@@ -20,6 +20,7 @@ from base.services.llm.realtime.factory import (
 )
 from base.services.llm.realtime.gemini import GeminiLiveSession
 from base.services.llm.realtime.openai import OpenAIRealtimeSession
+from base.services.tool_calling import Toolbox
 from tests.conftest import MakeSettings
 
 CONFIG = RealtimeSessionConfig(model="m")
@@ -67,10 +68,12 @@ def test_anthropic_is_absent_rather_than_stubbed() -> None:
     assert ProviderType.ANTHROPIC not in REALTIME_PROVIDERS
 
 
-def test_tool_schemas_reach_the_session() -> None:
-    schemas = [{"name": "lookup"}]
-    built = build_realtime_session(ProviderType.GEMINI, CONFIG, tool_schemas=schemas)
-    assert built._tool_schemas == schemas  # type: ignore[attr-defined]
+@pytest.mark.parametrize("provider", [ProviderType.OPENAI, ProviderType.GEMINI])
+def test_the_toolbox_reaches_the_session(provider: ProviderType) -> None:
+    """The same toolbox the bridge runs, so the model is offered only what can run."""
+    toolbox = Toolbox()
+    built = build_realtime_session(provider, CONFIG, toolbox=toolbox)
+    assert built._toolbox is toolbox  # type: ignore[attr-defined]
 
 
 # Falling back to settings

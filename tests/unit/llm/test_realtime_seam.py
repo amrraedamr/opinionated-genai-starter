@@ -171,10 +171,6 @@ def test_a_session_is_text_only_unless_it_asks_for_audio() -> None:
     assert RealtimeSessionConfig(model="m").modalities == [RealtimeModality.TEXT]
 
 
-def test_a_session_reaches_no_tool_it_was_not_given() -> None:
-    assert RealtimeSessionConfig(model="m").tool_names == []
-
-
 def test_the_output_rate_is_stated_once() -> None:
     """Both providers speak at it, so a caller plays back at one rate."""
     assert AUDIO_OUTPUT_SAMPLE_RATE_HZ == 24_000

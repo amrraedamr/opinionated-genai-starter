@@ -18,6 +18,7 @@ import pytest
 
 from base.models.definitions.model import FinishReason, ProviderType
 from base.models.definitions.realtime_session import RealtimeModality
+from base.models.view_models import JSONObject
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.realtime_session import (
     RealtimeAudioDelta,
@@ -32,6 +33,7 @@ from base.models.view_models.realtime_session import (
     RealtimeTurnEnd,
 )
 from base.services.llm.realtime.openai import OpenAIRealtimeSession
+from base.services.tool_calling import Tool, Toolbox
 from tests.conftest import credential
 
 MODEL = "gpt-realtime"
@@ -53,22 +55,27 @@ def trailing_silence(session: OpenAIRealtimeSession) -> bytes:
 CONNECT_TIMEOUT = 45.0
 TURN_TIMEOUT = 90.0
 
-WEATHER_TOOL: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "name": "get_weather",
-        "description": "Current weather for a city.",
-        "parameters": {
+
+async def weather(_: JSONObject) -> str:
+    return json.dumps({"tempC": 31, "sky": "clear"})
+
+
+WEATHER_TOOLBOX = Toolbox(
+    Tool.from_json_schema(
+        name="get_weather",
+        description="Current weather for a city.",
+        schema={
             "type": "object",
             "properties": {"city": {"type": "string"}},
             "required": ["city"],
         },
-    }
-]
+        handler=weather,
+    )
+)
 
 
 def live_session(
-    tool_schemas: list[dict[str, Any]] | None = None, **config: Any
+    toolbox: Toolbox | None = None, **config: Any
 ) -> OpenAIRealtimeSession:
     return OpenAIRealtimeSession(
         RealtimeSessionConfig(model=MODEL, **config),
@@ -78,7 +85,7 @@ def live_session(
             model_name=MODEL,
             api_type=ProviderType.OPENAI,
         ),
-        tool_schemas=tool_schemas,
+        toolbox=toolbox,
     )
 
 
@@ -213,7 +220,7 @@ async def test_an_audio_session_still_produces_text() -> None:
 async def test_answering_a_tool_lets_the_model_carry_on() -> None:
     """It stopped when it asked. Without a response request it waits forever."""
     session = live_session(
-        tool_schemas=WEATHER_TOOL,
+        toolbox=WEATHER_TOOLBOX,
         instructions="Use the tool for weather questions. Answer in one sentence.",
     )
     await connected(session)

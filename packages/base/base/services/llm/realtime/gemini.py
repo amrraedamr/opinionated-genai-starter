@@ -36,8 +36,10 @@ from base.models.view_models.realtime_session import (
     RealtimeTurnEnd,
 )
 from base.models.view_models.usage import ProviderUsage
+from base.services.llm.gemini.adapter import GeminiContentAdapter
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.logging.console import ConsoleLoggerService
+from base.services.tool_calling import Toolbox
 from base.tools.errors import MissingExtraError
 
 try:
@@ -91,11 +93,11 @@ class GeminiLiveSession(AbstractRealtimeSession):
         self,
         session: RealtimeSessionConfig,
         config: ModelConfigurations | None = None,
-        tool_schemas: "list[FunctionDeclarationDict] | None" = None,
+        toolbox: Toolbox | None = None,
     ) -> None:
         self._session = session
         self._config = config
-        self._tool_schemas = tool_schemas or []
+        self._toolbox = toolbox if toolbox is not None else Toolbox()
         self._logger = ConsoleLoggerService()
         self._manager: "AbstractAsyncContextManager[AsyncSession] | None" = None
         self._live: AsyncSession | None = None
@@ -163,9 +165,20 @@ class GeminiLiveSession(AbstractRealtimeSession):
                     )
                 )
             )
-        if self._tool_schemas:
-            config.tools = [{"function_declarations": self._tool_schemas}]
+        if self._toolbox.tools:
+            config.tools = [{"function_declarations": self._declarations()}]
         return config
+
+    def _declarations(self) -> "list[FunctionDeclarationDict]":
+        """The toolbox as Gemini function declarations, in the schema subset it accepts."""
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": GeminiContentAdapter.to_schema(tool.json_schema),
+            }
+            for tool in self._toolbox.tools
+        ]
 
     async def asend(self, value: RealtimeInput) -> None:
         """Pass input to the model.
@@ -255,6 +268,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
             usage=ProviderUsage(
                 input_tokens=usage.prompt_token_count or 0,
                 output_tokens=usage.response_token_count or 0,
+                cached_input_tokens=usage.cached_content_token_count or 0,
             )
             if usage
             else None,

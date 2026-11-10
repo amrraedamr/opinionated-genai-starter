@@ -25,6 +25,7 @@ from base.services.realtime import (
     TicketService,
     accept_connection,
 )
+from base.services.tool_calling import Toolbox
 
 router = APIRouter(prefix="/realtime", tags=["Realtime"])
 
@@ -61,10 +62,12 @@ async def conversation(websocket: WebSocket) -> None:
             await connection.aclose(RealtimeCloseCode.TRY_LATER, "Draining")
             return
         heartbeat = asyncio.create_task(connection.aheartbeat())
+        toolbox = Toolbox()
         try:
             await RealtimeBridge(
                 connection,
-                build_realtime_session(),
+                build_realtime_session(toolbox=toolbox),
+                toolbox=toolbox,
                 guardrails=build_guardrail_pipeline(),
                 manager=manager,
             ).arun()
