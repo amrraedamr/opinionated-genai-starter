@@ -149,7 +149,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "moderation_threshold": 0.5,
         "moderation_categories": [],
         "injection_block_enabled": True,
-        "pii_stream_tail": 32,
+        "pii_stream_tail": 48,
     },
     "RealtimeSettingsMixin": {
         "realtime_provider": "openai",

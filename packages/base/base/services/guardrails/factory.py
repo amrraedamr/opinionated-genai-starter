@@ -14,6 +14,7 @@ from base.services.configuration.mixins.guardrails import GuardrailSettingsMixin
 from base.services.configuration.protocols import SupportsGuardrailConfig
 from base.services.guardrails import AbstractGuardrail
 from base.services.guardrails.pipeline import GuardrailPipeline
+from base.services.guardrails.streaming import GuardedStream
 from base.tools.errors import MissingSettingsError
 
 
@@ -50,6 +51,13 @@ def build_guardrail_pipeline(
     return GuardrailPipeline(*guardrails)
 
 
+def build_guarded_stream(
+    guardrails: GuardrailPipeline, config: SupportsGuardrailConfig | None = None
+) -> GuardedStream:
+    """A guard for one streamed reply, holding back the configured tail."""
+    return GuardedStream(guardrails, tail=(config or _configured()).pii_stream_tail)
+
+
 def _configured() -> SupportsGuardrailConfig:
     """The composed settings, or the mixin's own defaults.
 
@@ -64,4 +72,4 @@ def _configured() -> SupportsGuardrailConfig:
         return GuardrailSettingsMixin()
 
 
-__all__ = ["build_guardrail_pipeline"]
+__all__ = ["build_guarded_stream", "build_guardrail_pipeline"]

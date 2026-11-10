@@ -11,22 +11,12 @@ import logging
 import pytest
 
 from base.services.configuration.mixins import GuardrailSettingsMixin
-from base.services.guardrails.sinks import (
-    pii_redactor,
-    redact_pii,
-    reset_pii_redactor,
-)
+from base.services.guardrails.sinks import PiiRedactor
 from base.services.logging.config import JsonFormatter, RedactionFilter, redact
 from tests.conftest import MakeSettings
 
 EMAIL = "bob@example.com"
 CARD = "4111 1111 1111 1111"
-
-
-@pytest.fixture(autouse=True)
-def _forget_the_answer() -> None:
-    """The redactor is resolved once; a test changing settings must clear it."""
-    reset_pii_redactor()
 
 
 @pytest.fixture
@@ -101,10 +91,44 @@ def test_nothing_is_redacted_before_settings_exist() -> None:
     Raising inside a log call would lose the line it was trying to write,
     which is usually the one explaining what went wrong.
     """
-    assert pii_redactor() is None
-    assert redact_pii(f"mail {EMAIL}") == f"mail {EMAIL}"
+    assert PiiRedactor().redact(f"mail {EMAIL}") == f"mail {EMAIL}"
 
 
-def test_the_answer_is_remembered(guarded: None) -> None:
-    """Including when the answer is no, so a disabled service pays once."""
-    assert pii_redactor() is pii_redactor()
+def test_redaction_starts_once_settings_exist(make_settings: MakeSettings) -> None:
+    """A line logged before `configure` must not switch redaction off for good."""
+    redactor = PiiRedactor()
+    redactor.redact("early line")
+    make_settings(GuardrailSettingsMixin, guardrails_enabled=True)
+    assert EMAIL not in redactor.redact(f"mail {EMAIL}")
+
+
+def test_a_service_without_the_mixin_is_asked_once(
+    make_settings: MakeSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every shipped service is one; asking per log line costs every line."""
+    from base.services.guardrails import sinks
+
+    make_settings()
+    asked: list[object] = []
+    real = sinks.settings_for
+
+    def counting(contract: type[object]) -> object:
+        asked.append(contract)
+        return real(contract)
+
+    monkeypatch.setattr(sinks, "settings_for", counting)
+    for _ in range(100):
+        PiiRedactor().redact("line")
+    assert len(asked) == 1
+
+
+def test_a_pattern_that_does_not_compile_is_refused_at_startup(
+    make_settings: MakeSettings,
+) -> None:
+    """Otherwise the first log line raises and redaction silently turns off."""
+    with pytest.raises(ValueError, match="pii_extra_patterns"):
+        make_settings(
+            GuardrailSettingsMixin,
+            guardrails_enabled=True,
+            pii_extra_patterns={"bad": "("},
+        )

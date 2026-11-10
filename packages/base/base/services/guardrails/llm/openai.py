@@ -6,6 +6,7 @@ from base.models.definitions.guardrails import GuardrailStage
 from base.models.definitions.model import ProviderType
 from base.models.view_models.guardrails import GuardrailVerdict
 from base.models.view_models.model import ModelConfigurations
+from base.services.common.meta import KeyedSingletonABC
 from base.services.configuration import settings_for
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.tools.openai_clients import create_openai_clients
 
 
-class OpenAIModerationGuardrail(AbstractGuardrail):
+class OpenAIModerationGuardrail(AbstractGuardrail, metaclass=KeyedSingletonABC):
     """Moderation over the OpenAI-compatible `/moderations` endpoint.
 
     The API shape, not the vendor: anything serving that spec answers it —
@@ -119,16 +120,13 @@ class OpenAIModerationGuardrail(AbstractGuardrail):
 
     @staticmethod
     def _scores(response: "ModerationCreateResponse") -> dict[str, float]:
-        """The SDK returns a model per result; this wants a plain mapping."""
-        results = getattr(response, "results", None) or []
-        if not results:
+        """Scores keyed by API category name: `self-harm`, not `self_harm`."""
+        if not response.results:
             return {}
-        category_scores = results[0].category_scores
-        if hasattr(category_scores, "model_dump"):
-            category_scores = category_scores.model_dump()
+        scores = response.results[0].category_scores.model_dump(by_alias=True)
         return {
             category: float(score)
-            for category, score in dict(category_scores).items()
+            for category, score in scores.items()
             if score is not None
         }
 

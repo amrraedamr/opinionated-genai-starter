@@ -5,10 +5,19 @@ beside the abstraction it implements: `AbstractGuardrail` is the contract, and
 this is one way of composing several of them.
 """
 
+import contextlib
+import hashlib
 from collections.abc import Sequence
 
-from base.models.definitions.guardrails import GuardrailOutcome, GuardrailStage
+from base.models.definitions.guardrails import (
+    GUARDRAIL_CACHE_NAMESPACE,
+    GUARDRAIL_CACHE_TTL_SECONDS,
+    GuardrailOutcome,
+    GuardrailStage,
+)
+from base.models.view_models.exceptions import CacheError
 from base.models.view_models.guardrails import GuardrailReport, GuardrailVerdict
+from base.services.cache.factory import get_cache_service
 from base.services.guardrails import AbstractGuardrail, GuardrailBlocked
 
 
@@ -42,6 +51,33 @@ class GuardrailPipeline:
             if verdict.outcome == GuardrailOutcome.REDACT:
                 current = verdict.content or ""
         return self._report(stage, self._settled(verdicts), current, verdicts)
+
+    async def arun_cached(self, content: str, stage: GuardrailStage) -> GuardrailReport:
+        """`arun`, cached so unchanged content is not re-billed."""
+        if not self.applies_to(stage) or not content:
+            return await self.arun(content, stage)
+        key = self._cache_key(content, stage)
+        cache = get_cache_service()
+        try:
+            stored = await cache.aget(key, namespace=GUARDRAIL_CACHE_NAMESPACE)
+        except CacheError:
+            return await self.arun(content, stage)
+        if stored is not None:
+            return GuardrailReport.model_validate_json(stored)
+        report = await self.arun(content, stage)
+        with contextlib.suppress(CacheError):
+            await cache.aset(
+                key,
+                namespace=GUARDRAIL_CACHE_NAMESPACE,
+                value=report.model_dump_json(),
+                ttl_seconds=GUARDRAIL_CACHE_TTL_SECONDS,
+            )
+        return report
+
+    def _cache_key(self, content: str, stage: GuardrailStage) -> str:
+        names = ",".join(g.name for g in self._for(stage))
+        digest = hashlib.sha256(f"{stage}|{names}|{content}".encode()).hexdigest()
+        return digest
 
     async def arun(self, content: str, stage: GuardrailStage) -> GuardrailReport:
         """Run every guardrail checking `stage` over `content`, in order, asynchronously."""

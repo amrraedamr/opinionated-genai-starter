@@ -1,16 +1,7 @@
-"""Catching text that is trying to talk to the model rather than answer it.
-
-This runs on tool results only, and that restriction is the point. A user
-saying "ignore previous instructions" is a nuisance the model can refuse. The
-same sentence arriving inside a tool result is different: it is text the model
-was told to trust, from a third party, and a forked repository will point this
-at MCP servers nobody here reviewed.
-
-Heuristics cannot catch everything written to steer a model. They catch the
-shapes that actually appear, and raise the cost of the rest.
-"""
+"""Tool results that read as instructions to the model; tool results only, since users may say anything."""
 
 import re
+import unicodedata
 from typing import ClassVar
 
 from base.models.definitions.guardrails import GuardrailStage
@@ -18,17 +9,25 @@ from base.models.view_models.guardrails import GuardrailVerdict
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsGuardrailConfig
 from base.services.guardrails import AbstractGuardrail
-from base.tools.sanitize import has_invisible
+from base.tools.sanitize import TAG_BLOCK, strip_invisible
+
+EMOJI_TAG_SEQUENCE = re.compile("\U0001f3f4[\U000e0020-\U000e007e]+\U000e007f")
+WHITESPACE = re.compile(r"\s+")
+LOOKALIKES = str.maketrans(
+    "аеорсухіјѕԁԛԝАВЕКМНОРСТХІЈЅαοινρτυΑΒΕΗΙΚΜΝΟΡΤΥΧ",
+    "aeopcyxijsdqwABEKMHOPCTXIJSaoivptuABEHIKMNOPTYX",
+)
 
 OVERRIDE = re.compile(
-    r"\b(?:ignore|disregard|forget|override)\b[^.\n]{0,40}\b"
-    r"(?:previous|prior|above|earlier|system|all)\b[^.\n]{0,20}"
-    r"\b(?:instruction|instructions|prompt|prompts|rule|rules|context)\b",
+    r"\b(?:ignore|disregard|forget|override)\b[^.]{0,40}"
+    r"\b(?:previous|prior|above|earlier|preceding|original|system|your)\b[^.]{0,20}"
+    r"\b(?:instructions?|prompts?|rules?|context|guidelines|directives)\b"
+    r"|\b(?:ignore|disregard|forget)\s+(?:all|any|every)\s+(?:instructions|prompts|directives)\b",
     re.IGNORECASE,
 )
 IDENTITY = re.compile(
-    r"\byou\s+are\s+now\b|\bact\s+as\s+(?:a|an|the)\b|\bpretend\s+(?:to\s+be|you)\b"
-    r"|\bfrom\s+now\s+on\s+you\b|\bnew\s+instructions\b",
+    r"\byou\s+are\s+now\b|\bpretend\s+(?:to\s+be|you)\b|\bfrom\s+now\s+on\s+you\b"
+    r"|\bnew\s+instructions\b|(?:^|[.!?]\s)act\s+as\s+(?:a|an|the)\b",
     re.IGNORECASE,
 )
 ROLE_MARKER = re.compile(
@@ -37,19 +36,18 @@ ROLE_MARKER = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 EXFILTRATION = re.compile(
-    r"\b(?:reveal|print|repeat|show|output|disclose)\b[^.\n]{0,30}"
-    r"\b(?:system\s+prompt|your\s+instructions|the\s+prompt|api\s+key|secret)\b",
+    r"\b(?:reveal|print|repeat|show|output|disclose|leak)\b[^.]{0,30}"
+    r"\b(?:system\s+prompt|your\s+(?:instructions|prompt|rules)|api\s+key|access\s+token)\b",
     re.IGNORECASE,
 )
 
 
 class InjectionHeuristicGuardrail(AbstractGuardrail):
-    """Blocks tool output that reads as an instruction to the model."""
+    """Blocks tool output that reads as an instruction to the model, after undoing disguises."""
 
     SIGNALS: ClassVar[dict[str, re.Pattern[str]]] = {
         "instruction-override": OVERRIDE,
         "identity-reassignment": IDENTITY,
-        "role-marker": ROLE_MARKER,
         "exfiltration": EXFILTRATION,
     }
 
@@ -60,7 +58,6 @@ class InjectionHeuristicGuardrail(AbstractGuardrail):
         return "injection-heuristic"
 
     def _stages(self) -> frozenset[GuardrailStage]:
-        """Tool results only. A user is allowed to say anything to the model."""
         return frozenset({GuardrailStage.TOOL_RESULT})
 
     def _check(self, content: str, stage: GuardrailStage) -> GuardrailVerdict:
@@ -75,19 +72,37 @@ class InjectionHeuristicGuardrail(AbstractGuardrail):
         if not content or not self._config.injection_block_enabled:
             return GuardrailVerdict.allow()
 
-        if has_invisible(content):
+        if self._smuggles(content):
             return GuardrailVerdict.block(
                 "Tool result contains invisible characters.",
                 category="invisible-characters",
             )
+        if ROLE_MARKER.search(content):
+            return self._blocked("role-marker")
 
+        normalised = self._normalised(content)
         for category, pattern in self.SIGNALS.items():
-            if pattern.search(content):
-                return GuardrailVerdict.block(
-                    "Tool result reads as an instruction to the model.",
-                    category=category,
-                )
+            if pattern.search(normalised):
+                return self._blocked(category)
         return GuardrailVerdict.allow()
+
+    @staticmethod
+    def _blocked(category: str) -> GuardrailVerdict:
+        return GuardrailVerdict.block(
+            "Tool result reads as an instruction to the model.", category=category
+        )
+
+    @staticmethod
+    def _smuggles(content: str) -> bool:
+        """Tag characters outside an emoji flag encode ASCII that renders as nothing."""
+        remaining = EMOJI_TAG_SEQUENCE.sub("", content)
+        return any(ord(char) in TAG_BLOCK for char in remaining)
+
+    @staticmethod
+    def _normalised(content: str) -> str:
+        """Zero-width characters removed, look-alike letters mapped, whitespace collapsed."""
+        text = unicodedata.normalize("NFKC", strip_invisible(content))
+        return WHITESPACE.sub(" ", text.translate(LOOKALIKES))
 
 
 __all__ = ["InjectionHeuristicGuardrail"]

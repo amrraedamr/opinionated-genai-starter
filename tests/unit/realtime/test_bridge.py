@@ -175,7 +175,13 @@ class Redacts(AbstractGuardrail):
         return "redacts"
 
     def _stages(self) -> frozenset[GuardrailStage]:
-        return frozenset({GuardrailStage.OUTPUT, GuardrailStage.TOOL_RESULT})
+        return frozenset(
+            {
+                GuardrailStage.OUTPUT,
+                GuardrailStage.OUTPUT_DELTA,
+                GuardrailStage.TOOL_RESULT,
+            }
+        )
 
     def _check(self, content: str, stage: GuardrailStage) -> GuardrailVerdict:
         return GuardrailVerdict(
@@ -377,16 +383,43 @@ async def test_a_refusal_leaves_the_conversation_open(settings: None) -> None:
 async def test_a_refused_answer_never_reaches_the_user(settings: None) -> None:
     live, socket, session = bridge(
         provider=[RealtimeTextDelta(text="the password is hunter2")],
-        guardrails=GuardrailPipeline(Refuses("password", GuardrailStage.OUTPUT)),
+        guardrails=GuardrailPipeline(Refuses("password", GuardrailStage.OUTPUT_DELTA)),
     )
     await run(live)
     assert socket.payloads("text") == []
     assert session.interrupts == 1, "a refused answer should stop the rest of it"
 
 
+async def test_a_word_split_across_deltas_is_still_refused(settings: None) -> None:
+    live, socket, session = bridge(
+        provider=[
+            RealtimeTextDelta(text="the pass"),
+            RealtimeTextDelta(text="word is hunter2"),
+            RealtimeTurnEnd(),
+        ],
+        guardrails=GuardrailPipeline(Refuses("password", GuardrailStage.OUTPUT_DELTA)),
+    )
+    await run(live)
+    assert "password" not in "".join(str(text) for text in socket.payloads("text"))
+    assert session.interrupts == 1
+
+
+async def test_a_reply_refused_as_a_whole_is_retracted_at_turn_end(
+    settings: None,
+) -> None:
+    """A check that can only judge the complete reply runs once it is complete."""
+    live, socket, _ = bridge(
+        provider=[RealtimeTextDelta(text="the password is hunter2"), RealtimeTurnEnd()],
+        guardrails=GuardrailPipeline(Refuses("password", GuardrailStage.OUTPUT)),
+    )
+    await run(live)
+    errors = [f for f in socket.frames() if f.type == RealtimeMessageType.ERROR]
+    assert errors, "the reply should be retracted"
+
+
 async def test_a_redacted_answer_reaches_the_user_redacted(settings: None) -> None:
     live, socket, _ = bridge(
-        provider=[RealtimeTextDelta(text="the secret is here")],
+        provider=[RealtimeTextDelta(text="the secret is here"), RealtimeTurnEnd()],
         guardrails=GuardrailPipeline(Redacts()),
     )
     await run(live)

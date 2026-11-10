@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from base.models.definitions.environment import Environment
-from base.services.guardrails.sinks import redact_pii
+from base.services.guardrails.sinks import PiiRedactor
 from base.tools.correlation import current_correlation_id
 
 _QUOTED_VALUE = re.compile(
@@ -32,7 +32,7 @@ def redact(value: Any) -> str:
     """
     redacted = _AUTHORIZATION.sub(r"\1[REDACTED]", str(value))
     redacted = _QUOTED_VALUE.sub(r"\1[REDACTED]", redacted)
-    return redact_pii(redacted)
+    return PiiRedactor().redact(redacted)
 
 
 class RedactionFilter(logging.Filter):

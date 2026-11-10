@@ -8,15 +8,15 @@ the span matters as much as the copy the model saw.
 from collections.abc import Sequence
 
 import pytest
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, SpanLimits, TracerProvider
 from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     SpanExporter,
     SpanExportResult,
 )
+from opentelemetry.trace import Status, StatusCode
 
 from base.services.configuration.mixins import GuardrailSettingsMixin
-from base.services.guardrails.sinks import MAX_ATTRIBUTE_LENGTH, reset_pii_redactor
 from base.services.telemetry.redaction import RedactingSpanExporter
 from tests.conftest import MakeSettings
 
@@ -41,11 +41,6 @@ class Capture(SpanExporter):
     def force_flush(self, timeout_millis: int = 30_000) -> bool:
         self.flushed += 1
         return True
-
-
-@pytest.fixture(autouse=True)
-def _forget_the_answer() -> None:
-    reset_pii_redactor()
 
 
 def exported(attributes: dict[str, object]) -> Capture:
@@ -100,11 +95,62 @@ def test_numbers_are_left_alone(guarded: None) -> None:
     assert collector.spans[0].attributes["gen_ai.usage.input_tokens"] == 42
 
 
-def test_an_enormous_attribute_is_not_scanned(guarded: None) -> None:
-    """Past a point it is not prose, and the exporter truncates it anyway."""
-    huge = "x" * (MAX_ATTRIBUTE_LENGTH + 1) + EMAIL
-    collector = exported({"blob": huge})
-    assert collector.spans[0].attributes["blob"] == huge
+def test_a_long_attribute_is_still_redacted(guarded: None) -> None:
+    """A long prompt is exactly where an address hides."""
+    collector = exported({"gen_ai.prompt": "x " * 20_000 + EMAIL})
+    assert EMAIL not in str(collector.spans[0].attributes["gen_ai.prompt"])
+
+
+def test_a_list_attribute_is_redacted(guarded: None) -> None:
+    collector = exported({"gen_ai.messages": [f"to {EMAIL}", "hello"]})
+    assert collector.spans[0].attributes["gen_ai.messages"] == (
+        "to [redacted:email]",
+        "hello",
+    )
+
+
+def test_an_event_and_an_exception_are_redacted(guarded: None) -> None:
+    """`record_exception` copies the message, which often quotes the input."""
+    collector = Capture()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(RedactingSpanExporter(collector)))
+    with provider.get_tracer("test").start_as_current_span("call") as span:
+        span.add_event("note", {"body": f"from {EMAIL}"})
+        span.record_exception(ValueError(f"bad user {EMAIL}"))
+    provider.force_flush()
+
+    events = collector.spans[0].events
+    assert EMAIL not in str([dict(event.attributes or {}) for event in events])
+    assert events[0].name == "note"
+
+
+def test_a_status_description_is_redacted(guarded: None) -> None:
+    collector = Capture()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(RedactingSpanExporter(collector)))
+    with provider.get_tracer("test").start_as_current_span("call") as span:
+        span.set_status(Status(StatusCode.ERROR, f"failed for {EMAIL}"))
+    provider.force_flush()
+
+    status = collector.spans[0].status
+    assert status.status_code == StatusCode.ERROR
+    assert EMAIL not in str(status.description)
+
+
+def test_a_redacted_span_still_reports_what_was_dropped(guarded: None) -> None:
+    """The exporter sends dropped counts; a rebuilt span must not zero them."""
+    collector = Capture()
+    provider = TracerProvider(span_limits=SpanLimits(max_attributes=2))
+    provider.add_span_processor(SimpleSpanProcessor(RedactingSpanExporter(collector)))
+    with provider.get_tracer("test").start_as_current_span("call") as span:
+        for index in range(4):
+            span.set_attribute(f"extra.{index}", index)
+        span.set_attribute("gen_ai.prompt", f"mail {EMAIL}")
+    provider.force_flush()
+
+    exported_span = collector.spans[0]
+    assert EMAIL not in str(exported_span.attributes)
+    assert exported_span.dropped_attributes == 3
 
 
 def test_the_span_keeps_its_identity(guarded: None) -> None:

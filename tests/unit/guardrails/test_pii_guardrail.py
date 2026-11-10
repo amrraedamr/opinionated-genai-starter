@@ -105,6 +105,12 @@ def test_a_phone_number_is_redacted(guardrail: PatternPiiGuardrail, phone: str) 
         "version 1.2.3 released",
         "HTTP 404 on /v1/items",
         "the total was 1250 dollars",
+        "at 2024-05-01 12:30:45 it broke",
+        "server 192.168.100.200 is down",
+        "upgrade to 10.12.1.1234",
+        "order 4155552671 shipped",
+        "ts=1715000000",
+        "ref 4111 1111 1111 1112",
     ],
 )
 def test_ordinary_text_is_left_alone(guardrail: PatternPiiGuardrail, text: str) -> None:
@@ -174,3 +180,51 @@ def test_an_extra_pattern_is_honoured(make_settings: MakeSettings) -> None:
 
 def test_the_guardrail_names_itself(guardrail: PatternPiiGuardrail) -> None:
     assert guardrail.name == "pattern-pii"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "card 4111 1111 1111 1111 12/26",
+        "ref 12 4111 1111 1111 1111",
+        "4111 1111 1111 1111 1234",
+    ],
+)
+def test_a_card_beside_other_digits_is_still_redacted(
+    guardrail: PatternPiiGuardrail, text: str
+) -> None:
+    """An expiry or reference next to the number must not hide it."""
+    survived = redacted(guardrail, text)
+    assert "[redacted:card]" in survived
+    assert "4111" not in survived
+
+
+@pytest.mark.parametrize(
+    "iban",
+    [
+        "GB82 WEST 1234 5698 7654 32",
+        "gb82west12345698765432",
+        "DE89 3704 0044 0532 0130 00",
+    ],
+)
+def test_an_iban_as_people_write_it_is_redacted(
+    guardrail: PatternPiiGuardrail, iban: str
+) -> None:
+    assert redacted(guardrail, f"pay to {iban} today") == "pay to [redacted:iban] today"
+
+
+def test_a_bare_digit_run_is_a_phone_only_beside_a_phone_word(
+    guardrail: PatternPiiGuardrail,
+) -> None:
+    assert redacted(guardrail, "my mobile is 07700900123") == (
+        "my mobile is [redacted:phone]"
+    )
+    assert redacted(guardrail, "account 07700900123") == "account 07700900123"
+
+
+def test_two_numbers_side_by_side_are_both_redacted(
+    guardrail: PatternPiiGuardrail,
+) -> None:
+    assert redacted(guardrail, "555-123-4567 555-987-6543") == (
+        "[redacted:phone] [redacted:phone]"
+    )

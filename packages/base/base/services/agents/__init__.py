@@ -3,7 +3,10 @@ from collections.abc import Sequence
 from typing import Any, ClassVar
 
 from base.models.definitions.canned_messages import CannedMessages
-from base.models.definitions.guardrails import GuardrailStage
+from base.models.definitions.guardrails import (
+    BLOCKED_HISTORY_PLACEHOLDER,
+    GuardrailStage,
+)
 from base.models.definitions.message import MessageRole
 from base.models.definitions.model import ReasoningEffort
 from base.models.view_models import BaseModel
@@ -17,8 +20,13 @@ from base.models.view_models.streams import StreamEnd, StreamMessage
 from base.services.chat_history import ChatHistoryService
 from base.services.common.meta import SingletonABC
 from base.services.execution_context import ExecutionContext
-from base.services.guardrails.factory import build_guardrail_pipeline
+from base.services.guardrails import GuardrailBlocked
+from base.services.guardrails.factory import (
+    build_guarded_stream,
+    build_guardrail_pipeline,
+)
 from base.services.guardrails.pipeline import GuardrailPipeline
+from base.services.guardrails.streaming import GuardedStreamIterator
 from base.services.llm import AbstractLLMService
 from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
@@ -26,6 +34,7 @@ from base.services.prompt.service import PromptService
 from base.services.store.chat_history import ChatHistoryStore
 from base.services.store.chat_history.memory import InMemoryChatHistoryStore
 from base.services.tool_calling import Tool
+from base.tools.stream import StreamIterator
 
 
 class AbstractAgent(metaclass=SingletonABC):
@@ -209,6 +218,7 @@ class AbstractAgent(metaclass=SingletonABC):
         self._apply_stream_iterator(kwargs)
         self._apply_defaults(kwargs, label)
         prompt, messages = await self._guarded_input(prompt, messages)
+        stream = self._guarded_stream(kwargs)
 
         result = await self._llm_service.acomplete(
             prompt=prompt,
@@ -216,6 +226,11 @@ class AbstractAgent(metaclass=SingletonABC):
             tools=tools,
             **kwargs,
         )
+        if stream is not None:
+            if (blocked := await stream.afinish()) is not None:
+                raise GuardrailBlocked(blocked)
+            if stream.guard.assembled:
+                return result.model_copy(update={"content": stream.guard.content})
         return await self._guarded_output(result)
 
     async def _aparse[T: BaseModel](
@@ -264,17 +279,28 @@ class AbstractAgent(metaclass=SingletonABC):
         return prompt, messages
 
     async def _cleaned[T: BaseModel](self, messages: Sequence[T]) -> list[T]:
-        """Every user turn, with whatever the guardrails rewrote."""
+        """The newest user turn may block; earlier ones are redacted or withheld."""
+        newest = next(
+            (
+                i
+                for i in range(len(messages) - 1, -1, -1)
+                if getattr(messages[i], "role", None) == MessageRole.USER
+            ),
+            None,
+        )
         cleaned: list[T] = []
-        for message in messages:
-            if getattr(message, "role", None) != MessageRole.USER:
-                cleaned.append(message)
-                continue
+        for index, message in enumerate(messages):
             content = getattr(message, "content", None)
-            if not content:
+            if getattr(message, "role", None) != MessageRole.USER or not content:
                 cleaned.append(message)
                 continue
-            checked = await self._guardrails.aenforce(content, GuardrailStage.INPUT)
+            report = await self._guardrails.arun_cached(content, GuardrailStage.INPUT)
+            if report.blocked:
+                if index == newest:
+                    raise GuardrailBlocked(report)
+                checked = BLOCKED_HISTORY_PLACEHOLDER
+            else:
+                checked = report.content
             cleaned.append(
                 message
                 if checked == content
@@ -282,12 +308,19 @@ class AbstractAgent(metaclass=SingletonABC):
             )
         return cleaned
 
-    async def _guarded_output(self, result: LLMResult) -> LLMResult:
-        """Check the reply before anyone sees it.
+    def _guarded_stream(self, kwargs: dict[str, Any]) -> GuardedStreamIterator | None:
+        """Route a streamed reply through its guard, when anything would check it."""
+        inner = kwargs.get("stream_iterator")
+        if not isinstance(inner, StreamIterator):
+            return None
+        guard = build_guarded_stream(self._guardrails)
+        if not guard.active:
+            return None
+        kwargs["stream_iterator"] = stream = GuardedStreamIterator(inner, guard)
+        return stream
 
-        A streamed reply has already left by the time this runs, so streaming
-        is checked where it is assembled rather than here.
-        """
+    async def _guarded_output(self, result: LLMResult) -> LLMResult:
+        """Check a reply that was not streamed, before anyone sees it."""
         if not result.content:
             return result
         if not self._guardrails.applies_to(GuardrailStage.OUTPUT):
