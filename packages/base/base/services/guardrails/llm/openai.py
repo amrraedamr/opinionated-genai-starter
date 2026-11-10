@@ -6,6 +6,7 @@ from base.models.definitions.guardrails import GuardrailStage
 from base.models.definitions.model import ProviderType
 from base.models.view_models.guardrails import GuardrailVerdict
 from base.models.view_models.model import ModelConfigurations
+from base.services.common.meta import KeyedSingletonABC
 from base.services.configuration import settings_for
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.tools.openai_clients import create_openai_clients
 
 
-class OpenAIModerationGuardrail(AbstractGuardrail):
+class OpenAIModerationGuardrail(AbstractGuardrail, metaclass=KeyedSingletonABC):
     """Moderation over the OpenAI-compatible `/moderations` endpoint.
 
     The API shape, not the vendor: anything serving that spec answers it —

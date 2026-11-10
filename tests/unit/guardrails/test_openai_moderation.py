@@ -323,3 +323,18 @@ def test_categories_are_watched_by_their_api_names(make_settings: MakeSettings) 
     verdict = guardrail.check("x", GuardrailStage.INPUT)
     assert verdict.outcome == GuardrailOutcome.BLOCK
     assert verdict.category == "self-harm"
+
+
+def test_one_client_serves_every_guardrail_with_the_same_settings(
+    make_settings: MakeSettings,
+) -> None:
+    """A ToolRunner builds a pipeline each time; each must not open new connections."""
+    first = build(make_settings)
+    second = OpenAIModerationGuardrail(
+        model_config=ModelConfigurations(
+            api_host="https://moderation.invalid/",
+            api_key="unused",
+            api_type=ProviderType.OPENAI,
+        )
+    )
+    assert second is first
