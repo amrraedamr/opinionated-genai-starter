@@ -20,7 +20,11 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Final
 
 from base.models.definitions.model import FinishReason, ProviderType
-from base.models.definitions.realtime_session import RealtimeModality
+from base.models.definitions.realtime_session import (
+    OPENAI_INPUT_SAMPLE_RATE_HZ,
+    OPENAI_TRANSCRIPTION_MODEL,
+    RealtimeModality,
+)
 from base.models.view_models.chat_history import StoredToolCall, StoredToolCallFunction
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.realtime_session import (
@@ -55,30 +59,17 @@ if TYPE_CHECKING:
         RealtimeSessionCreateRequestParam,
     )
 
-TEXT_DELTA: Final = "response.output_text.delta"
-AUDIO_DELTA: Final = "response.output_audio.delta"
-ASSISTANT_TRANSCRIPT_DELTA: Final = "response.output_audio_transcript.delta"
-USER_TRANSCRIPT_DELTA: Final = "conversation.item.input_audio_transcription.delta"
-FUNCTION_CALL_DONE: Final = "response.function_call_arguments.done"
-RESPONSE_DONE: Final = "response.done"
-ERROR: Final = "error"
-CANCEL_NOT_ACTIVE: Final = "response_cancel_not_active"
+_TEXT_DELTA: Final = "response.output_text.delta"
+_AUDIO_DELTA: Final = "response.output_audio.delta"
+_ASSISTANT_TRANSCRIPT_DELTA: Final = "response.output_audio_transcript.delta"
+_USER_TRANSCRIPT_DELTA: Final = "conversation.item.input_audio_transcription.delta"
+_FUNCTION_CALL_DONE: Final = "response.function_call_arguments.done"
+_RESPONSE_DONE: Final = "response.done"
+_ERROR: Final = "error"
+_CANCEL_NOT_ACTIVE: Final = "response_cancel_not_active"
 """Raised when a cancel lands after the turn already ended; harmless."""
 
-INPUT_SAMPLE_RATE_HZ: Final = 24_000
-"""What OpenAI listens at. Gemini listens at 16 kHz; neither resamples."""
-
-TRANSCRIPTION_MODEL: Final = "whisper-1"
-"""Input transcription is off unless a session asks for it, and without it
-`conversation.item.input_audio_transcription.delta` never arrives — the seam
-would declare an event the adapter could never produce.
-
-Asked for on every session, not only audio-replying ones. It describes what
-arrives, not what leaves, and speaking to a session that answers in text is
-the ordinary case. Gating it on the output modality would leave exactly that
-caller unable to show the user what was heard."""
-
-FINISH_REASONS: Final = {
+_FINISH_REASONS: Final = {
     "completed": FinishReason.STOP,
     "incomplete": FinishReason.LENGTH,
     "cancelled": FinishReason.OTHER,
@@ -111,7 +102,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
 
     @property
     def input_sample_rate(self) -> int:
-        return INPUT_SAMPLE_RATE_HZ
+        return OPENAI_INPUT_SAMPLE_RATE_HZ
 
     def get_service_name(self) -> str:
         return "openai_realtime"
@@ -141,7 +132,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         payload: "RealtimeSessionCreateRequestParam" = {
             "type": "realtime",
             "output_modalities": [m.value for m in self._session.modalities],
-            "audio": {"input": {"transcription": {"model": TRANSCRIPTION_MODEL}}},
+            "audio": {
+                "input": {"transcription": {"model": OPENAI_TRANSCRIPTION_MODEL}}
+            },
         }
         if self._session.instructions:
             payload["instructions"] = self._session.instructions
@@ -208,13 +201,13 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
 
     def _translate(self, event: "RealtimeServerEvent") -> RealtimeOutput | None:
         kind = getattr(event, "type", None)
-        if kind in (TEXT_DELTA, ASSISTANT_TRANSCRIPT_DELTA):
+        if kind in (_TEXT_DELTA, _ASSISTANT_TRANSCRIPT_DELTA):
             return RealtimeTextDelta(text=event.delta)
-        if kind == AUDIO_DELTA:
+        if kind == _AUDIO_DELTA:
             return RealtimeAudioDelta(audio=base64.b64decode(event.delta))
-        if kind == USER_TRANSCRIPT_DELTA:
+        if kind == _USER_TRANSCRIPT_DELTA:
             return RealtimeTranscriptDelta(text=event.delta) if event.delta else None
-        if kind == FUNCTION_CALL_DONE:
+        if kind == _FUNCTION_CALL_DONE:
             self._awaiting.add(event.call_id)
             return RealtimeToolCall(
                 call=StoredToolCall(
@@ -224,10 +217,10 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
                     ),
                 )
             )
-        if kind == RESPONSE_DONE:
+        if kind == _RESPONSE_DONE:
             return self._turn_end(event)
-        if kind == ERROR:
-            if event.error.code == CANCEL_NOT_ACTIVE:
+        if kind == _ERROR:
+            if event.error.code == _CANCEL_NOT_ACTIVE:
                 return None
             return RealtimeError(message=event.error.message, recoverable=True)
         return None
@@ -237,7 +230,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         response = event.response
         usage = response.usage
         return RealtimeTurnEnd(
-            finish_reason=FINISH_REASONS.get(response.status or "", FinishReason.OTHER),
+            finish_reason=_FINISH_REASONS.get(
+                response.status or "", FinishReason.OTHER
+            ),
             usage=ProviderUsage(
                 input_tokens=usage.input_tokens or 0,
                 output_tokens=usage.output_tokens or 0,

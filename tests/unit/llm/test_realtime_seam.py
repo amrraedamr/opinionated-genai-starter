@@ -15,7 +15,6 @@ from pydantic import TypeAdapter, ValidationError
 
 from base.models.definitions.model import FinishReason
 from base.models.definitions.realtime_session import (
-    AUDIO_OUTPUT_SAMPLE_RATE_HZ,
     RealtimeEventType,
     RealtimeModality,
 )
@@ -169,11 +168,6 @@ def test_an_error_does_not_end_the_session_by_default() -> None:
 def test_a_session_is_text_only_unless_it_asks_for_audio() -> None:
     """Audio costs more and needs a voice. Opting in is the honest default."""
     assert RealtimeSessionConfig(model="m").modalities == [RealtimeModality.TEXT]
-
-
-def test_the_output_rate_is_stated_once() -> None:
-    """Both providers speak at it, so a caller plays back at one rate."""
-    assert AUDIO_OUTPUT_SAMPLE_RATE_HZ == 24_000
 
 
 def test_the_input_rate_is_asked_of_the_session_not_assumed() -> None:

@@ -19,9 +19,9 @@ from fastapi.testclient import TestClient
 from base.middleware import SECURITY_HEADERS, request_context
 from base.middleware.request_size import RequestSizeLimitMiddleware
 from base.middleware.traffic_control import (
-    WEBSOCKET_TRY_LATER,
     TrafficControlMiddleware,
 )
+from base.models.definitions.realtime import RealtimeCloseCode
 from base.services.common.meta import Stored, scope_id
 from base.tools.correlation import (
     CORRELATION_HEADER,
@@ -374,7 +374,7 @@ def test_a_websocket_over_the_budget_is_refused_at_the_handshake() -> None:
             with client.websocket_connect("/ws"):
                 pass
 
-    assert refused.value.code == WEBSOCKET_TRY_LATER
+    assert refused.value.code == RealtimeCloseCode.TRY_LATER
 
 
 def test_a_handshake_does_not_spend_the_http_budget() -> None:

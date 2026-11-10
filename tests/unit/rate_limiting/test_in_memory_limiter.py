@@ -11,10 +11,13 @@ exact boundaries instead of approximately.
 
 import pytest
 
-from base.models.definitions.rate_limiting import RateLimitPolicy
+from base.models.definitions.rate_limiting import (
+    RATE_LIMIT_WINDOW_SECONDS,
+    RateLimitPolicy,
+)
 from base.models.view_models.rate_limiting import RateDecision
 from base.services.configuration.mixins import RateLimitSettingsMixin
-from base.services.rate_limiting import WINDOW_SECONDS, AbstractRateLimiter
+from base.services.rate_limiting import AbstractRateLimiter
 from base.services.rate_limiting.memory import InMemoryRateLimiter
 from tests.conftest import MakeSettings
 
@@ -74,7 +77,9 @@ def test_a_refusal_says_when_to_come_back(
     clock.advance(20.0)
     refused = limiter.spend("acme", RateLimitPolicy.REQUESTS)
     assert not refused.allowed
-    assert refused.retry_after_seconds == pytest.approx(WINDOW_SECONDS - 20.0)
+    assert refused.retry_after_seconds == pytest.approx(
+        RATE_LIMIT_WINDOW_SECONDS - 20.0
+    )
 
 
 def test_the_window_slides(limiter: InMemoryRateLimiter, clock: Clock) -> None:
@@ -82,7 +87,7 @@ def test_the_window_slides(limiter: InMemoryRateLimiter, clock: Clock) -> None:
         limiter.spend("acme", RateLimitPolicy.REQUESTS)
     assert not limiter.spend("acme", RateLimitPolicy.REQUESTS).allowed
 
-    clock.advance(WINDOW_SECONDS + 0.001)
+    clock.advance(RATE_LIMIT_WINDOW_SECONDS + 0.001)
     assert limiter.spend("acme", RateLimitPolicy.REQUESTS).allowed
 
 
@@ -94,7 +99,7 @@ def test_only_what_aged_out_comes_back(
         limiter.spend("acme", RateLimitPolicy.REQUESTS)
         clock.advance(1.0)
 
-    clock.advance(WINDOW_SECONDS - 5.0)
+    clock.advance(RATE_LIMIT_WINDOW_SECONDS - 5.0)
     assert limiter.spend("acme", RateLimitPolicy.REQUESTS).allowed
     assert not limiter.spend("acme", RateLimitPolicy.REQUESTS).allowed
 
@@ -127,7 +132,7 @@ def test_a_cost_larger_than_the_whole_budget_never_fits(
     """Reported as a full window rather than reading past the end of the window."""
     refused = limiter.spend("acme", RateLimitPolicy.LLM_TOKENS, cost=500)
     assert not refused.allowed
-    assert refused.retry_after_seconds == WINDOW_SECONDS
+    assert refused.retry_after_seconds == RATE_LIMIT_WINDOW_SECONDS
 
 
 def test_a_zero_cost_asks_without_spending(limiter: InMemoryRateLimiter) -> None:
@@ -186,7 +191,7 @@ def test_idle_keys_are_forgotten(limiter: InMemoryRateLimiter, clock: Clock) -> 
         limiter.spend(f"client-{index}", RateLimitPolicy.REQUESTS)
     assert len(limiter._windows) == 50
 
-    clock.advance(WINDOW_SECONDS + 1.0)
+    clock.advance(RATE_LIMIT_WINDOW_SECONDS + 1.0)
     limiter.spend("someone-else", RateLimitPolicy.REQUESTS)
     assert len(limiter._windows) == 1
 

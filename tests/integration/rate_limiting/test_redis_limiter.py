@@ -13,9 +13,11 @@ from uuid import uuid4
 import pytest
 
 from base.clients.redis_client import RedisClient
-from base.models.definitions.rate_limiting import RateLimitPolicy
+from base.models.definitions.rate_limiting import (
+    RATE_LIMIT_WINDOW_SECONDS,
+    RateLimitPolicy,
+)
 from base.services.common.meta import Singleton
-from base.services.rate_limiting import WINDOW_SECONDS
 from base.services.rate_limiting.redis import RedisRateLimiter
 from tests.conftest import CoreSettings
 
@@ -135,7 +137,7 @@ async def test_a_refusal_fits_inside_the_window(
     for _ in range(budget):
         await limiter.aspend(KEY, RateLimitPolicy.AUTH)
     refused = await limiter.aspend(KEY, RateLimitPolicy.AUTH)
-    assert 0 < refused.retry_after_seconds <= WINDOW_SECONDS
+    assert 0 < refused.retry_after_seconds <= RATE_LIMIT_WINDOW_SECONDS
 
 
 async def test_a_reset_returns_the_whole_budget(

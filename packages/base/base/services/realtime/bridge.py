@@ -27,6 +27,7 @@ from base.models.definitions.realtime import (
     RealtimeCloseCode,
     RealtimeMessageType,
 )
+from base.models.definitions.realtime_session import REALTIME_USAGE_LABEL
 from base.models.view_models.realtime import RealtimeEnvelope
 from base.models.view_models.realtime_session import (
     RealtimeAudioDelta,
@@ -50,8 +51,6 @@ from base.services.realtime.manager import ConnectionManager
 from base.services.tool_calling.toolbox import Toolbox
 from base.services.usage import UsageTracker
 from base.tools.tracing import OptionalTelemetry
-
-USAGE_LABEL = "realtime"
 
 
 class RealtimeBridge:
@@ -312,7 +311,7 @@ class RealtimeBridge:
             return
         UsageTracker().record(
             model=self._session.model,
-            label=USAGE_LABEL,
+            label=REALTIME_USAGE_LABEL,
             input_tokens=event.usage.input_tokens,
             output_tokens=event.usage.output_tokens,
             duration_ms=int((time.monotonic() - self._turn_started) * 1000),

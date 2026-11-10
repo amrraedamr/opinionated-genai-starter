@@ -3,6 +3,9 @@
 from enum import StrEnum
 from typing import Final
 
+RATE_LIMIT_WINDOW_SECONDS: Final = 60.0
+"""Every budget is per minute, so every window is a minute long."""
+
 REDIS_BREAKER_SECONDS: Final = 5.0
 """How long the Redis limiter stops asking a Redis that just failed, using the in-memory floor."""
 

@@ -21,7 +21,10 @@ from typing import TYPE_CHECKING, Final
 
 from base.models.definitions.model import FinishReason, ProviderType
 from base.models.definitions.realtime import RealtimeCloseCode
-from base.models.definitions.realtime_session import RealtimeModality
+from base.models.definitions.realtime_session import (
+    GEMINI_INPUT_SAMPLE_RATE_HZ,
+    RealtimeModality,
+)
 from base.models.view_models.chat_history import StoredToolCall, StoredToolCallFunction
 from base.models.view_models.model import ModelConfigurations
 from base.models.view_models.realtime_session import (
@@ -75,12 +78,9 @@ if TYPE_CHECKING:
         LiveServerMessage,
     )
 
-INPUT_SAMPLE_RATE_HZ: Final = 16_000
-"""What Gemini listens at. OpenAI listens at 24 kHz; neither resamples."""
+_INPUT_MIME_TYPE: Final = f"audio/pcm;rate={GEMINI_INPUT_SAMPLE_RATE_HZ}"
 
-INPUT_MIME_TYPE: Final = f"audio/pcm;rate={INPUT_SAMPLE_RATE_HZ}"
-
-MODALITIES: Final = {
+_MODALITIES: Final = {
     RealtimeModality.TEXT: "TEXT",
     RealtimeModality.AUDIO: "AUDIO",
 }
@@ -115,7 +115,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
 
     @property
     def input_sample_rate(self) -> int:
-        return INPUT_SAMPLE_RATE_HZ
+        return GEMINI_INPUT_SAMPLE_RATE_HZ
 
     def get_service_name(self) -> str:
         return "gemini_live"
@@ -151,7 +151,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         as its own transcript.
         """
         config = LiveConnectConfig(
-            response_modalities=[MODALITIES[m] for m in self._session.modalities],
+            response_modalities=[_MODALITIES[m] for m in self._session.modalities],
             input_audio_transcription=AudioTranscriptionConfig(),
             output_audio_transcription=AudioTranscriptionConfig(),
         )
@@ -190,7 +190,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         live = self._require_live()
         if isinstance(value, RealtimeAudioInput):
             await live.send_realtime_input(
-                audio=Blob(data=value.audio, mime_type=INPUT_MIME_TYPE)
+                audio=Blob(data=value.audio, mime_type=_INPUT_MIME_TYPE)
             )
             return
         await live.send_client_content(

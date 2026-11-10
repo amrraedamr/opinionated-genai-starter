@@ -3,12 +3,16 @@
 import time
 from typing import ClassVar
 
-from base.models.definitions.rate_limiting import REDIS_BREAKER_SECONDS, RateLimitPolicy
+from base.models.definitions.rate_limiting import (
+    RATE_LIMIT_WINDOW_SECONDS,
+    REDIS_BREAKER_SECONDS,
+    RateLimitPolicy,
+)
 from base.models.view_models.rate_limiting import RateDecision
 from base.services.common.meta import SingletonABC
 from base.services.configuration.protocols import SupportsRateLimitConfig
 from base.services.logging.console import ConsoleLoggerService
-from base.services.rate_limiting import WINDOW_SECONDS, AbstractRateLimiter
+from base.services.rate_limiting import AbstractRateLimiter
 from base.tools.errors import MissingExtraError
 
 try:
@@ -19,7 +23,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from base.clients.redis_client import RedisClient
 from base.services.rate_limiting.memory import InMemoryRateLimiter
 
-GCRA_SCRIPT = """
+_GCRA_SCRIPT = """
 local key    = KEYS[1]
 local cost   = tonumber(ARGV[1])
 local limit  = tonumber(ARGV[2])
@@ -74,8 +78,8 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
         self._floor = InMemoryRateLimiter(config)
         self._logger = ConsoleLoggerService()
         self._open_until = 0.0
-        self._script = self._redis_client.sync_client.register_script(GCRA_SCRIPT)
-        self._ascript = self._redis_client.async_client.register_script(GCRA_SCRIPT)
+        self._script = self._redis_client.sync_client.register_script(_GCRA_SCRIPT)
+        self._ascript = self._redis_client.async_client.register_script(_GCRA_SCRIPT)
 
     def _spend(self, key: str, policy: RateLimitPolicy, cost: int) -> RateDecision:
         return self._run(key, policy, cost, force=False)
@@ -102,7 +106,7 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
         try:
             raw = self._script(
                 keys=[self._counter_key(key, policy)],
-                args=[cost, limit, WINDOW_SECONDS, int(force)],
+                args=[cost, limit, RATE_LIMIT_WINDOW_SECONDS, int(force)],
             )
         except RedisError as exc:
             self._trip(exc)
@@ -118,7 +122,7 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
         try:
             raw = await self._ascript(
                 keys=[self._counter_key(key, policy)],
-                args=[cost, limit, WINDOW_SECONDS, int(force)],
+                args=[cost, limit, RATE_LIMIT_WINDOW_SECONDS, int(force)],
             )
         except RedisError as exc:
             self._trip(exc)
@@ -174,4 +178,4 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
         )
 
 
-__all__ = ["GCRA_SCRIPT", "RedisRateLimiter"]
+__all__ = ["RedisRateLimiter"]

@@ -17,9 +17,6 @@ from base.models.view_models.rate_limiting import RateDecision
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsRateLimitConfig
 
-WINDOW_SECONDS: float = 60.0
-"""Every budget is expressed per minute, so every window is a minute long."""
-
 
 class AbstractRateLimiter(ABC):
     """One budget per policy per key, counted somewhere."""
@@ -132,4 +129,4 @@ class AbstractRateLimiter(ABC):
         return f"ratelimit:{policy.value}:{key}"
 
 
-__all__ = ["WINDOW_SECONDS", "AbstractRateLimiter"]
+__all__ = ["AbstractRateLimiter"]

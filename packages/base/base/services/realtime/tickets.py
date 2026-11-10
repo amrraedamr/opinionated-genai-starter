@@ -16,6 +16,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from base.models.definitions.realtime import (
+    TICKET_NAMESPACE,
     TICKET_SUBPROTOCOL_PREFIX,
     TICKET_TTL_SECONDS,
 )
@@ -24,8 +25,6 @@ from base.models.view_models.realtime import ConnectionTicket, TicketResponse
 from base.services.cache import AbstractCacheService
 from base.services.cache.factory import get_cache_service
 from base.services.common.meta import Singleton
-
-TICKET_NAMESPACE = "realtime:ticket"
 
 
 class TicketService(metaclass=Singleton):
@@ -99,4 +98,4 @@ class TicketService(metaclass=Singleton):
         return None
 
 
-__all__ = ["TICKET_NAMESPACE", "TicketService"]
+__all__ = ["TicketService"]

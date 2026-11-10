@@ -17,12 +17,10 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from base.middleware.responses import reject
 from base.models.definitions.rate_limiting import RateLimitPolicy
+from base.models.definitions.realtime import RealtimeCloseCode
 from base.models.view_models.rate_limiting import RateDecision
 from base.services.rate_limiting import AbstractRateLimiter
 from base.services.rate_limiting.factory import build_rate_limiter
-
-WEBSOCKET_TRY_LATER = 1013
-"""RFC 6455's "try again later", which is what a refused handshake means."""
 
 
 class TrafficControlMiddleware:
@@ -85,7 +83,7 @@ class TrafficControlMiddleware:
             return
 
         await receive()
-        await send({"type": "websocket.close", "code": WEBSOCKET_TRY_LATER})
+        await send({"type": "websocket.close", "code": RealtimeCloseCode.TRY_LATER})
 
     async def _refuse(
         self, scope: Scope, receive: Receive, send: Send, decision: RateDecision

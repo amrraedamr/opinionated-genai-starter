@@ -12,6 +12,7 @@ TICKET_TTL_SECONDS: Final = 30
 """Long enough to open a socket, short enough that a leaked one is worthless."""
 
 TICKET_SUBPROTOCOL_PREFIX: Final = "ticket."
+TICKET_NAMESPACE: Final = "realtime:ticket"
 """Tickets arrive in `Sec-WebSocket-Protocol`, never the query string.
 
 A browser cannot set an `Authorization` header on a WebSocket, so the
