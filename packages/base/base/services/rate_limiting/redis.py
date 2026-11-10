@@ -1,8 +1,9 @@
 """Counters in Redis, so a budget means the same thing across every replica."""
 
+import time
 from typing import ClassVar
 
-from base.models.definitions.rate_limiting import RateLimitPolicy
+from base.models.definitions.rate_limiting import REDIS_BREAKER_SECONDS, RateLimitPolicy
 from base.models.view_models.rate_limiting import RateDecision
 from base.services.common.meta import SingletonABC
 from base.services.configuration.protocols import SupportsRateLimitConfig
@@ -16,6 +17,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("redis", "redis", feature="RedisRateLimiter") from exc
 
 from base.clients.redis_client import RedisClient
+from base.services.rate_limiting.memory import InMemoryRateLimiter
 
 GCRA_SCRIPT = """
 local key    = KEYS[1]
@@ -62,20 +64,16 @@ instead of in each process.
 
 
 class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
-    """One shared budget per key, enforced atomically.
-
-    **This limiter fails open.** If Redis cannot be reached the spend is
-    allowed, because refusing every request when the counter store blinks turns
-    a degraded dependency into an outage. The in-memory limiter is still there
-    as the floor, so failing open gives up fleet-wide precision, not all limits.
-    """
+    """One shared budget per key; while Redis is unreachable, each replica enforces its own."""
 
     SERVICE_NAME: ClassVar[str] = "Redis Rate Limiter"
 
     def __init__(self, config: SupportsRateLimitConfig | None = None) -> None:
         super().__init__(config)
         self._redis_client = RedisClient()
+        self._floor = InMemoryRateLimiter(config)
         self._logger = ConsoleLoggerService()
+        self._open_until = 0.0
         self._script = self._redis_client.sync_client.register_script(GCRA_SCRIPT)
         self._ascript = self._redis_client.async_client.register_script(GCRA_SCRIPT)
 
@@ -98,6 +96,8 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
     def _run(
         self, key: str, policy: RateLimitPolicy, cost: int, *, force: bool
     ) -> RateDecision:
+        if self._broken():
+            return self._fallback(key, policy, cost, force=force)
         limit = self.budget_for(policy)
         try:
             raw = self._script(
@@ -105,12 +105,15 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
                 args=[cost, limit, WINDOW_SECONDS, int(force)],
             )
         except RedisError as exc:
-            return self._failed_open(policy, limit, exc)
+            self._trip(exc)
+            return self._fallback(key, policy, cost, force=force)
         return self._decision(raw)
 
     async def _arun(
         self, key: str, policy: RateLimitPolicy, cost: int, *, force: bool
     ) -> RateDecision:
+        if self._broken():
+            return await self._afallback(key, policy, cost, force=force)
         limit = self.budget_for(policy)
         try:
             raw = await self._ascript(
@@ -118,8 +121,35 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
                 args=[cost, limit, WINDOW_SECONDS, int(force)],
             )
         except RedisError as exc:
-            return self._failed_open(policy, limit, exc)
+            self._trip(exc)
+            return await self._afallback(key, policy, cost, force=force)
         return self._decision(raw)
+
+    def _broken(self) -> bool:
+        return time.monotonic() < self._open_until
+
+    def _trip(self, exc: RedisError) -> None:
+        """Stop asking Redis for a while, so each request does not wait out its timeout."""
+        self._open_until = time.monotonic() + REDIS_BREAKER_SECONDS
+        self._logger.warning(
+            "Rate limiter cannot reach Redis, limiting per replica for %ss: %s",
+            REDIS_BREAKER_SECONDS,
+            exc,
+        )
+
+    def _fallback(
+        self, key: str, policy: RateLimitPolicy, cost: int, *, force: bool
+    ) -> RateDecision:
+        if force:
+            return self._floor.charge(key, policy, cost)
+        return self._floor.spend(key, policy, cost)
+
+    async def _afallback(
+        self, key: str, policy: RateLimitPolicy, cost: int, *, force: bool
+    ) -> RateDecision:
+        if force:
+            return await self._floor.acharge(key, policy, cost)
+        return await self._floor.aspend(key, policy, cost)
 
     def _reset(self, key: str, policy: RateLimitPolicy) -> None:
         try:
@@ -142,14 +172,6 @@ class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
             remaining=remaining,
             retry_after_seconds=retry_ms / 1000.0,
         )
-
-    def _failed_open(
-        self, policy: RateLimitPolicy, limit: int, exc: RedisError
-    ) -> RateDecision:
-        self._logger.warning(
-            "Rate limiter unreachable, allowing %s spend: %s", policy.value, exc
-        )
-        return RateDecision(allowed=True, remaining=limit)
 
 
 __all__ = ["GCRA_SCRIPT", "RedisRateLimiter"]

@@ -16,7 +16,7 @@ from base.models.view_models.rate_limiting import RateDecision
 from base.services.rate_limiting import AbstractRateLimiter
 from base.services.rate_limiting.factory import build_rate_limiter
 from base.tools.errors import ErrorsException
-from base.tools.tenancy import TenantContext
+from base.tools.tenancy import CallerContext, TenantContext
 
 
 class LLMBudgetExhausted(ErrorsException):
@@ -32,12 +32,7 @@ class LLMBudgetExhausted(ErrorsException):
 
 
 class TokenBudget:
-    """Asks before a model call, and records what it cost afterwards.
-
-    Keyed by tenant when there is one. Without tenancy every caller shares one
-    budget, which still bounds what a service can spend in a minute — it just
-    cannot tell two customers apart, which is what tenancy is for.
-    """
+    """Asks before a model call, and records what it cost afterwards; per user within a tenant."""
 
     def __init__(self, limiter: AbstractRateLimiter | None = None) -> None:
         self._limiter = limiter
@@ -51,7 +46,9 @@ class TokenBudget:
 
     @property
     def key(self) -> str:
-        return AbstractRateLimiter.compose_key(tenant=TenantContext.get())
+        return AbstractRateLimiter.compose_key(
+            tenant=TenantContext.get(), user=CallerContext.get()
+        )
 
     async def acheck(self) -> None:
         """Refuse before the call when nothing is left."""

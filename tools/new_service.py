@@ -261,6 +261,7 @@ def build(
     mixins = ["CoreSettings"]
     if http:
         mixins.append("ServerSettingsMixin")
+        mixins.append("RateLimitSettingsMixin")
     if uses_sql:
         mixins.append("SQLSettingsMixin")
         if storage == "postgres":

@@ -1,12 +1,4 @@
-"""What the Redis limiter does when Redis is not there.
-
-A limiter that refuses everything when its counter store blinks turns a
-degraded dependency into an outage, so this one allows the spend instead. That
-is a deliberate trade and the kind of thing that quietly regresses, so it is
-pinned here rather than left to a docstring.
-
-No Redis is needed: the script call is replaced with one that raises.
-"""
+"""What the Redis limiter does when Redis is not there: each replica limits on its own."""
 
 from typing import Any
 
@@ -64,23 +56,58 @@ def test_a_spend_is_allowed_when_redis_is_unreachable_for_real(
     assert limiter.spend("acme", RateLimitPolicy.AUTH).allowed
 
 
-def test_a_spend_is_allowed_when_redis_is_unreachable(
+def test_a_spend_is_counted_in_process_when_redis_is_unreachable(
     limiter: RedisRateLimiter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(limiter, "_script", unreachable)
     decision = limiter.spend("acme", RateLimitPolicy.AUTH)
     assert decision.allowed
-    assert decision.remaining == 7
-    assert decision.retry_after_seconds == 0.0
+    assert decision.remaining == 6
 
 
-async def test_a_spend_is_allowed_when_redis_is_unreachable_async(
+async def test_a_spend_is_counted_in_process_when_redis_is_unreachable_async(
     limiter: RedisRateLimiter, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(limiter, "_ascript", aunreachable)
     decision = await limiter.aspend("acme", RateLimitPolicy.AUTH)
     assert decision.allowed
-    assert decision.remaining == 7
+    assert decision.remaining == 6
+
+
+def test_the_floor_still_refuses_while_redis_is_down(
+    limiter: RedisRateLimiter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failing open used to mean no limit at all, for as long as Redis was gone."""
+    monkeypatch.setattr(limiter, "_script", unreachable)
+    for _ in range(7):
+        assert limiter.spend("acme", RateLimitPolicy.AUTH).allowed
+    assert not limiter.spend("acme", RateLimitPolicy.AUTH).allowed
+
+
+def test_a_failed_redis_is_not_asked_again_straight_away(
+    limiter: RedisRateLimiter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each request would otherwise wait out the socket timeout on a dead Redis."""
+    calls: list[object] = []
+
+    def counting(*args: Any, **kwargs: Any) -> Any:
+        calls.append(args)
+        return unreachable()
+
+    monkeypatch.setattr(limiter, "_script", counting)
+    for _ in range(5):
+        limiter.spend("acme", RateLimitPolicy.AUTH)
+    assert len(calls) == 1
+
+
+def test_redis_is_asked_again_once_the_breaker_closes(
+    limiter: RedisRateLimiter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(limiter, "_script", unreachable)
+    limiter.spend("acme", RateLimitPolicy.AUTH)
+    monkeypatch.setattr(limiter, "_script", lambda **_: [1, 3, 0])
+    limiter._open_until = 0.0
+    assert limiter.spend("acme", RateLimitPolicy.AUTH).remaining == 3
 
 
 def test_a_reset_survives_an_unreachable_redis(

@@ -32,7 +32,7 @@ from base.services.configuration.mixins import (
 from base.services.llm import AbstractLLMService
 from base.services.rate_limiting.llm_budget import LLMBudgetExhausted, TokenBudget
 from base.services.rate_limiting.memory import InMemoryRateLimiter
-from base.tools.tenancy import TenantContext
+from base.tools.tenancy import CallerContext, TenantContext
 from tests.conftest import MakeSettings
 
 CONVERSATION = ConversationId(uuid.UUID(int=11))
@@ -217,6 +217,31 @@ async def test_tenants_do_not_share_a_token_budget(budgeted: Any) -> None:
             await service.acomplete(messages=[message()])
 
     with TenantContext.scope(TenantId("globex")):
+        assert (await service.acomplete(messages=[message()])).content == "ok"
+
+
+async def test_users_in_one_tenant_do_not_share_a_token_budget(budgeted: Any) -> None:
+    """One heavy user must not spend the budget of everyone else in the tenant."""
+    service = budgeted(tokens_per_minute=20, tenancy_enabled=True)
+    service.tokens = 20
+
+    with TenantContext.scope(TenantId("acme")):
+        with CallerContext.scope("heavy-user"):
+            await service.acomplete(messages=[message()])
+            with pytest.raises(LLMBudgetExhausted):
+                await service.acomplete(messages=[message()])
+        with CallerContext.scope("someone-else"):
+            assert (await service.acomplete(messages=[message()])).content == "ok"
+
+
+async def test_without_tenancy_each_user_still_has_their_own_budget(
+    budgeted: Any,
+) -> None:
+    service = budgeted(tokens_per_minute=20)
+    service.tokens = 20
+    with CallerContext.scope("u1"):
+        await service.acomplete(messages=[message()])
+    with CallerContext.scope("u2"):
         assert (await service.acomplete(messages=[message()])).content == "ok"
 
 

@@ -13,6 +13,7 @@ from base.services.configuration.mixins import (
     MicrosoftOAuthSettingsMixin,
     OAuthSettingsMixin,
     PostgresSettingsMixin,
+    RateLimitSettingsMixin,
     RedisSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
@@ -28,6 +29,7 @@ class IdentitySettings(
     RedisSettingsMixin,
     BrokerSettingsMixin,
     TokenIssuingSettingsMixin,
+    RateLimitSettingsMixin,
     OAuthSettingsMixin,
     # The reference identity service offers all five. A service that offers
     # fewer composes fewer, and declares no credentials for the rest.

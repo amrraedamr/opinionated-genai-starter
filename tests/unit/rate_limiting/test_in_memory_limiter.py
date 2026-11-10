@@ -198,8 +198,10 @@ def test_every_policy_has_a_budget(limiter: InMemoryRateLimiter) -> None:
 
 
 def test_the_narrowest_identity_wins() -> None:
+    """Per user within a tenant, so one heavy user cannot spend everyone's budget."""
     compose = AbstractRateLimiter.compose_key
-    assert compose(tenant="acme", user="u1", client_ip="1.2.3.4") == "acme"
+    assert compose(tenant="acme", user="u1", client_ip="1.2.3.4") == "acme:u1"
+    assert compose(tenant="acme", client_ip="1.2.3.4") == "acme"
     assert compose(user="u1", client_ip="1.2.3.4") == "u1"
     assert compose(client_ip="1.2.3.4") == "1.2.3.4"
     assert compose() == "unknown"
@@ -224,3 +226,20 @@ def test_a_retry_header_rounds_up() -> None:
 def test_remaining_cannot_go_negative() -> None:
     with pytest.raises(ValueError):
         RateDecision(allowed=True, remaining=-1)
+
+
+def test_a_large_spend_is_held_as_one_entry(limiter: InMemoryRateLimiter) -> None:
+    """One float per token held megabytes per busy key and scanned them per spend."""
+    limiter.charge("acme", RateLimitPolicy.LLM_TOKENS, 50_000)
+    window = next(iter(limiter._windows.values()))
+    assert len(window.hits) == 1
+    assert window.total == 50_000
+
+
+def test_a_charge_past_the_limit_is_still_recorded(
+    limiter: InMemoryRateLimiter,
+) -> None:
+    decision = limiter.charge("acme", RateLimitPolicy.LLM_TOKENS, 150)
+    assert decision.allowed
+    assert decision.remaining == 0
+    assert not limiter.spend("acme", RateLimitPolicy.LLM_TOKENS, cost=1).allowed
