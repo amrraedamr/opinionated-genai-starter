@@ -6,11 +6,15 @@ import time
 from collections import deque
 from typing import ClassVar
 
-from base.models.definitions.rate_limiting import MEMORY_SWEEP_SECONDS, RateLimitPolicy
+from base.models.definitions.rate_limiting import (
+    MEMORY_SWEEP_SECONDS,
+    RATE_LIMIT_WINDOW_SECONDS,
+    RateLimitPolicy,
+)
 from base.models.view_models.rate_limiting import RateDecision
 from base.services.common.meta import SingletonABC
 from base.services.configuration.protocols import SupportsRateLimitConfig
-from base.services.rate_limiting import WINDOW_SECONDS, AbstractRateLimiter
+from base.services.rate_limiting import AbstractRateLimiter
 
 
 class _Window:
@@ -39,13 +43,13 @@ class _Window:
         """When enough of the oldest spends age out for `cost` to fit."""
         needed = self.total + cost - limit
         if needed > self.total:
-            return WINDOW_SECONDS
+            return RATE_LIMIT_WINDOW_SECONDS
         freed = 0
         for at, units in self.hits:
             freed += units
             if freed >= needed:
-                return max(0.0, at + WINDOW_SECONDS - now)
-        return WINDOW_SECONDS
+                return max(0.0, at + RATE_LIMIT_WINDOW_SECONDS - now)
+        return RATE_LIMIT_WINDOW_SECONDS
 
 
 class InMemoryRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
@@ -92,7 +96,7 @@ class InMemoryRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
         counter = self._counter_key(key, policy)
         self._sweep(now)
         window = self._windows.get(counter) or _Window()
-        window.expire(now - WINDOW_SECONDS)
+        window.expire(now - RATE_LIMIT_WINDOW_SECONDS)
 
         if not force and window.total + cost > limit:
             self._keep(counter, window)
@@ -121,7 +125,7 @@ class InMemoryRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
         if now - self._swept < MEMORY_SWEEP_SECONDS:
             return
         self._swept = now
-        cutoff = now - WINDOW_SECONDS
+        cutoff = now - RATE_LIMIT_WINDOW_SECONDS
         for counter, window in list(self._windows.items()):
             window.expire(cutoff)
             if not window.total:

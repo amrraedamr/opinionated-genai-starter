@@ -142,13 +142,13 @@ def test_a_lua_reply_becomes_a_decision(
 
 def test_the_script_asks_redis_for_the_clock() -> None:
     """Replicas with skewed clocks must still agree about one budget."""
-    from base.services.rate_limiting.redis import GCRA_SCRIPT
+    from base.services.rate_limiting.redis import _GCRA_SCRIPT
 
-    assert "redis.call('TIME')" in GCRA_SCRIPT
+    assert "redis.call('TIME')" in _GCRA_SCRIPT
 
 
 def test_the_script_sets_an_expiry() -> None:
     """A counter with no expiry is a key retained for every caller ever seen."""
-    from base.services.rate_limiting.redis import GCRA_SCRIPT
+    from base.services.rate_limiting.redis import _GCRA_SCRIPT
 
-    assert "'PX'" in GCRA_SCRIPT
+    assert "'PX'" in _GCRA_SCRIPT

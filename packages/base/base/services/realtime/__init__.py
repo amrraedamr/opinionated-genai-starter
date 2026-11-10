@@ -1,13 +1,4 @@
-"""Websockets: the scope one runs in, how it is authorised, and what bounds it.
-
-A socket reaches none of the machinery an HTTP request passes through. It
-carries no request scope, no correlation id and no span; it bypasses the size
-limit and the rate limiter, both of which return early on anything that is not
-HTTP; and it cannot be sent an `Authorization` header at all.
-
-This package closes those, and nothing more. Who is connected and how a
-message reaches them is the connection manager's job, which is separate.
-"""
+"""Websockets: tickets, connection bounds and scope, fan-out, durable delivery and the model bridge."""
 
 from base.services.realtime.bridge import RealtimeBridge
 from base.services.realtime.connection import RealtimeConnection

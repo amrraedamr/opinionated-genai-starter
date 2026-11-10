@@ -205,7 +205,7 @@ class AbstractAgent(metaclass=SingletonABC):
         *,
         prompt: RenderedPrompt | None = None,
         messages: Sequence[StoredMessage] | None = None,
-        tools: Sequence[Tool[Any]] | None = None,
+        tools: Sequence[Tool[BaseModel]] | None = None,
         label: str | None = None,
         **kwargs: Any,
     ) -> LLMResult:

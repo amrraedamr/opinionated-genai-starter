@@ -1,14 +1,4 @@
-"""A websocket's equivalent of a request scope, which it has never had.
-
-`request_context` is registered with `app.middleware("http")`, so a socket
-gets none of it: no scope id, so a scoped service resolves whatever the last
-HTTP request left behind; no correlation id, so nothing a socket logs can be
-tied to anything else; and no span, so a conversation held over minutes is
-invisible.
-
-A socket is also longer-lived than a request, which makes each of those worse
-rather than better.
-"""
+"""Request-style scope, correlation id and span for a websocket connection."""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -29,12 +19,7 @@ class RealtimeContext:
     async def connection(
         ticket: ConnectionTicket, *, channel: str | None = None
     ) -> AsyncGenerator[None]:
-        """Hold a scope for the life of one socket.
-
-        The scope is torn down on the way out whatever happened, because a
-        socket that drops does not come back to clean up after itself, and a
-        leaked scope keeps a service instance alive per dead connection.
-        """
+        """Hold a scope for the life of one socket."""
         scope_id.set(uuid4())
         adopt_correlation_id()
         caller = str(ticket.user_id) if ticket.user_id else ticket.subject

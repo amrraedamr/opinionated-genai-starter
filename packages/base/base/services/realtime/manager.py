@@ -1,31 +1,23 @@
-"""Who is connected here, and how a message reaches everyone who should get it.
-
-A registry on one replica is not enough. A user's laptop can be held by one
-process and their phone by another, and whichever replica happens to be
-handling the request that produces a message is almost never the one holding
-the sockets it should reach. Keeping the registry local and fanning out over
-pub/sub is what makes "notify this user" mean every device, not the ones that
-happened to land here.
-
-Delivery is uniform: a message is published and then delivered by the
-subscription, including on the replica that published it. Delivering locally
-*and* publishing would mean two paths to keep in step and a duplicate to
-suppress; one path costs a round trip and is always right.
-"""
+"""Per-replica socket registry, with pub/sub fan-out that reaches every replica."""
 
 import asyncio
 import contextlib
+import time
 from collections import defaultdict
 from datetime import UTC, datetime
 
 from base.models.definitions.realtime import (
+    PRESENCE_REFRESH_SECONDS,
+    PRESENCE_RETENTION_SECONDS,
     PRESENCE_TTL_SECONDS,
     REALTIME_FANOUT_CHANNEL,
+    REALTIME_LAST_SEEN_NAMESPACE,
     REALTIME_PRESENCE_NAMESPACE,
     ChannelDelivery,
     RealtimeCloseCode,
     RealtimeMessageType,
 )
+from base.models.view_models.exceptions import CacheError
 from base.models.view_models.realtime import (
     FanoutMessage,
     Presence,
@@ -47,6 +39,7 @@ class ConnectionManager(metaclass=Singleton):
         self._logger = ConsoleLoggerService()
         self._by_user: dict[str, dict[str, RealtimeConnection]] = defaultdict(dict)
         self._listener: asyncio.Task[None] | None = None
+        self._refresher: asyncio.Task[None] | None = None
         self._draining = False
         self._inbox = DurableInbox(cache)
 
@@ -74,14 +67,10 @@ class ConnectionManager(metaclass=Singleton):
             return
         self._draining = False
         self._listener = asyncio.create_task(self._alisten())
+        self._refresher = asyncio.create_task(self._arefresh())
 
     async def aregister(self, connection: RealtimeConnection) -> bool:
-        """Take ownership of a socket. False when this replica is going away.
-
-        A second connection for the same device replaces the first. That is a
-        reconnect whose predecessor has not been noticed as dead yet, and
-        keeping both would deliver everything twice to the same screen.
-        """
+        """Take ownership of a socket. False when this replica is going away."""
         if self._draining:
             return False
         user = self._user_key(connection)
@@ -91,20 +80,18 @@ class ConnectionManager(metaclass=Singleton):
                 RealtimeCloseCode.GOING_AWAY, "Replaced by a newer connection"
             )
         self._by_user[user][connection.device_id] = connection
-        await self._atouch_presence(user)
+        await self._amark(user, [connection])
         return True
 
     async def aunregister(self, connection: RealtimeConnection) -> None:
         """Forget a socket, without disturbing a replacement that took its place."""
         user = self._user_key(connection)
-        devices = self._by_user.get(user)
-        if not devices:
-            return
+        devices = self._by_user.get(user, {})
         if devices.get(connection.device_id) is connection:
-            devices.pop(connection.device_id, None)
+            devices.pop(connection.device_id)
         if not devices:
             self._by_user.pop(user, None)
-            await self.cache.aremove(user, namespace=REALTIME_PRESENCE_NAMESPACE)
+        await self._aforget(user, connection)
 
     async def apublish_to_user(
         self,
@@ -112,13 +99,7 @@ class ConnectionManager(metaclass=Singleton):
         envelope: RealtimeEnvelope,
         delivery: ChannelDelivery = ChannelDelivery.EPHEMERAL,
     ) -> RealtimeEnvelope:
-        """Send to every device this user has, wherever it is connected.
-
-        A durable message is recorded before it is fanned out, and comes back
-        carrying its sequence. Writing first is the point: fanning out first
-        and recording after would lose exactly the messages that arrived while
-        nobody was connected, which are the ones durability is for.
-        """
+        """Send to every device this user has, wherever it is connected; durable ones are recorded first."""
         if delivery == ChannelDelivery.DURABLE:
             envelope = await self._inbox.aappend(user_id, envelope)
         await self.cache.apublish(
@@ -128,12 +109,7 @@ class ConnectionManager(metaclass=Singleton):
         return envelope
 
     async def aresume(self, connection: RealtimeConnection, last_seq: int = 0) -> int:
-        """Send a reconnecting device whatever it missed. Returns how many.
-
-        The device says the last sequence it holds rather than the server
-        guessing from its cursor: a message can be delivered and the
-        acknowledgement lost, and the device is the only one that knows.
-        """
+        """Send a reconnecting device whatever it missed. Returns how many."""
         user = self._user_key(connection)
         missed = await self._inbox.asince(user, last_seq)
         for envelope in missed:
@@ -155,13 +131,7 @@ class ConnectionManager(metaclass=Singleton):
     async def ahandle(
         self, connection: RealtimeConnection, envelope: RealtimeEnvelope
     ) -> RealtimeEnvelope | None:
-        """Settle the delivery frames here; hand application frames back.
-
-        Acknowledgements and resumes need the inbox, which a connection has no
-        business holding. Routing them here keeps every service from writing
-        its own cursor arithmetic, and keeps the two that get it subtly wrong
-        from existing at all.
-        """
+        """Settle the delivery frames here; hand application frames back."""
         match envelope.type:
             case RealtimeMessageType.ACK:
                 if envelope.seq is not None:
@@ -174,38 +144,37 @@ class ConnectionManager(metaclass=Singleton):
                 return envelope
 
     async def adeliver_locally(self, user_id: str, envelope: RealtimeEnvelope) -> int:
-        """Write to the sockets this replica holds. Returns how many took it."""
+        """Write to the open sockets this replica holds. Returns how many took it."""
         delivered = 0
         for connection in list(self._by_user.get(user_id, {}).values()):
             if connection.closed:
                 continue
             await connection.asend(envelope)
-            delivered += 1
+            delivered += not connection.closed
         return delivered
 
     async def apresence(self, user_id: str) -> Presence:
-        """Whether a user is connected anywhere, and when they last were.
-
-        Read from the shared store rather than this replica's registry: a user
-        on another replica is online, and a registry that only knows its own
-        process would call them offline.
-        """
-        stored = await self.cache.aget(user_id, namespace=REALTIME_PRESENCE_NAMESPACE)
-        if stored is None:
-            return Presence(user_id=user_id, online=False)
+        """Whether a user has a live socket on any replica, and when they were last seen."""
+        sockets = await self.cache.aget_hashset_all(
+            user_id, namespace=REALTIME_PRESENCE_NAMESPACE
+        )
+        cutoff = time.time() - PRESENCE_TTL_SECONDS
+        live = [float(at) for at in (sockets or {}).values() if float(at) > cutoff]
+        if live:
+            return Presence(
+                user_id=user_id,
+                online=True,
+                last_seen=datetime.fromtimestamp(max(live), UTC),
+            )
+        left = await self.cache.aget(user_id, namespace=REALTIME_LAST_SEEN_NAMESPACE)
         return Presence(
             user_id=user_id,
-            online=True,
-            last_seen=datetime.fromisoformat(stored),
+            online=False,
+            last_seen=datetime.fromisoformat(left) if left else None,
         )
 
     async def adrain(self, reason: str = "Server is shutting down") -> None:
-        """Stop taking sockets, tell the ones we hold to go elsewhere, close.
-
-        Told rather than dropped. A client that sees a close with no warning
-        reconnects immediately, and every client of a replica doing that at
-        once is the stampede that takes the next replica down too.
-        """
+        """Stop taking sockets, tell the ones we hold to go elsewhere, close."""
         self._draining = True
         closing = RealtimeEnvelope(
             type=RealtimeMessageType.CLOSING, payload={"reason": reason}
@@ -214,18 +183,19 @@ class ConnectionManager(metaclass=Singleton):
             for connection in list(devices.values()):
                 await connection.asend(closing)
                 await connection.aclose(RealtimeCloseCode.GOING_AWAY, reason)
-            await self.cache.aremove(user, namespace=REALTIME_PRESENCE_NAMESPACE)
+                await self._aforget(user, connection)
         self._by_user.clear()
         await self.astop()
 
     async def astop(self) -> None:
-        """Stop listening. Safe to call when it never started."""
-        if self._listener is None:
-            return
-        self._listener.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._listener
-        self._listener = None
+        """Stop listening and refreshing. Safe to call when it never started."""
+        for task in (self._listener, self._refresher):
+            if task is None:
+                continue
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._listener = self._refresher = None
 
     async def _alisten(self) -> None:
         """Deliver whatever any replica published, this one included."""
@@ -237,27 +207,44 @@ class ConnectionManager(metaclass=Singleton):
                 continue
             await self.adeliver_locally(message.user_id, message.envelope)
 
-    async def _atouch_presence(self, user_id: str) -> None:
-        """Record that this user is connected, somewhere, as of now.
+    async def _arefresh(self) -> None:
+        """Keep this replica's open sockets counted for as long as they stay open."""
+        while True:
+            await asyncio.sleep(PRESENCE_REFRESH_SECONDS)
+            for user, devices in list(self._by_user.items()):
+                open_ = [c for c in devices.values() if not c.closed]
+                try:
+                    await self._amark(user, open_)
+                except CacheError as exc:
+                    self._logger.warning("Realtime presence refresh failed: %s", exc)
 
-        Given a TTL rather than cleared on disconnect alone: a replica that is
-        killed never gets to clean up, and a user who looks permanently online
-        is worse than one who looks offline a minute early.
-        """
-        await self.cache.aset(
+    async def _amark(self, user_id: str, connections: list[RealtimeConnection]) -> None:
+        """Record these sockets as live now, one hash field each."""
+        if not connections:
+            return
+        now = time.time()
+        await self.cache.aset_hashset(
             user_id,
             namespace=REALTIME_PRESENCE_NAMESPACE,
-            value=datetime.now(UTC).isoformat(),
+            hashset={str(c.connection_id): now for c in connections},
             ttl_seconds=PRESENCE_TTL_SECONDS,
+        )
+
+    async def _aforget(self, user_id: str, connection: RealtimeConnection) -> None:
+        """Drop one socket's field, leaving any other replica's, and note when it left."""
+        await self.cache.adelete_hashset_pairs(
+            user_id, REALTIME_PRESENCE_NAMESPACE, str(connection.connection_id)
+        )
+        await self.cache.aset(
+            user_id,
+            namespace=REALTIME_LAST_SEEN_NAMESPACE,
+            value=datetime.now(UTC).isoformat(),
+            ttl_seconds=PRESENCE_RETENTION_SECONDS,
         )
 
     @staticmethod
     def _user_key(connection: RealtimeConnection) -> str:
-        """Who a socket belongs to, falling back to the token's subject.
-
-        A principal need not carry a user id, and an anonymous socket still
-        has to be addressable or it can never be sent anything.
-        """
+        """Who a socket belongs to, falling back to the token's subject."""
         return str(connection.user_id) if connection.user_id else connection.subject
 
 

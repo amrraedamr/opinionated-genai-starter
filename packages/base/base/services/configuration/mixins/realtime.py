@@ -5,9 +5,7 @@ class RealtimeSettingsMixin(BaseModel):
     """Which model holds an open conversation, and how it answers."""
 
     realtime_provider: str = "openai"
-    """Named separately from `llm_provider`: a service can answer requests
-    with one provider and hold conversations with another, and not every
-    provider has a realtime API at all."""
+    """Separate from `llm_provider`; must be a provider with a realtime API."""
 
     realtime_model: str = "gpt-realtime"
     realtime_voice: str = ""
@@ -16,5 +14,4 @@ class RealtimeSettingsMixin(BaseModel):
     """What the model is told before anyone speaks. Empty leaves it default."""
 
     realtime_audio_enabled: bool = True
-    """Off makes it a typed conversation, which is cheaper and sometimes all
-    a service wants."""
+    """Off makes the conversation text-only."""

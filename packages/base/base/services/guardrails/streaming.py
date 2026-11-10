@@ -122,7 +122,7 @@ class GuardedStream:
         return self._blocked_by
 
     async def averdict(self) -> GuardrailReport | None:
-        """The block that ended the reply; judges the whole once, asynchronously."""
+        """The block that ended the reply; judges the whole once, after `aflush`, asynchronously."""
         if self._judgment is None and not self.blocked and self._whole:
             self._judgment = await self._guardrails.arun(
                 self.assembled, GuardrailStage.OUTPUT
@@ -237,7 +237,7 @@ class GuardedStreamIterator(StreamIterator):
         return self._guard.verdict()
 
     async def afinish(self, end: StreamEnd | None = None) -> GuardrailReport | None:
-        """Send the held tail, then `end` or a retraction, asynchronously."""
+        """Send the held tail, then `end` or a retraction; returns the verdict, asynchronously."""
         if not self._finished:
             self._finished = True
             rest = await self._guard.aflush()

@@ -3,7 +3,7 @@
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from pydantic import ValidationError
 
@@ -16,12 +16,16 @@ if TYPE_CHECKING:
     from jsonschema.protocols import Validator
 
 
+T_co = TypeVar("T_co", bound=BaseModel, covariant=True)
+"""Covariant so a `Tool[Weather]` is a `Tool[BaseModel]`; sound because a tool is frozen."""
+
+
 class ToolError(Exception):
     """A tool could not be run as asked."""
 
 
 @dataclass(frozen=True, slots=True)
-class Tool[T: BaseModel]:
+class Tool(Generic[T_co]):
     """One callable an LLM may invoke, described by its argument model.
 
     `parameters` is both the schema the model is shown and the validator the
@@ -32,7 +36,7 @@ class Tool[T: BaseModel]:
 
     name: str
     description: str
-    parameters: type[T] | None
+    parameters: type[T_co] | None
     handler: Callable[..., Awaitable[object]]
     """Called with the parsed model, or the raw object when described by schema."""
     schema: JSONObject | None = field(default=None)
@@ -54,7 +58,7 @@ class Tool[T: BaseModel]:
     ) -> "Tool[BaseModel]":
         """A tool whose arguments are described by raw JSON Schema rather than a model."""
         cls._schema_validator(schema)
-        return cls(
+        return Tool[BaseModel](
             name=name,
             description=description,
             parameters=None,
@@ -80,7 +84,7 @@ class Tool[T: BaseModel]:
         result = await self.handler(parsed)
         return result if isinstance(result, str) else serialize(result)
 
-    def _parse(self, arguments: str) -> T | JSONObject:
+    def _parse(self, arguments: str) -> T_co | JSONObject:
         if self.parameters is not None:
             try:
                 return self.parameters.model_validate_json(arguments)
@@ -129,17 +133,12 @@ class Toolbox:
     reach is part of that agent's definition, not ambient state.
     """
 
-    def __init__(self, *tools: Tool[Any]) -> None:
-        """A registry holds tools with different argument models.
-
-        `Tool[Any]` rather than `Tool[BaseModel]` because the parameter is
-        invariant, so a `Tool[Weather]` is not a `Tool[BaseModel]` and a
-        heterogeneous registry cannot be spelled any other way.
-        """
+    def __init__(self, *tools: Tool[BaseModel]) -> None:
+        """A registry of tools, each with its own argument model."""
         duplicates = {t.name for t in tools if sum(o.name == t.name for o in tools) > 1}
         if duplicates:
             raise ToolError(f"Duplicate tool names: {sorted(duplicates)}")
-        self._tools: dict[str, Tool[Any]] = {tool.name: tool for tool in tools}
+        self._tools: dict[str, Tool[BaseModel]] = {tool.name: tool for tool in tools}
 
     def __len__(self) -> int:
         return len(self._tools)
@@ -152,7 +151,7 @@ class Toolbox:
         return sorted(self._tools)
 
     @property
-    def tools(self) -> list[Tool[Any]]:
+    def tools(self) -> list[Tool[BaseModel]]:
         """Every tool, as declared. Shaping them for a provider is adapter work."""
         return list(self._tools.values())
 

@@ -67,7 +67,7 @@ async def _weather(args: WeatherArgs) -> str:
     return f"It is 21 degrees and clear in {args.city}."
 
 
-def weather_tool() -> Tool[Any]:
+def weather_tool() -> Tool[BaseModel]:
     return Tool(
         name="get_weather",
         description="Current weather for a city.",

@@ -7,6 +7,8 @@ registered, presence, replacing a reconnect, draining — against an in-process
 cache. The half that needs a real Redis is in `tests/integration`.
 """
 
+import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -14,6 +16,7 @@ from uuid import uuid4
 import pytest
 
 from base.models.definitions.realtime import (
+    PRESENCE_TTL_SECONDS,
     REALTIME_PRESENCE_NAMESPACE,
     ChannelDelivery,
     RealtimeCloseCode,
@@ -23,6 +26,7 @@ from base.models.view_models.realtime import ConnectionTicket, RealtimeEnvelope
 from base.services.cache.memory import InMemoryCacheService
 from base.services.configuration.mixins import RateLimitSettingsMixin
 from base.services.rate_limiting.memory import InMemoryRateLimiter
+from base.services.realtime import manager as manager_module
 from base.services.realtime.connection import RealtimeConnection
 from base.services.realtime.manager import ConnectionManager
 from tests.conftest import MakeSettings
@@ -145,6 +149,18 @@ async def test_a_reconnecting_device_replaces_its_old_socket(
     assert second_socket.sent
 
 
+async def test_a_failed_send_is_not_counted_as_delivered(
+    manager: ConnectionManager,
+) -> None:
+    laptop, laptop_socket = connect("laptop")
+    phone, _ = connect("phone")
+    await manager.aregister(laptop)
+    await manager.aregister(phone)
+    laptop_socket.closed = (1006, "gone")
+
+    assert await manager.adeliver_locally(str(USER), RealtimeEnvelope()) == 1
+
+
 async def test_unregistering_forgets_only_that_socket(
     manager: ConnectionManager,
 ) -> None:
@@ -213,7 +229,62 @@ async def test_presence_is_given_an_expiry(manager: ConnectionManager) -> None:
     """A replica killed without warning never cleans up after itself."""
     await manager.aregister(connect("laptop")[0])
     cache = manager.cache
-    assert await cache.aget(str(USER), namespace=REALTIME_PRESENCE_NAMESPACE)
+    assert await cache.aget_hashset_all(
+        str(USER), namespace=REALTIME_PRESENCE_NAMESPACE
+    )
+
+
+def advance(monkeypatch: pytest.MonkeyPatch, seconds: float) -> None:
+    """Move both clocks on; the cache expires by one and presence ages by the other."""
+    wall, mono = time.time, time.monotonic
+    monkeypatch.setattr(time, "time", lambda: wall() + seconds)
+    monkeypatch.setattr(time, "monotonic", lambda: mono() + seconds)
+
+
+async def test_a_socket_from_a_crashed_replica_stops_counting(
+    manager: ConnectionManager,
+) -> None:
+    """Nobody removes its field, so its age is what retires it."""
+    await manager.cache.aset_hashset(
+        str(USER),
+        namespace=REALTIME_PRESENCE_NAMESPACE,
+        hashset={"crashed": time.time() - PRESENCE_TTL_SECONDS - 1},
+    )
+    phone, _ = connect("phone")
+    await manager.aregister(phone)
+    assert (await manager.apresence(str(USER))).online
+
+    await manager.aunregister(phone)
+
+    assert not (await manager.apresence(str(USER))).online
+
+
+async def test_a_long_connection_stays_online_while_refreshed(
+    manager: ConnectionManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A socket open longer than the expiry is still there."""
+    monkeypatch.setattr(manager_module, "PRESENCE_REFRESH_SECONDS", 0.01)
+    await manager.aregister(connect("laptop")[0])
+    await manager.astart()
+    try:
+        advance(monkeypatch, PRESENCE_TTL_SECONDS + 1)
+        await asyncio.sleep(0.05)
+
+        assert (await manager.apresence(str(USER))).online
+    finally:
+        await manager.astop()
+
+
+async def test_an_offline_user_keeps_their_last_seen_time(
+    manager: ConnectionManager,
+) -> None:
+    laptop, _ = connect("laptop")
+    await manager.aregister(laptop)
+    await manager.aunregister(laptop)
+
+    presence = await manager.apresence(str(USER))
+    assert not presence.online
+    assert presence.last_seen is not None
 
 
 async def test_draining_tells_clients_before_closing_them(

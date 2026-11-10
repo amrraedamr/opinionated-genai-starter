@@ -1,10 +1,4 @@
-"""Checking what goes into a model, what comes out, and what tools hand back.
-
-A guardrail allows, redacts or blocks one piece of content at one stage. Tool
-results get their own stage because a tool, above all a third-party MCP server,
-can return text written to steer the model. `pipeline.GuardrailPipeline` runs
-several of these in order.
-"""
+"""Checking what goes into a model, what comes out, and what tools hand back."""
 
 from abc import ABC, abstractmethod
 from typing import final

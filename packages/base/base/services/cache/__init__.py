@@ -4,6 +4,7 @@ from typing import Any, Never
 from uuid import UUID, uuid5
 
 from base.models.definitions.cache import CacheChannels, CacheKeys
+from base.models.view_models import JSONObject
 from base.models.view_models.exceptions.cache import (
     CacheBadRequestError,
     CacheUnexpectedError,
@@ -103,7 +104,7 @@ class AbstractCacheService(ABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -115,7 +116,7 @@ class AbstractCacheService(ABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -128,7 +129,7 @@ class AbstractCacheService(ABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         """Values in ascending score order, only those scored above `above`."""
 
     @abstractmethod
@@ -137,7 +138,7 @@ class AbstractCacheService(ABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         """Asynchronously returns values in ascending score order."""
 
     @abstractmethod
@@ -156,37 +157,49 @@ class AbstractCacheService(ABC):
 
     @abstractmethod
     def get_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> dict | None:
         """Gets hash data from the cache using key and namespace (optional)."""
 
     @abstractmethod
     async def aget_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> dict | None:
         """Asynchronously gets hash data from the cache using key and namespace (optional)."""
 
     @abstractmethod
     def delete_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> None:
         """Deletes hash data from the cache using key and namespace (optional)."""
 
     @abstractmethod
     async def adelete_hashset_pairs(
-        self, key: CacheKeys | str, namespace: UUID | None = None, *hashset_keys: str
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        *hashset_keys: str,
     ) -> None:
         """Asynchronously deletes hash data from the cache using key and namespace (optional)."""
 
     @abstractmethod
     def get_hashset_all(
-        self, key: CacheKeys | str, namespace: UUID | None = None
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> dict | None:
         """Gets all hash data from the cache using key and namespace (optional)."""
 
     @abstractmethod
     async def aget_hashset_all(
-        self, key: CacheKeys | str, namespace: UUID | None = None
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> dict | None:
         """Asynchronously gets all hash data from the cache using key and namespace (optional)."""
 
@@ -194,7 +207,7 @@ class AbstractCacheService(ABC):
     def set_hashset(
         self,
         key: CacheKeys | str,
-        namespace: UUID | None = None,
+        namespace: UUID | str | None = None,
         hashset: dict | None = None,
         ttl_seconds: int | None = None,
     ) -> None:
@@ -204,7 +217,7 @@ class AbstractCacheService(ABC):
     async def aset_hashset(
         self,
         key: CacheKeys | str,
-        namespace: UUID | None = None,
+        namespace: UUID | str | None = None,
         hashset: dict | None = None,
         ttl_seconds: int | None = None,
     ) -> None:

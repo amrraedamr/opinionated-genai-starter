@@ -14,7 +14,7 @@ class RateDecision(BaseModel):
     """Units still available on this budget, after the spend when it was allowed."""
 
     retry_after_seconds: float = Field(default=0.0, ge=0.0)
-    """How long until the refused spend would fit. Zero when it was allowed."""
+    """Seconds until a spend would fit; zero when allowed with units left."""
 
     @property
     def retry_after_header(self) -> str:

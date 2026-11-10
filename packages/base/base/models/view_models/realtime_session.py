@@ -23,23 +23,11 @@ AudioBytes = Annotated[
         lambda v: base64.b64encode(v).decode(), return_type=str, when_used="json"
     ),
 ]
-"""Audio as bytes in Python and base64 on the wire.
-
-Plain `bytes` cannot be serialised to JSON: PCM is arbitrary, pydantic decodes
-it as UTF-8, and the first sample above 0x7f raises. These frames cross a
-websocket, which carries text. Pydantic's own `Base64Bytes` decodes on the way
-in rather than encoding on the way out, which is the opposite of what a caller
-holding raw samples needs.
-"""
+"""Audio as bytes in Python and base64 in JSON."""
 
 
 class RealtimeSessionConfig(BaseModel):
-    """What a session is for, stated before it opens.
-
-    Fixed at connection time because that is the only time a provider accepts
-    it: a realtime session negotiates once, and changing its voice or its
-    tools afterwards means opening a new one.
-    """
+    """What a session is for, fixed when it opens."""
 
     model: str
     modalities: list[RealtimeModality] = [RealtimeModality.TEXT]
@@ -65,10 +53,6 @@ class RealtimeAudioInput(BaseModel):
 RealtimeInput = Annotated[
     RealtimeTextInput | RealtimeAudioInput, Field(discriminator="kind")
 ]
-"""Typed and audio input are different enough to be separate shapes: one is
-complete when it arrives, the other is a fragment of a stream that only means
-anything in order.
-"""
 
 
 class RealtimeTextDelta(BaseModel):
@@ -107,8 +91,7 @@ class RealtimeTurnEnd(BaseModel):
     type: Literal[RealtimeEventType.TURN_END] = RealtimeEventType.TURN_END
     finish_reason: FinishReason | None = None
     usage: ProviderUsage | None = None
-    """Per turn, not per session: a session has no total until it closes, and
-    a caller charging for it cannot wait that long."""
+    """Per turn, not per session."""
 
 
 class RealtimeError(BaseModel):
@@ -117,9 +100,7 @@ class RealtimeError(BaseModel):
     type: Literal[RealtimeEventType.ERROR] = RealtimeEventType.ERROR
     message: str
     recoverable: bool = True
-    """Whether the session is still usable. A refused turn is not a dead
-    socket, and closing on every error would end a conversation over one
-    oversized frame."""
+    """Whether the session is still usable after this error."""
 
 
 RealtimeOutput = Annotated[
@@ -131,10 +112,6 @@ RealtimeOutput = Annotated[
     | RealtimeError,
     Field(discriminator="type"),
 ]
-"""A union rather than one model with everything optional, so a caller that
-handles every member is provably exhaustive, and a text delta cannot be
-constructed holding audio.
-"""
 
 
 __all__ = [

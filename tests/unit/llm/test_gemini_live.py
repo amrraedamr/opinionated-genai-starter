@@ -26,7 +26,7 @@ from google.genai.types import Tool as GeminiTool
 
 from base.models.definitions.model import FinishReason
 from base.models.definitions.realtime_session import (
-    AUDIO_OUTPUT_SAMPLE_RATE_HZ,
+    GEMINI_INPUT_SAMPLE_RATE_HZ,
     RealtimeModality,
 )
 from base.models.view_models import BaseModel
@@ -40,10 +40,7 @@ from base.models.view_models.realtime_session import (
     RealtimeTranscriptDelta,
     RealtimeTurnEnd,
 )
-from base.services.llm.realtime.gemini import (
-    INPUT_SAMPLE_RATE_HZ,
-    GeminiLiveSession,
-)
+from base.services.llm.realtime.gemini import GeminiLiveSession
 from base.services.tool_calling import Tool, Toolbox
 
 
@@ -113,12 +110,7 @@ def spoken(text: str = "", audio: bytes = b"", **content: Any) -> LiveServerMess
 
 def test_gemini_listens_at_a_different_rate_than_openai() -> None:
     """Sending the wrong one raises nothing; the model hears a chipmunk."""
-    assert INPUT_SAMPLE_RATE_HZ == 16_000
-    assert session().input_sample_rate == 16_000
-
-
-def test_both_providers_still_speak_at_the_same_rate() -> None:
-    assert AUDIO_OUTPUT_SAMPLE_RATE_HZ == 24_000
+    assert session().input_sample_rate == GEMINI_INPUT_SAMPLE_RATE_HZ == 16_000
 
 
 def test_outgoing_audio_states_the_rate_it_was_sampled_at() -> None:
@@ -128,7 +120,7 @@ def test_outgoing_audio_states_the_rate_it_was_sampled_at() -> None:
 
     asyncio.run(_send_audio(live))
     blob = fake(live).realtime[0]["audio"]
-    assert f"rate={INPUT_SAMPLE_RATE_HZ}" in blob.mime_type
+    assert f"rate={GEMINI_INPUT_SAMPLE_RATE_HZ}" in blob.mime_type
 
 
 async def _send_audio(live: GeminiLiveSession) -> None:

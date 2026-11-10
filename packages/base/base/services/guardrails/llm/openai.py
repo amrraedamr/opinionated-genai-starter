@@ -26,25 +26,9 @@ from base.tools.openai_clients import create_openai_clients
 
 
 class OpenAIModerationGuardrail(AbstractGuardrail, metaclass=KeyedSingletonABC):
-    """Moderation over the OpenAI-compatible `/moderations` endpoint.
+    """Blocks content the OpenAI-compatible `/moderations` endpoint scores at or above a threshold.
 
-    The API shape, not the vendor: anything serving that spec answers it —
-    OpenAI, Azure OpenAI, LiteLLM, vLLM. A chat model is not valid input to it,
-    so Gemini and Anthropic models are rejected; neither provider publishes an
-    equivalent endpoint, and either would be a sibling module here.
-
-    Blocks content scoring at or above a threshold. Scores are used rather than
-    the endpoint's own `flagged`, because what is worth refusing differs per
-    deployment and a boolean cannot be tuned.
-
-    **This guardrail fails open.** If the endpoint cannot be reached the
-    content is allowed, because a moderation outage should not take the service
-    down with it. Where that trade is wrong, refuse at a layer that can.
-
-    Failing open makes a misconfiguration dangerous rather than merely broken:
-    a `moderation_model` the endpoint rejects would otherwise allow everything
-    while looking healthy. A refused request is therefore logged as an error
-    saying nothing is being moderated, not as a passing blip.
+    Fails open: an API error allows the content, logged as an error when the request itself was refused.
     """
 
     DEFAULT_TIMEOUT_TOTAL: ClassVar[float] = 10.0
@@ -144,10 +128,7 @@ class OpenAIModerationGuardrail(AbstractGuardrail, metaclass=KeyedSingletonABC):
 
     @staticmethod
     def _is_misconfigured(exc: OpenAIError) -> bool:
-        """A 4xx is this deployment being wrong, not the network blinking.
-
-        Rate limiting is excluded: 429 is load, and it passes on its own.
-        """
+        """Whether `exc` is a 4xx other than 429, meaning this deployment is misconfigured."""
         status = getattr(exc, "status_code", None)
         return isinstance(status, int) and 400 <= status < 500 and status != 429
 

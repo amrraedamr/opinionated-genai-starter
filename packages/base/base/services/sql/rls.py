@@ -1,25 +1,4 @@
-"""Fencing a tenant's rows at the database, not only in the store.
-
-`SQLStore` narrows every read it issues, which covers every read that goes
-through it. Raw SQL does not go through it: `PgVectorService` builds its own
-statements against the same engine, and so does anything a caller writes in a
-`transaction()` block. Those paths carry no tenant predicate at all.
-
-Row-level security moves the boundary into Postgres, so the database refuses
-whatever the application layer forgot. It is defence in depth, not a
-replacement — the store keeps filtering, because that is what works on SQLite
-and what gives a useful error instead of an empty result.
-
-Two things silently defeat this, and neither is Postgres being unhelpful. A
-table's owner is exempt unless the table is told to `FORCE` it, and a service
-usually connects as the owner. A superuser, or any role with `BYPASSRLS`, is
-exempt no matter what — so a deployment that connects as one has no row-level
-security at all, however carefully the policy is written.
-
-SQLAlchemy has no construct for a policy, so these are `DDLElement`s compiled
-for the Postgres dialect. That is what gets identifiers quoted by the dialect's
-own preparer rather than pasted into a string.
-"""
+"""Fencing a tenant's rows at the database with Postgres row-level security."""
 
 from typing import TYPE_CHECKING, ClassVar
 
@@ -142,18 +121,16 @@ def _compile_drop_policy(
 
 
 class RowLevelSecurity:
-    """Puts the current tenant on every transaction, and writes the policy."""
+    """Puts the current tenant on every transaction, and writes the policy.
+
+    Superusers and roles with `BYPASSRLS` are exempt however the policy is written.
+    """
 
     _installed: ClassVar[bool] = False
 
     @classmethod
     def install(cls) -> None:
-        """Listen for the start of every transaction, once per process.
-
-        Bound to the start of a transaction rather than the opening of a
-        session: the parameter is transaction-scoped, so a rollback inside one
-        session would otherwise silently drop the fence.
-        """
+        """Hook every transaction start, once per process, since the tenant parameter is transaction-scoped."""
         if cls._installed:
             return
         event.listen(Session, "after_begin", cls._apply)
@@ -165,11 +142,7 @@ class RowLevelSecurity:
         transaction: "SessionTransaction",
         connection: "Connection",
     ) -> None:
-        """Tell this transaction which tenant it is acting for.
-
-        `set_config(..., true)` rather than `SET LOCAL`, because `SET` takes no
-        bind parameters and a tenant pasted into SQL is how injection gets in.
-        """
+        """Tell this transaction its tenant via `set_config`, which unlike `SET LOCAL` takes bind parameters."""
         del session, transaction
         if connection.dialect.name != "postgresql":
             return

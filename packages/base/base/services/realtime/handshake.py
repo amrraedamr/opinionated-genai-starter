@@ -16,14 +16,7 @@ if TYPE_CHECKING:
 async def accept_connection(websocket: "WebSocket") -> ConnectionTicket | None:
     """Redeem the offered ticket and accept, or refuse the handshake.
 
-    The accepted subprotocol is echoed back because the handshake requires it:
-    a client that offered one and is answered with none must treat the
-    connection as failed, which would look like the server being broken rather
-    than the ticket being wrong.
-
-    Refusal closes rather than accepting-then-closing. Accepting first tells a
-    client it is connected for as long as it takes the close frame to arrive,
-    and anything it sent in that window is silently lost.
+    The offered subprotocol must be echoed back, or the client fails the connection.
     """
     offered = list(websocket.scope.get("subprotocols") or [])
     ticket_value = TicketService.from_subprotocols(offered)

@@ -1,22 +1,15 @@
-"""A model session that stays open, and what travels through it.
-
-Separate from the request/response vocabulary because a realtime session is
-not a call. There is no single moment the model is finished: it emits deltas,
-asks for tools mid-turn, and can be cut off halfway through speaking. Forcing
-that into a prompt-in/result-out shape would misdescribe both.
-"""
+"""A model session that stays open, and what travels through it."""
 
 from enum import StrEnum
 from typing import Final
 
-AUDIO_OUTPUT_SAMPLE_RATE_HZ: Final = 24_000
-"""What both providers speak at.
+OPENAI_INPUT_SAMPLE_RATE_HZ: Final = 24_000
+GEMINI_INPUT_SAMPLE_RATE_HZ: Final = 16_000
 
-Only the output rate is shared. Input rates differ — OpenAI listens at 24 kHz
-and Gemini at 16 kHz — so a caller holding a microphone asks the session it
-opened rather than assuming, and the wrong rate is not an error: the model
-hears a chipmunk and answers the wrong question.
-"""
+OPENAI_TRANSCRIPTION_MODEL: Final = "whisper-1"
+"""Requested on every OpenAI session; without it user-transcript deltas never arrive."""
+
+REALTIME_USAGE_LABEL: Final = "realtime"
 
 
 class RealtimeModality(StrEnum):
@@ -27,25 +20,15 @@ class RealtimeModality(StrEnum):
 
 
 class RealtimeEventType(StrEnum):
-    """What arrived from the model.
-
-    Branch on this rather than on whichever field happens to be populated: a
-    turn can end with no text at all, and an empty delta is not the same event
-    as the end of a turn.
-    """
+    """What arrived from the model."""
 
     TEXT_DELTA = "text_delta"
-    """Part of a written reply. Arrives in fragments, not sentences."""
 
     AUDIO_DELTA = "audio_delta"
     """A chunk of spoken reply, in the session's agreed PCM format."""
 
     TRANSCRIPT_DELTA = "transcript_delta"
-    """What the model heard the user say.
-
-    Distinct from text output: it is the input read back, and showing it as
-    the assistant's words would attribute the user's sentence to the model.
-    """
+    """What the model heard the user say, not the model's own words."""
 
     TOOL_CALL = "tool_call"
     """The model wants a tool run before it continues. Mid-turn, not after."""
@@ -58,7 +41,10 @@ class RealtimeEventType(StrEnum):
 
 
 __all__ = [
-    "AUDIO_OUTPUT_SAMPLE_RATE_HZ",
+    "GEMINI_INPUT_SAMPLE_RATE_HZ",
+    "OPENAI_INPUT_SAMPLE_RATE_HZ",
+    "OPENAI_TRANSCRIPTION_MODEL",
+    "REALTIME_USAGE_LABEL",
     "RealtimeEventType",
     "RealtimeModality",
 ]

@@ -18,7 +18,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     ) from exc
 
 if TYPE_CHECKING:
-    from opentelemetry.util.types import AttributeValue
+    from opentelemetry.util.types import AnyValue
 
 
 class RedactingSpanExporter(SpanExporter):
@@ -70,8 +70,8 @@ class RedactingSpanExporter(SpanExporter):
         )
 
     def _attributes(
-        self, attributes: Mapping[str, "AttributeValue"] | None
-    ) -> dict[str, "AttributeValue"] | None:
+        self, attributes: Mapping[str, "AnyValue"] | None
+    ) -> dict[str, "AnyValue"] | None:
         """Redacted attributes, or None when nothing in them changed."""
         if not attributes:
             return None
@@ -80,7 +80,7 @@ class RedactingSpanExporter(SpanExporter):
             return None
         return cleaned
 
-    def _value(self, value: "AttributeValue") -> "AttributeValue":
+    def _value(self, value: "AnyValue") -> "AnyValue":
         """A string, or a sequence of them, redacted; anything else as given."""
         if isinstance(value, str):
             redacted = self._redactor.redact(value)
@@ -117,7 +117,7 @@ class RedactingSpanExporter(SpanExporter):
 
     @staticmethod
     def _bounded_attributes(
-        attributes: Mapping[str, "AttributeValue"], dropped: int
+        attributes: Mapping[str, "AnyValue"] | None, dropped: int
     ) -> BoundedAttributes:
         """Attributes carrying the dropped count the exporter reports."""
         bounded = BoundedAttributes(attributes=attributes)

@@ -1,14 +1,4 @@
-"""Spending a token budget around a model call.
-
-Tokens are the budget that costs real money, and the only one whose size is
-not known until after the work is done. So it is spent in two steps: ask
-before the call whether anything is left, and record what was actually used
-once the provider says. Reserving an estimate up front would either refuse
-callers who would have fitted, or let a long reply overrun silently.
-
-A streamed reply is no different here. The seam returns once the stream has
-finished and the usage has arrived, so the spend happens at the same place.
-"""
+"""Spending a token budget around a model call."""
 
 from base.models.definitions.errors import RateLimitErrors
 from base.models.definitions.rate_limiting import RateLimitPolicy
@@ -51,7 +41,7 @@ class TokenBudget:
         )
 
     async def acheck(self) -> None:
-        """Refuse before the call when nothing is left."""
+        """Refuse before the call when nothing is left, asynchronously."""
         decision = await self.limiter.aspend(
             self.key, RateLimitPolicy.LLM_TOKENS, cost=0
         )
@@ -65,7 +55,7 @@ class TokenBudget:
             raise LLMBudgetExhausted(decision)
 
     async def aspend(self, tokens: int) -> None:
-        """Record what the call used, even past the limit."""
+        """Record what the call used, even past the limit, asynchronously."""
         if tokens > 0:
             await self.limiter.acharge(self.key, RateLimitPolicy.LLM_TOKENS, tokens)
 

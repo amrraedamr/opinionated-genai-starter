@@ -15,6 +15,7 @@ from uuid import uuid4
 import pytest
 
 from base.models.definitions.realtime import (
+    TICKET_NAMESPACE,
     TICKET_SUBPROTOCOL_PREFIX,
     TICKET_TTL_SECONDS,
 )
@@ -22,7 +23,7 @@ from base.models.definitions.tenancy import TenantId
 from base.models.view_models.auth import Principal
 from base.models.view_models.realtime import ConnectionTicket
 from base.services.cache.memory import InMemoryCacheService
-from base.services.realtime.tickets import TICKET_NAMESPACE, TicketService
+from base.services.realtime.tickets import TicketService
 from tests.conftest import MakeSettings
 
 

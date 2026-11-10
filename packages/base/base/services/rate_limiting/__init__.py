@@ -1,13 +1,4 @@
-"""Spending a budget against a key, wherever the counters happen to live.
-
-This is deliberately not "count HTTP requests". A request, a websocket message
-and an LLM call's tokens are all spends against a budget, differing only in
-what one unit means, so they share one mechanism and one set of counters.
-
-Fleet-wide limits are often said to belong at an ingress. An ingress sees
-addresses and paths; it does not see tenants, users, or how many tokens a reply
-cost. Those are the budgets worth holding, so they are held here.
-"""
+"""Spending a budget against a key, wherever the counters happen to live."""
 
 from abc import ABC, abstractmethod
 from typing import final
@@ -16,9 +7,6 @@ from base.models.definitions.rate_limiting import RateLimitPolicy
 from base.models.view_models.rate_limiting import RateDecision
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsRateLimitConfig
-
-WINDOW_SECONDS: float = 60.0
-"""Every budget is expressed per minute, so every window is a minute long."""
 
 
 class AbstractRateLimiter(ABC):
@@ -48,11 +36,7 @@ class AbstractRateLimiter(ABC):
         user: str | None = None,
         client_ip: str | None = None,
     ) -> str:
-        """Per user within a tenant, so one heavy user cannot spend everyone's budget.
-
-        Falls back to the tenant, then the user, then the address, which is shared
-        behind a NAT and cheap to change.
-        """
+        """Key per user within a tenant, else the tenant, the user, the client IP or "unknown"."""
         if tenant and user:
             return f"{tenant}:{user}"
         return tenant or user or client_ip or "unknown"
@@ -62,10 +46,7 @@ class AbstractRateLimiter(ABC):
 
     @final
     def spend(self, key: str, policy: RateLimitPolicy, cost: int = 1) -> RateDecision:
-        """Spend `cost` units of `policy` against `key`.
-
-        A cost of zero asks what is left without spending anything.
-        """
+        """Spend `cost` units of `policy` against `key` if they fit (a zero cost only checks)."""
         if cost < 0:
             raise ValueError("cost cannot be negative")
         return self._spend(key, policy, cost)
@@ -79,10 +60,7 @@ class AbstractRateLimiter(ABC):
     async def aspend(
         self, key: str, policy: RateLimitPolicy, cost: int = 1
     ) -> RateDecision:
-        """Spend `cost` units of `policy` against `key`, asynchronously.
-
-        A cost of zero asks what is left without spending anything.
-        """
+        """Spend `cost` units of `policy` against `key` if they fit (a zero cost only checks), asynchronously."""
         if cost < 0:
             raise ValueError("cost cannot be negative")
         return await self._aspend(key, policy, cost)
@@ -132,4 +110,4 @@ class AbstractRateLimiter(ABC):
         return f"ratelimit:{policy.value}:{key}"
 
 
-__all__ = ["WINDOW_SECONDS", "AbstractRateLimiter"]
+__all__ = ["AbstractRateLimiter"]

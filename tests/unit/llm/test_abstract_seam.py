@@ -62,7 +62,7 @@ class RecordingService(AbstractLLMService):
         cache_hint: CacheHint | None,
         prompt: RenderedPrompt | None,
         messages: Sequence[StoredMessage] | None = None,
-        tools: Sequence[Tool[Any]] | None = None,
+        tools: Sequence[Tool[BaseModel]] | None = None,
         schema: type[BaseModel] | None = None,
     ) -> None:
         self.calls.append(("_apply_cache_hint", (request, cache_hint, prompt), {}))

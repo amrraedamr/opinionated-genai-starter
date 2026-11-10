@@ -1,14 +1,4 @@
-"""Spans for code that has to run whether or not tracing is installed.
-
-`base.services.telemetry` raises on import without the `otel` extra, which is
-right for a service that asked for tracing and did not get it. It is wrong for
-the outbox and the inbox: those are core machinery, and the worker that runs
-them does not carry the extra. Importing them must not depend on it.
-
-This cannot live under `base.services.telemetry`, because importing any
-submodule of a package runs that package's `__init__` first — which is the
-module that raises.
-"""
+"""Spans for code that has to run whether or not tracing is installed."""
 
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
@@ -29,7 +19,7 @@ except MissingExtraError:  # pragma: no cover - depends on the installed extras
 
 
 class OptionalTelemetry:
-    """The two span shapes messaging needs, and nothing when tracing is absent."""
+    """Tracing helpers that do nothing when the `otel` extra is absent."""
 
     AVAILABLE: ClassVar[bool] = _AVAILABLE
 

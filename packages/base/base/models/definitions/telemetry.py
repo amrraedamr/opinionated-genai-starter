@@ -1,16 +1,11 @@
-"""Span and attribute names, kept in one place because the conventions move.
-
-OpenTelemetry's GenAI semantic conventions are still changing, so every
-attribute name this repository emits is written here once. A convention
-release becomes an edit to this file rather than a search across adapters.
-"""
+"""Span and attribute names, kept in one place because the conventions move."""
 
 from typing import Final
 
 # Resource
 SERVICE_NAME: Final = "service.name"
 
-# Correlation, which predates tracing here and stays alongside it
+# Correlation
 CORRELATION_ID: Final = "correlation.id"
 TENANT_ID: Final = "tenant.id"
 

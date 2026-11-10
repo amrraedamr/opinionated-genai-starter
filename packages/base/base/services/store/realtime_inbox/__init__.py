@@ -21,7 +21,7 @@ class RealtimeInboxStore(AbstractSequenceStore[str, InboxEntry], ABC):
 
     @final
     async def aafter(self, parent_id: str, sequence: int) -> list[InboxEntry]:
-        """Asynchronously returns entries strictly after `sequence`."""
+        """Entries strictly after `sequence`, in ascending order, asynchronously."""
         return await self._aafter(parent_id, sequence)
 
 

@@ -6,18 +6,16 @@ model sends against that schema, and refuse a schema that is itself broken —
 the same three promises a model-backed tool makes.
 """
 
-from typing import Any
-
 import pytest
 
-from base.models.view_models import BaseModel
+from base.models.view_models import BaseModel, JSONObject
 from base.models.view_models.chat_history import StoredToolCall, StoredToolCallFunction
 from base.services.llm.anthropic.adapter import AnthropicMessageAdapter
 from base.services.llm.gemini.adapter import GeminiContentAdapter
 from base.services.llm.openai.adapter import OpenAIMessageAdapter
 from base.services.tool_calling import Tool, Toolbox, ToolError
 
-SCHEMA: dict[str, Any] = {
+SCHEMA: JSONObject = {
     "type": "object",
     "properties": {
         "city": {"type": "string"},
@@ -27,11 +25,11 @@ SCHEMA: dict[str, Any] = {
 }
 
 
-async def forecast(arguments: dict[str, Any]) -> str:
+async def forecast(arguments: JSONObject) -> str:
     return f"{arguments['city']} for {arguments.get('days', 1)} day(s)"
 
 
-def schema_tool(schema: dict[str, Any] = SCHEMA, name: str = "forecast") -> Tool[Any]:
+def schema_tool(schema: JSONObject = SCHEMA, name: str = "forecast") -> Tool[BaseModel]:
     return Tool.from_json_schema(
         name=name,
         description="Forecast for a city.",
@@ -129,7 +127,7 @@ async def test_arguments_that_are_not_an_object_are_refused() -> None:
 
 
 async def test_empty_arguments_are_read_as_an_empty_object() -> None:
-    async def echo(arguments: dict[str, Any]) -> str:
+    async def echo(arguments: JSONObject) -> str:
         return repr(arguments)
 
     lenient = Tool.from_json_schema(

@@ -18,9 +18,7 @@ from base.services.telemetry import Telemetry as TelemetryService
 class Telemetry:
     """Exports traces over OTLP while this service is running.
 
-    The provider is built in `astartup` rather than at import: gunicorn
-    preloads the application and then forks, and an exporter built before the
-    fork would be shared by every worker.
+    The provider is built in `astartup`, not at import, so workers forked by a preloading server do not share an exporter.
     """
 
     name = "telemetry"
