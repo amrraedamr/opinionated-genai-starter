@@ -63,8 +63,17 @@ class FakeLive:
         self.tool_responses.append(kwargs)
 
     async def receive(self) -> Any:
-        for message in self.script:
+        """One turn per call, then a normal close, as the real SDK behaves."""
+        from google.genai.errors import APIError
+
+        if not self.script:
+            raise APIError(1000, {"message": "closed"})
+        while self.script:
+            message = self.script.pop(0)
             yield message
+            content = message.server_content
+            if content is not None and content.turn_complete:
+                return
 
 
 def session(
@@ -274,13 +283,6 @@ async def test_a_tool_call_is_remembered_when_it_arrives() -> None:
     assert live._tool_names["c9"] == "lookup"
 
 
-async def test_interrupting_announces_activity_rather_than_cancelling() -> None:
-    """There is no cancel message. Gemini stops when fresh input arrives."""
-    live = session()
-    await live.ainterrupt()
-    assert "activity_start" in fake(live).realtime[0]
-
-
 # Configuration
 
 
@@ -337,3 +339,52 @@ async def test_a_socket_that_fails_to_close_does_not_raise() -> None:
 
 def test_the_service_names_itself() -> None:
     assert session().get_service_name() == "gemini_live"
+
+
+# The SDK's own receive, across turns
+
+
+class TwoTurnSocket:
+    """A Live API socket that sends two complete turns, then closes normally."""
+
+    def __init__(self) -> None:
+        self._frames = [
+            '{"serverContent": {"modelTurn": {"parts": [{"text": "one"}]}}}',
+            '{"serverContent": {"turnComplete": true}}',
+            '{"serverContent": {"modelTurn": {"parts": [{"text": "two"}]}}}',
+            '{"serverContent": {"turnComplete": true}}',
+        ]
+
+    async def recv(self, decode: bool = True) -> str:
+        if self._frames:
+            return self._frames.pop(0)
+        from websockets.exceptions import ConnectionClosedOK
+        from websockets.frames import Close
+
+        raise ConnectionClosedOK(Close(1000, ""), Close(1000, ""), True)
+
+
+async def test_a_session_keeps_receiving_after_the_first_turn() -> None:
+    """The SDK's `receive` stops at the end of each turn; a session must not."""
+    from google.genai import Client
+    from google.genai.live import AsyncSession
+
+    client = Client(api_key="unused")
+    live = GeminiLiveSession(RealtimeSessionConfig(model="gemini-live"))
+    live._live = AsyncSession(  # type: ignore[assignment]
+        api_client=client._api_client,  # type: ignore[attr-defined]
+        websocket=TwoTurnSocket(),  # type: ignore[arg-type]
+    )
+
+    events = [event async for event in live.areceive()]
+
+    texts = [e.text for e in events if isinstance(e, RealtimeTextDelta)]
+    assert texts == ["one", "two"]
+    assert sum(isinstance(e, RealtimeTurnEnd) for e in events) == 2
+
+
+async def test_interrupting_sends_nothing_while_activity_detection_is_on() -> None:
+    """`activity_start` is only valid with automatic activity detection off."""
+    live = session()
+    await live.ainterrupt()
+    assert fake(live).realtime == []

@@ -60,7 +60,7 @@ def build_realtime_session(
         case ProviderType.OPENAI | ProviderType.AZURE_OPENAI:
             from base.services.llm.realtime.openai import OpenAIRealtimeSession
 
-            return OpenAIRealtimeSession(session, config, tool_schemas)
+            return OpenAIRealtimeSession(session, config, tool_schemas, provider)
         case ProviderType.GEMINI:
             from base.services.llm.realtime.gemini import GeminiLiveSession
 

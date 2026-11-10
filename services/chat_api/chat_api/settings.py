@@ -9,6 +9,8 @@ from base.services.configuration.mixins import (
     LLMSettingsMixin,
     PostgresSettingsMixin,
     PromptSettingsMixin,
+    RateLimitSettingsMixin,
+    RealtimeSettingsMixin,
     RedisSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
@@ -28,6 +30,8 @@ class ChatApiSettings(
     AzureOpenAILLMSettingsMixin,
     TokenVerificationSettingsMixin,
     PromptSettingsMixin,
+    RealtimeSettingsMixin,
+    RateLimitSettingsMixin,
 ):
     model_config = SettingsConfigDict(
         # Later files win; real process environment beats every file.

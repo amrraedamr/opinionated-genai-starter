@@ -61,6 +61,8 @@ USER_TRANSCRIPT_DELTA: Final = "conversation.item.input_audio_transcription.delt
 FUNCTION_CALL_DONE: Final = "response.function_call_arguments.done"
 RESPONSE_DONE: Final = "response.done"
 ERROR: Final = "error"
+CANCEL_NOT_ACTIVE: Final = "response_cancel_not_active"
+"""Raised when a cancel lands after the turn already ended; harmless."""
 
 INPUT_SAMPLE_RATE_HZ: Final = 24_000
 """What OpenAI listens at. Gemini listens at 16 kHz; neither resamples."""
@@ -91,9 +93,11 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         session: RealtimeSessionConfig,
         config: ModelConfigurations | None = None,
         tool_schemas: "list[RealtimeFunctionToolParam] | None" = None,
+        provider: ProviderType = ProviderType.OPENAI,
     ) -> None:
         self._session = session
         self._config = config
+        self._provider = provider
         self._tool_schemas = tool_schemas or []
         self._logger = ConsoleLoggerService()
         self._manager: "AsyncRealtimeConnectionManager | None" = None
@@ -112,16 +116,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
 
     @property
     def config(self) -> ModelConfigurations:
-        """Resolved on connect, not construction.
-
-        Settings are not registered when a session object is built, and
-        reading them there would make holding one depend on the order a
-        service happens to start things in.
-        """
+        """Resolved on connect for the provider this session was built for."""
         if self._config is None:
-            self._config = ModelConfigurations.get_default_for_provider(
-                ProviderType.AZURE_OPENAI
-            )
+            self._config = ModelConfigurations.get_default_for_provider(self._provider)
         return self._config
 
     async def aconnect(self) -> None:
@@ -202,7 +199,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         if kind == AUDIO_DELTA:
             return RealtimeAudioDelta(audio=base64.b64decode(event.delta))
         if kind == USER_TRANSCRIPT_DELTA:
-            return RealtimeTranscriptDelta(text=event.delta)
+            return RealtimeTranscriptDelta(text=event.delta) if event.delta else None
         if kind == FUNCTION_CALL_DONE:
             return RealtimeToolCall(
                 call=StoredToolCall(
@@ -215,7 +212,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         if kind == RESPONSE_DONE:
             return self._turn_end(event)
         if kind == ERROR:
-            return RealtimeError(message=str(event.error), recoverable=True)
+            if event.error.code == CANCEL_NOT_ACTIVE:
+                return None
+            return RealtimeError(message=event.error.message, recoverable=True)
         return None
 
     @staticmethod

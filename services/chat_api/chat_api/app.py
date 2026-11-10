@@ -12,7 +12,10 @@ from base.capabilities.prompts import Prompts  # noqa: E402
 from base.capabilities.sql import SQLDependency  # noqa: E402
 from base.capabilities.terminal_capture import TerminalCapture  # noqa: E402
 from chat_api import routers  # noqa: E402
-from chat_api.lifespans import background_tasks_lifespan  # noqa: E402
+from chat_api.lifespans import (  # noqa: E402
+    background_tasks_lifespan,
+    realtime_lifespan,
+)
 from chat_api.messaging import BROKER, messaging_lifespan  # noqa: E402
 from chat_api.prompts import templates  # noqa: E402
 from chat_api.stores.prompt import PromptStore  # noqa: E402
@@ -31,6 +34,7 @@ app = create_app(
     lifespan_hooks=[
         messaging_lifespan,
         background_tasks_lifespan,
+        realtime_lifespan,
     ],
 )
 

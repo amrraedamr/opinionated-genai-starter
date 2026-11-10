@@ -359,3 +359,61 @@ def test_the_service_names_itself() -> None:
 
 def test_the_session_reports_its_model() -> None:
     assert session().model == "gpt-realtime"
+
+
+async def test_a_user_transcript_with_no_text_is_dropped_rather_than_crashing() -> None:
+    assert (
+        await translate(
+            [
+                ConversationItemInputAudioTranscriptionDeltaEvent(
+                    type="conversation.item.input_audio_transcription.delta",
+                    event_id="e",
+                    item_id="i",
+                )
+            ]
+        )
+        == []
+    )
+
+
+async def test_an_error_reaches_the_client_as_its_message_not_a_repr() -> None:
+    [out] = await translate(
+        [
+            RealtimeErrorEvent(
+                type="error",
+                event_id="e",
+                error={"type": "invalid_request_error", "message": "quota exceeded"},
+            )
+        ]
+    )
+    assert out.message == "quota exceeded"
+
+
+async def test_a_cancel_that_found_no_active_turn_is_not_an_error() -> None:
+    """A barge-in that lands just after the turn ended is routine."""
+    assert (
+        await translate(
+            [
+                RealtimeErrorEvent(
+                    type="error",
+                    event_id="e",
+                    error={
+                        "type": "invalid_request_error",
+                        "code": "response_cancel_not_active",
+                        "message": "no active response",
+                    },
+                )
+            ]
+        )
+        == []
+    )
+
+
+def test_a_plain_openai_session_resolves_openai_settings_not_azure() -> None:
+    from base.models.definitions.model import ProviderType
+    from base.services.llm.realtime.factory import build_realtime_session
+
+    built = build_realtime_session(
+        ProviderType.OPENAI, RealtimeSessionConfig(model="gpt-realtime")
+    )
+    assert built._provider == ProviderType.OPENAI  # type: ignore[attr-defined]

@@ -17,6 +17,9 @@ nearest honest thing and is what a reviewer reads later anyway.
 import asyncio
 import base64
 import time
+from collections.abc import Sequence
+
+from pydantic import ValidationError
 
 from base.models.definitions.guardrails import GuardrailStage
 from base.models.definitions.realtime import RealtimeCloseCode, RealtimeMessageType
@@ -36,6 +39,7 @@ from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.logging.console import ConsoleLoggerService
 from base.services.realtime.connection import RealtimeConnection
+from base.services.realtime.manager import ConnectionManager
 from base.services.tool_calling.toolbox import Toolbox
 from base.services.usage import UsageTracker
 from base.tools.tracing import OptionalTelemetry
@@ -52,11 +56,13 @@ class RealtimeBridge:
         session: AbstractRealtimeSession,
         toolbox: Toolbox | None = None,
         guardrails: GuardrailPipeline | None = None,
+        manager: ConnectionManager | None = None,
     ) -> None:
         self._connection = connection
         self._session = session
         self._toolbox = toolbox
         self._guardrails = guardrails
+        self._manager = manager
         self._logger = ConsoleLoggerService()
         self._speaking = False
         self._turn_started = 0.0
@@ -84,33 +90,37 @@ class RealtimeBridge:
             },
         ):
             try:
+                await self._session.aconnect()
                 async with asyncio.TaskGroup() as group:
                     group.create_task(self._apump_client())
                     group.create_task(self._apump_provider())
             except* Exception as errors:
-                self._log_failure(errors)
+                self._log_failure(errors.exceptions)
             finally:
                 await self._aclose()
 
     async def _apump_client(self) -> None:
-        """Client to model, interrupting the model when the user cuts in."""
+        """Client to model; delivery frames go to the manager instead."""
         while not self._connection.closed:
             frame = await self._connection.areceive()
             if frame is None:
                 continue
-            if frame.type != RealtimeMessageType.MESSAGE:
+            if self._manager is not None:
+                frame = await self._manager.ahandle(self._connection, frame)
+            if frame is None or frame.type != RealtimeMessageType.MESSAGE:
                 continue
             await self._aforward(frame)
 
     async def _aforward(self, frame: RealtimeEnvelope) -> None:
         """Pass one client frame on, unless something refuses it."""
-        if self._speaking:
-            await self._session.ainterrupt()
-            self._speaking = False
-
         audio = frame.payload.get("audio")
         if isinstance(audio, str):
-            await self._session.asend(RealtimeAudioInput(audio=audio))
+            try:
+                chunk = RealtimeAudioInput(audio=audio)
+            except ValidationError:
+                await self._connection.asend(RealtimeEnvelope.error("Malformed audio"))
+                return
+            await self._session.asend(chunk)
             return
 
         text = frame.payload.get("text")
@@ -120,6 +130,9 @@ class RealtimeBridge:
         allowed = await self._achecked(text, GuardrailStage.INPUT)
         if allowed is None:
             return
+        if self._speaking:
+            await self._session.ainterrupt()
+            self._speaking = False
         await self._session.asend(RealtimeTextInput(text=allowed))
 
     async def _apump_provider(self) -> None:
@@ -268,8 +281,11 @@ class RealtimeBridge:
         await self._session.aclose()
         await self._connection.aclose(RealtimeCloseCode.NORMAL, "Session ended")
 
-    def _log_failure(self, errors: BaseException) -> None:
-        self._logger.warning(f"Realtime bridge stopped: {errors}")
+    def _log_failure(self, errors: Sequence[Exception]) -> None:
+        for error in errors:
+            self._logger.warning(
+                "Realtime bridge stopped: %s: %s", type(error).__name__, error
+            )
 
 
 __all__ = ["RealtimeBridge"]
