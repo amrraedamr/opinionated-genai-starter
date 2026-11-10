@@ -6,13 +6,17 @@ An identity provider sends `tid` on every token it issues, so a service reading
 it without having asked would start partitioning data it never meant to.
 """
 
+import asyncio
+import contextvars
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from uuid import UUID
 
 import jwt
 import pytest
 from fastapi import Depends, FastAPI
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from base.models.definitions.errors import AuthErrors
@@ -23,6 +27,7 @@ from base.services.auth import (
     current_tenant_id,
     tenant_id_dependency,
 )
+from base.services.auth.bearer import current_principal
 from base.services.configuration.mixins import (
     IdpSettingsMixin,
     TenancySettingsMixin,
@@ -30,7 +35,7 @@ from base.services.configuration.mixins import (
 )
 from base.tools.errors import ErrorsException
 from base.tools.exception_handlers import AppExceptionHandler
-from base.tools.tenancy import TenantContext, current_tenant
+from base.tools.tenancy import CallerContext, TenantContext, current_tenant
 from tests.conftest import MakeSettings
 from tests.unit.auth.conftest import KeyPair
 
@@ -299,3 +304,20 @@ def test_the_context_variable_is_the_one_the_context_reads() -> None:
         assert TenantContext.get() == "direct"
     finally:
         current_tenant.reset(token)
+
+
+async def test_an_authenticated_request_acts_for_its_user(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
+    """A per-user budget below the route needs the caller, not only the tenant."""
+    _settings(make_settings, keys)
+    user = UUID(int=42)
+    token = TokenIssuer().issue_access({"user_id": str(user)})
+
+    async def run() -> str | None:
+        await current_principal(
+            HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        )
+        return CallerContext.get()
+
+    assert await asyncio.create_task(run(), context=contextvars.Context()) == str(user)

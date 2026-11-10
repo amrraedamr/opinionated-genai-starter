@@ -32,6 +32,7 @@ SETTINGS_CLASS = {
 INFRASTRUCTURE = {
     "CoreSettings",
     "ServerSettingsMixin",
+    "RateLimitSettingsMixin",
     "SQLSettingsMixin",
     "PostgresSettingsMixin",
     "MySQLSettingsMixin",
@@ -60,7 +61,6 @@ SLICE_OWNED = {
         "LLMSettingsMixin",
         "AzureOpenAILLMSettingsMixin",
         "PromptSettingsMixin",
-        "RateLimitSettingsMixin",
         "RealtimeSettingsMixin",
     },
     "ingestion_worker": set(),

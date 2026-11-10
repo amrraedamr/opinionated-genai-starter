@@ -17,7 +17,7 @@ from uuid import uuid4
 from base.models.view_models.realtime import ConnectionTicket
 from base.services.common.meta import Stored, scope_id
 from base.tools.correlation import adopt_correlation_id, correlation_id
-from base.tools.tenancy import TenantContext
+from base.tools.tenancy import CallerContext, TenantContext
 from base.tools.tracing import OptionalTelemetry
 
 
@@ -37,7 +37,8 @@ class RealtimeContext:
         """
         scope_id.set(uuid4())
         adopt_correlation_id()
-        with TenantContext.scope(ticket.tenant_id):
+        caller = str(ticket.user_id) if ticket.user_id else ticket.subject
+        with TenantContext.scope(ticket.tenant_id), CallerContext.scope(caller):
             with OptionalTelemetry.continued_span(
                 "realtime connection",
                 None,

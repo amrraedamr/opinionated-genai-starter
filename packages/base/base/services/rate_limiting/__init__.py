@@ -48,11 +48,13 @@ class AbstractRateLimiter(ABC):
         user: str | None = None,
         client_ip: str | None = None,
     ) -> str:
-        """The narrowest identity available: tenant, then user, then address.
+        """Per user within a tenant, so one heavy user cannot spend everyone's budget.
 
-        An address is the weakest of the three — shared behind a NAT and cheap
-        to change — so it is only used when nothing better is known.
+        Falls back to the tenant, then the user, then the address, which is shared
+        behind a NAT and cheap to change.
         """
+        if tenant and user:
+            return f"{tenant}:{user}"
         return tenant or user or client_ip or "unknown"
 
     @abstractmethod

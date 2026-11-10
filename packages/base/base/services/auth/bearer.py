@@ -15,7 +15,7 @@ from base.models.definitions.tenancy import TenantId
 from base.services.auth.models import Principal
 from base.services.auth.tokens import TokenVerifier
 from base.tools.errors import raise_error
-from base.tools.tenancy import current_tenant
+from base.tools.tenancy import CallerContext, TenantContext
 
 http_bearer = HTTPBearer()
 http_bearer_dependency = Depends(http_bearer)
@@ -24,8 +24,10 @@ http_bearer_dependency = Depends(http_bearer)
 async def current_principal(
     credentials: HTTPAuthorizationCredentials = http_bearer_dependency,
 ) -> Principal:
-    """Resolve the caller from token claims."""
-    return TokenVerifier().verify(credentials.credentials)
+    """Resolve the caller from token claims, and act for them for the rest of the request."""
+    principal = TokenVerifier().verify(credentials.credentials)
+    CallerContext.set(str(principal.user_id or principal.subject))
+    return principal
 
 
 principal_dependency = Depends(current_principal)
@@ -56,7 +58,7 @@ async def current_tenant_id(principal: Principal = principal_dependency) -> Tena
     """
     if principal.tenant_id is None:
         raise_error(AuthErrors.USER_TOKEN_INCOMPLETE)
-    current_tenant.set(principal.tenant_id)
+    TenantContext.set(principal.tenant_id)
     return principal.tenant_id
 
 

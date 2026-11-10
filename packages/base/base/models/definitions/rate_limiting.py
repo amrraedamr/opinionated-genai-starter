@@ -1,6 +1,13 @@
 """What a budget is spent against, and where the counting happens."""
 
 from enum import StrEnum
+from typing import Final
+
+REDIS_BREAKER_SECONDS: Final = 5.0
+"""How long the Redis limiter stops asking a Redis that just failed, using the in-memory floor."""
+
+MEMORY_SWEEP_SECONDS: Final = 1.0
+"""How often the in-memory limiter drops idle keys, rather than on every spend."""
 
 
 class RateLimitPolicy(StrEnum):

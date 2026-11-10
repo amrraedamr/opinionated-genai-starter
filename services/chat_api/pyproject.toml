@@ -32,7 +32,6 @@ summary = "Conversations — chat, agents, prompts, chat history and log streami
 mixins = [
     "LLMSettingsMixin",
     "PromptSettingsMixin",
-    "RateLimitSettingsMixin",
     "RealtimeSettingsMixin",
 ]
 extras = ["openai", "tokenizer", "sse"]
