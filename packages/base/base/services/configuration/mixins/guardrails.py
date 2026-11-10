@@ -7,11 +7,9 @@ class GuardrailSettingsMixin(BaseModel):
     """Which guardrails run, what they look for, and how hard they look."""
 
     guardrails_enabled: bool = False
-    """Off unless a service asks. Enabling changes what the model is shown."""
 
     pii_redaction_enabled: bool = True
     moderation_enabled: bool = False
-    """Off even when guardrails are on: it bills a provider call per check."""
 
     pii_extra_patterns: dict[str, str] = {}
     """Extra named patterns to redact, as `category` to regular expression."""

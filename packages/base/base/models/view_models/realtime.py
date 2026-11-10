@@ -15,19 +15,13 @@ from base.models.view_models import BaseModel, JSONObject
 
 
 class RealtimeEnvelope(BaseModel):
-    """One frame, in a shape both ends agreed on.
-
-    Versioned for the same reason an event is: a client built against an older
-    server keeps working, and a server told a version it does not know says so
-    rather than guessing at the payload.
-    """
+    """One frame, in a shape both ends agreed on."""
 
     type: RealtimeMessageType = RealtimeMessageType.MESSAGE
     channel: str | None = None
     id: UUID = Field(default_factory=uuid4)
     seq: int | None = None
-    """Position in a durable channel. Absent on an ephemeral one, which has no
-    order worth resuming from."""
+    """Position in a durable channel; absent on an ephemeral one."""
 
     payload: JSONObject = Field(default_factory=dict)
     schema_version: int = CURRENT_REALTIME_VERSION
@@ -69,11 +63,7 @@ class InboxEntry(BaseModel):
 
 
 class ConnectionTicket(BaseModel):
-    """A short-lived, single-use permission to open one socket.
-
-    It carries the identity the socket will act as, so the handshake does not
-    have to verify a token it cannot be sent.
-    """
+    """A short-lived, single-use permission to open one socket."""
 
     ticket: str
     expires_at: datetime
@@ -82,21 +72,10 @@ class ConnectionTicket(BaseModel):
     tenant_id: TenantId | None = None
 
     device_id: str
-    """Which of a user's clients this is — a phone, a laptop, one browser.
-
-    Supplied by the client and kept across reconnects, which is the whole
-    point: a durable channel tracks how far each device has read, and a device
-    that gets a new identity on every reconnect can never resume. Minting one
-    server-side per ticket would do exactly that.
-    """
+    """Which of a user's clients this is, kept across reconnects so it can resume."""
 
     connection_id: UUID = Field(default_factory=uuid4)
-    """This socket, as distinct from the device that opened it.
-
-    A device reconnecting is the same device and a different connection, and
-    the registry has to be able to drop the old one without forgetting the
-    cursor.
-    """
+    """This socket, as distinct from the device that opened it."""
 
     @property
     def expired(self) -> bool:
@@ -107,35 +86,23 @@ class TicketRequest(BaseModel):
     """What a client asks for a ticket with."""
 
     device_id: str | None = None
-    """Stable per client, stored by the client. Absent means a fresh identity,
-    which is correct for a first connection and wrong for a resume."""
+    """Stable per client, stored by the client; absent means a fresh identity is minted."""
 
 
 class TicketResponse(BaseModel):
-    """What the issuing endpoint hands a client.
-
-    The identity is deliberately absent: the client already knows who it is,
-    and a reply that restates it is one more copy to leak.
-    """
+    """What the issuing endpoint hands a client."""
 
     ticket: str
     expires_at: datetime
     subprotocol: str
-    """Exactly what to put in `Sec-WebSocket-Protocol`, so a client does not
-    have to know how the prefix is spelled."""
+    """Exactly what to put in `Sec-WebSocket-Protocol`."""
 
     device_id: str
-    """Echoed back so a client that sent none can store the one it was given
-    and resume with it next time."""
+    """Echoed back so a client that sent none can store the one it was given."""
 
 
 class FanoutMessage(BaseModel):
-    """One envelope on its way to every replica holding the named user.
-
-    The user travels beside the envelope rather than inside it: a replica has
-    to know who a message is for before it looks at what the message says, and
-    the payload belongs to the application.
-    """
+    """One envelope on its way to every replica holding the named user."""
 
     user_id: str
     envelope: RealtimeEnvelope

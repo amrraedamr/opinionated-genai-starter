@@ -1,9 +1,4 @@
-"""Running several guardrails over one piece of content, in order.
-
-The pipeline sits beside the seam rather than in it, the way a backend sits
-beside the abstraction it implements: `AbstractGuardrail` is the contract, and
-this is one way of composing several of them.
-"""
+"""Running several guardrails over one piece of content, in order."""
 
 import contextlib
 import hashlib

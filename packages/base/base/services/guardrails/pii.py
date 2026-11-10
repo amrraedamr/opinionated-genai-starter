@@ -1,10 +1,4 @@
-"""Finding personal data by shape, and replacing it before it travels further.
-
-Patterns alone over-report badly: an order number is a run of digits, and so is
-a card. Everything here that can be checked arithmetically is — cards by Luhn,
-IBANs by mod-97 — and the rest is narrowed by what sits around the match. A
-guardrail that cries wolf gets turned off, which protects nothing.
-"""
+"""Finding personal data by shape, and replacing it before it travels further."""
 
 import re
 from collections.abc import Callable

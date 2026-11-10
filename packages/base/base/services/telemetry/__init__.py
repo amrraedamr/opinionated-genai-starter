@@ -1,13 +1,4 @@
-"""Tracing: one provider per worker, and the spans this repository opens.
-
-Disabled unless a service turns it on, and silent when it is: `span()` hands
-back a no-op where nothing is configured, so a caller writes the same code
-either way and an unconfigured service pays an attribute lookup.
-
-Correlation and tracing are one identity rather than two. A span adopts the
-correlation id already in context, so a log line and a span can be put side by
-side without a second id to carry.
-"""
+"""Tracing: one provider per worker, and the spans this repository opens."""
 
 import importlib
 from collections.abc import Generator, Mapping
@@ -103,8 +94,7 @@ class Telemetry(metaclass=Singleton):
         if self._provider is None:
             yield None
             return
-        # The service's own provider, not the global one: a library that
-        # claimed the global first would otherwise silently take these spans.
+        # Own provider, not the global one, which another library may have claimed
         tracer = self._provider.get_tracer(__name__)
         with tracer.start_as_current_span(name, kind=kind) as span:
             for key, value in self._ambient().items():
@@ -123,15 +113,9 @@ class Telemetry(metaclass=Singleton):
         kind: SpanKind = SpanKind.INTERNAL,
         attributes: "Mapping[str, AttributeValue] | None" = None,
     ) -> Generator[Span | None]:
-        """A span whose parent is somewhere else entirely.
+        """Open a span continuing `traceparent`, or hand back None where tracing is off.
 
-        The point of carrying a traceparent on an event: the consumer's work
-        belongs to the trace that produced it, even though it happens in
-        another process minutes later. Without this each side is its own
-        orphan trace and the causal link is a timestamp and a hope.
-
-        An absent or unparseable traceparent starts a fresh trace rather than
-        failing — a published event is not worth losing over a header.
+        An absent traceparent continues the current context; an unparseable one starts a fresh trace.
         """
         if self._provider is None:
             yield None
@@ -141,8 +125,7 @@ class Telemetry(metaclass=Singleton):
             if traceparent
             else None
         )
-        # The service's own provider, not the global one: a library that
-        # claimed the global first would otherwise silently take these spans.
+        # Own provider, not the global one, which another library may have claimed
         tracer = self._provider.get_tracer(__name__)
         with tracer.start_as_current_span(name, context=parent, kind=kind) as span:
             for key, value in self._ambient().items():
@@ -154,11 +137,7 @@ class Telemetry(metaclass=Singleton):
 
     @staticmethod
     def current_traceparent() -> str | None:
-        """This span, in the form another process can continue it from.
-
-        `None` when nothing is being traced, so a caller stores nothing rather
-        than a placeholder that looks like a trace and is not.
-        """
+        """This span, in the form another process can continue it from; `None` when untraced."""
         carrier: dict[str, str] = {}
         TraceContextTextMapPropagator().inject(carrier)
         return carrier.get("traceparent")

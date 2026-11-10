@@ -1,18 +1,4 @@
-"""A user on one socket, a model on another, and this in between.
-
-Two conversations run at once and neither waits for the other. A person talks
-over the model; the model asks for a tool mid-sentence; a browser disappears
-without a close frame. Piping one into the other and reading them in turn
-would serialise all of it and deadlock on the first overlap, so each
-direction gets its own pump and either one ending ends the pair.
-
-What passes through is checked. Text from a user is checked before the model
-sees it, text from the model before the user does, and a tool's output before
-the model is told what it returned. Audio is not: it is samples, not
-sentences, and a guardrail reading it as text would either refuse everything
-or pass everything. The transcript of that audio is checked, which is the
-nearest honest thing and is what a reviewer reads later anyway.
-"""
+"""Two-way bridge from a client socket to a realtime model session; text is guarded, audio is not."""
 
 import asyncio
 import base64
@@ -83,12 +69,7 @@ class RealtimeBridge:
         return self._speaking
 
     async def arun(self) -> None:
-        """Carry the conversation until either side stops.
-
-        One span covers the session rather than one per turn. A conversation
-        is the unit someone investigating a complaint actually has: they know
-        when a user called, not which of forty turns went wrong.
-        """
+        """Carry the conversation until either side stops."""
         with OptionalTelemetry.continued_span(
             "realtime.session",
             None,
@@ -224,12 +205,7 @@ class RealtimeBridge:
             )
 
     async def _aheard(self, text: str) -> None:
-        """Report what the model heard, checked as the user's own words.
-
-        The audio itself cannot be checked; this is the only readable form it
-        ever takes, so refusing here is the one place a spoken secret can be
-        caught before it is written into a transcript.
-        """
+        """Report what the model heard, checked as the user's own words."""
         allowed = await self._achecked(text, GuardrailStage.INPUT)
         if allowed is None:
             return
@@ -240,12 +216,7 @@ class RealtimeBridge:
         )
 
     async def _achecked(self, text: str, stage: GuardrailStage) -> str | None:
-        """What survives the guardrails, or None when they refused it.
-
-        A refusal tells the client and leaves the session open. Closing the
-        socket over one blocked sentence would end a conversation that was
-        otherwise fine, and the user would have no idea why.
-        """
+        """What survives the guardrails, or None when they refused it."""
         if self._guardrails is None or not self._guardrails.applies_to(stage):
             return text
         report = await self._guardrails.arun(text, stage)
@@ -262,10 +233,7 @@ class RealtimeBridge:
     def _run_tool(self, call: RealtimeToolCall) -> None:
         """Run a tool without stopping the model's stream.
 
-        Awaiting it here would hold up the only reader of the provider socket,
-        so audio already generated for this turn would arrive late or not at
-        all. The model is identified by call id and does not care in which
-        order answers come back.
+        Awaiting it here would stall the only reader of the provider socket.
         """
         task = asyncio.create_task(self._ainvoke(call))
         self._tools.add(task)
@@ -300,12 +268,7 @@ class RealtimeBridge:
             self._turn_started = time.monotonic()
 
     def _end_turn(self, event: RealtimeTurnEnd) -> None:
-        """Bill the turn as it ends.
-
-        Per turn rather than per session: a conversation can stay open for an
-        hour, and nothing that bills for it can wait that long to find out
-        what it cost.
-        """
+        """Bill the turn as it ends."""
         self._speaking = False
         if event.usage is None:
             return
@@ -320,7 +283,7 @@ class RealtimeBridge:
         )
 
     async def _aclose(self) -> None:
-        """Let outstanding tools finish, then close both sides."""
+        """Cancel outstanding tools, then close both sides."""
         for task in list(self._tools):
             task.cancel()
         if self._tools:

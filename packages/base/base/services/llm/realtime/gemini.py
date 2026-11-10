@@ -1,19 +1,4 @@
-"""Gemini's Live API, behind the provider-neutral session seam.
-
-Shaped differently from OpenAI's in ways that matter to the translation.
-
-Gemini listens at 16 kHz while OpenAI listens at 24 kHz, and both speak at
-24 kHz. Sending the wrong rate raises nothing: the model hears a voice at the
-wrong pitch and answers a question nobody asked. The rate is declared on the
-session so a caller resamples against what it actually opened.
-
-Text and audio are not separate events here. Both arrive as parts of a model
-turn, and the part says which it is.
-
-There is no cancel message. Gemini stops on its own when fresh input arrives
-and reports it afterwards as an interruption, so interrupting is a matter of
-telling it the user has started talking rather than asking it to stop.
-"""
+"""Gemini's Live API, behind the provider-neutral session seam."""
 
 import json
 from collections.abc import AsyncIterator
@@ -102,12 +87,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         self._manager: "AbstractAsyncContextManager[AsyncSession] | None" = None
         self._live: AsyncSession | None = None
         self._tool_names: dict[str, str] = {}
-        """Which function each outstanding call belongs to.
-
-        Gemini needs the function name to accept a result; OpenAI needs only
-        the call id. Remembering it here keeps that difference out of the
-        seam, which would otherwise carry a field only one provider reads.
-        """
+        """Function name per outstanding call id; Gemini needs it to accept a result."""
 
     @property
     def model(self) -> str:
@@ -143,13 +123,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         self._live = await self._manager.__aenter__()
 
     def _connect_config(self) -> LiveConnectConfig:
-        """What this session negotiates, in Gemini's spelling.
-
-        Both transcriptions are asked for. They are off by default, and
-        without them a caller can neither show what was heard nor caption an
-        audio reply, since in an audio session the model's words arrive only
-        as its own transcript.
-        """
+        """What this session negotiates, in Gemini's spelling, with both transcriptions on."""
         config = LiveConnectConfig(
             response_modalities=[_MODALITIES[m] for m in self._session.modalities],
             input_audio_transcription=AudioTranscriptionConfig(),
@@ -181,12 +155,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         ]
 
     async def asend(self, value: RealtimeInput) -> None:
-        """Pass input to the model.
-
-        Text is sent as a complete turn, audio as a stream whose end the
-        server detects. Marking every audio chunk as a finished turn would
-        start a turn for each packet of microphone input.
-        """
+        """Pass input to the model: text as a complete turn, audio as a stream."""
         live = self._require_live()
         if isinstance(value, RealtimeAudioInput):
             await live.send_realtime_input(
@@ -275,11 +244,7 @@ class GeminiLiveSession(AbstractRealtimeSession):
         )
 
     async def asend_tool_result(self, call_id: str, result: str) -> None:
-        """Answer a tool the model asked for.
-
-        No response request follows. Gemini resumes on the tool response
-        itself, where OpenAI needs to be asked again.
-        """
+        """Answer a tool the model asked for; Gemini resumes without being asked."""
         live = self._require_live()
         await live.send_tool_response(
             function_responses=[

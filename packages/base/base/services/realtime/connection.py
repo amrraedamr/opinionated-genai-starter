@@ -1,15 +1,4 @@
-"""One open socket, with the three bounds a socket does not get for free.
-
-Every HTTP request on this service passes a size limit and a rate limiter on
-the way in. A websocket passes neither: both middlewares return early on
-anything that is not HTTP, and a socket is admitted once and then sends as
-much as it likes for as long as it likes. That is the hole this closes.
-
-Heartbeats are here for a different reason. A peer that vanished without a
-close frame — a laptop lid, a dropped tunnel — looks exactly like an idle one.
-Nothing notices until something tries to write, which for a subscription may
-be never, so the connection and everything it holds leaks.
-"""
+"""One websocket, bounded by message size, rate limit and heartbeat."""
 
 import asyncio
 import time
@@ -30,9 +19,7 @@ from base.services.rate_limiting import AbstractRateLimiter
 from base.services.rate_limiting.factory import build_rate_limiter
 
 if TYPE_CHECKING:
-    # Typing only. FastAPI arrives with the `server` extra, and this package
-    # has to stay importable without it: a worker that publishes to a channel
-    # never accepts a socket.
+    # FastAPI comes with the `server` extra; this package must import without it.
     from fastapi import WebSocket
 
 
@@ -86,12 +73,7 @@ class RealtimeConnection:
 
     @property
     def key(self) -> str:
-        """Per user, not per connection: ten sockets is not ten budgets.
-
-        Deliberately not per device either. A user opening five tabs is one
-        person, and letting each tab have its own allowance is how a limit
-        gets worked around by accident.
-        """
+        """Rate-limit key, shared by all of a user's sockets and devices."""
         return AbstractRateLimiter.compose_key(
             tenant=self._ticket.tenant_id,
             user=str(self._ticket.user_id) if self._ticket.user_id else None,
@@ -108,12 +90,7 @@ class RealtimeConnection:
         return time.monotonic() - self._last_seen > self._heartbeat_timeout
 
     async def areceive(self) -> RealtimeEnvelope | None:
-        """The next frame worth acting on, or `None` when the socket is done.
-
-        A refused frame does not end the connection. Oversize or too fast is
-        usually one bad client loop, not an attack, and closing the socket
-        turns a recoverable mistake into a reconnect storm.
-        """
+        """The next frame worth acting on, or `None` for a refused or heartbeat frame."""
         raw = await self._websocket.receive_text()
         self._last_seen = time.monotonic()
 
@@ -150,11 +127,7 @@ class RealtimeConnection:
             self._closed = True
 
     async def aheartbeat(self) -> None:
-        """Ping until the peer stops answering, then give up on it.
-
-        Runs as its own task: a connection waiting on `receive` would
-        otherwise never get round to asking whether anyone is still there.
-        """
+        """Ping until the peer stops answering, then give up on it."""
         while not self._closed:
             await asyncio.sleep(self._heartbeat_seconds)
             if self.stale:

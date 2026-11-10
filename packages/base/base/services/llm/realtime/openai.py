@@ -1,19 +1,4 @@
-"""OpenAI's realtime API, behind the provider-neutral session seam.
-
-Two things here are easy to get wrong and quiet when they are.
-
-The event names moved. What older documentation calls `response.text.delta`
-and `response.audio.delta` are now `response.output_text.delta` and
-`response.output_audio.delta`. An adapter matching the old names compiles,
-connects, and yields nothing at all.
-
-There are two transcript events and they describe different people.
-`conversation.item.input_audio_transcription.delta` is what the model heard
-the user say; `response.output_audio_transcript.delta` is what the model
-itself is saying, which in an audio session is the only place its words
-arrive as text. Treating them alike puts the user's sentence in the model's
-mouth.
-"""
+"""OpenAI's realtime API, behind the provider-neutral session seam."""
 
 import base64
 from collections.abc import AsyncIterator
@@ -157,12 +142,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         ]
 
     async def asend(self, value: RealtimeInput) -> None:
-        """Pass input to the model.
-
-        Text is committed with an explicit response request; audio is not.
-        Audio arrives as a stream the server decides the end of, and asking
-        for a response on every chunk would start a turn per packet.
-        """
+        """Pass input to the model; only text is followed by a response request."""
         connection = self._require_connection()
         if isinstance(value, RealtimeAudioInput):
             await connection.send(
@@ -186,13 +166,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         await connection.send({"type": "response.create"})
 
     async def areceive(self) -> AsyncIterator[RealtimeOutput]:
-        """Events as the model produces them, in our vocabulary.
-
-        An event this adapter does not translate is dropped rather than
-        surfaced. The provider emits a great deal of bookkeeping — item
-        created, buffer committed, response in progress — and passing it
-        through would make every caller filter the same noise.
-        """
+        """Events as the model produces them, in our vocabulary; untranslated events are dropped."""
         connection = self._require_connection()
         async for event in connection:
             translated = self._translate(event)

@@ -11,21 +11,7 @@ from base.tools.errors import MissingSettingsError
 def build_rate_limiter(
     config: SupportsRateLimitConfig | None = None,
 ) -> AbstractRateLimiter:
-    """Construct the limiter this service is configured for.
-
-    Each implementation imports lazily, so a service counting in its own
-    process needs no `redis` extra.
-
-    Dispatch is exhaustive rather than defaulting: an unhandled backend raises
-    instead of quietly returning the in-process one, which would start cleanly,
-    report healthy, and hand every replica its own full budget.
-
-    A service that never composed `RateLimitSettingsMixin` gets that mixin's
-    defaults rather than an error. `create_app` installs the traffic middleware
-    for everyone, and the budgets are the same figures the middleware used
-    before it had a limiter behind it — so this is the documented default, not
-    a silent absence of limits. Tuning them means composing the mixin.
-    """
+    """Construct the configured limiter, using `RateLimitSettingsMixin` defaults when the service composed none."""
     settings = config or _configured()
     backend = RateLimitBackend(settings.rate_limit_backend)
 
@@ -43,11 +29,7 @@ def build_rate_limiter(
 
 
 def _configured() -> SupportsRateLimitConfig:
-    """The composed budgets, or the mixin's own defaults.
-
-    `RuntimeError` is the no-settings-at-all case and `MissingSettingsError`
-    the composed-without-this-mixin one; both mean nobody tuned the budgets.
-    """
+    """The configured budgets, or the mixin's defaults when settings are absent or lack the mixin."""
     try:
         return settings_for(SupportsRateLimitConfig)
     except (MissingSettingsError, RuntimeError):

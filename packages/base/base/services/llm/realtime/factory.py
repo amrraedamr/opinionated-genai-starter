@@ -1,10 +1,4 @@
-"""Choosing which provider holds an open session.
-
-Separate from the LLM factory because the set is different: a provider with a
-perfectly good completions API may have no realtime API at all, and Anthropic
-currently does not. Selecting by the same enum would let a caller ask for a
-session no amount of configuration can produce.
-"""
+"""Choosing which provider holds an open session."""
 
 from base.models.definitions.model import ProviderType
 from base.models.definitions.realtime_session import RealtimeModality
@@ -20,12 +14,6 @@ REALTIME_PROVIDERS = (
     ProviderType.AZURE_OPENAI,
     ProviderType.GEMINI,
 )
-"""Which providers can hold a session at all.
-
-Anthropic is absent rather than stubbed. A stub that raises on first use
-reads as support until something tries it; an absence is answerable before a
-caller writes the code around it.
-"""
 
 
 def build_realtime_session(
@@ -34,19 +22,7 @@ def build_realtime_session(
     config: ModelConfigurations | None = None,
     toolbox: Toolbox | None = None,
 ) -> AbstractRealtimeSession:
-    """Construct the session this service is configured for.
-
-    Both the provider and the session shape fall back to settings, the way
-    `build_broker` does, so a caller that has nothing to say about either
-    asks for a session and gets one. A route is then wiring, not
-    configuration: deciding which model answers is a deployment's business,
-    not a handler's.
-
-    Each adapter imports lazily, so a service using Gemini needs no `openai`
-    extra and the reverse. Dispatch is exhaustive rather than defaulting:
-    falling back to a provider the caller did not name would open a session
-    against the wrong model and bill it silently.
-    """
+    """Construct a realtime session, taking the provider and session from settings when omitted."""
     if provider is None or session is None:
         settings = settings_for(SupportsRealtimeConfig)
         provider = provider or ProviderType(settings.realtime_provider)

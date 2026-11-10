@@ -1,13 +1,4 @@
-"""Assembling the pipeline a service is configured to run.
-
-Off unless asked. Enabling guardrails changes what the model is shown and what
-a caller gets back, which is not a thing to switch on under someone without
-their say-so — the same reasoning that makes tenancy opt-in.
-
-Within that, PII redaction and injection heuristics are on because they are
-local and cost nothing per check. Moderation is off because it bills a provider
-call every time, and a starter that quietly spends money is a bad starter.
-"""
+"""Assembling the pipeline a service is configured to run."""
 
 from base.services.configuration import settings_for
 from base.services.configuration.mixins.guardrails import GuardrailSettingsMixin
@@ -23,12 +14,7 @@ def build_guardrail_pipeline(
 ) -> GuardrailPipeline:
     """The configured guardrails, in the order they should run.
 
-    PII runs before moderation so a flagged message is not shipped to a third
-    party with the personal data still in it. Injection runs last because it
-    only looks at tool results, which the other two have already cleaned.
-
-    An empty pipeline is a valid answer, not an error: `applies_to` is false
-    for every stage, so callers skip the work entirely.
+    PII runs before moderation so personal data is not sent to the moderation provider.
     """
     settings = config or _configured()
     if not settings.guardrails_enabled:
@@ -59,13 +45,7 @@ def build_guarded_stream(
 
 
 def _configured() -> SupportsGuardrailConfig:
-    """The composed settings, or the mixin's own defaults.
-
-    Both failures mean the same thing here: nobody asked for guardrails. A
-    service may have composed no settings at all, or settings without this
-    mixin, and either way the answer is the defaults rather than a crash on a
-    feature that is off anyway.
-    """
+    """The composed settings, or the mixin's defaults when settings are unconfigured or lack the mixin."""
     try:
         return settings_for(SupportsGuardrailConfig)
     except (MissingSettingsError, RuntimeError):

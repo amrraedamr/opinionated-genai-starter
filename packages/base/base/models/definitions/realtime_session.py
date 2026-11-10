@@ -1,17 +1,10 @@
-"""A model session that stays open, and what travels through it.
-
-Separate from the request/response vocabulary because a realtime session is
-not a call. There is no single moment the model is finished: it emits deltas,
-asks for tools mid-turn, and can be cut off halfway through speaking. Forcing
-that into a prompt-in/result-out shape would misdescribe both.
-"""
+"""A model session that stays open, and what travels through it."""
 
 from enum import StrEnum
 from typing import Final
 
 OPENAI_INPUT_SAMPLE_RATE_HZ: Final = 24_000
 GEMINI_INPUT_SAMPLE_RATE_HZ: Final = 16_000
-"""Input rates differ per provider, so a caller asks the session it opened; neither resamples."""
 
 OPENAI_TRANSCRIPTION_MODEL: Final = "whisper-1"
 """Requested on every OpenAI session; without it user-transcript deltas never arrive."""
@@ -27,25 +20,15 @@ class RealtimeModality(StrEnum):
 
 
 class RealtimeEventType(StrEnum):
-    """What arrived from the model.
-
-    Branch on this rather than on whichever field happens to be populated: a
-    turn can end with no text at all, and an empty delta is not the same event
-    as the end of a turn.
-    """
+    """What arrived from the model."""
 
     TEXT_DELTA = "text_delta"
-    """Part of a written reply. Arrives in fragments, not sentences."""
 
     AUDIO_DELTA = "audio_delta"
     """A chunk of spoken reply, in the session's agreed PCM format."""
 
     TRANSCRIPT_DELTA = "transcript_delta"
-    """What the model heard the user say.
-
-    Distinct from text output: it is the input read back, and showing it as
-    the assistant's words would attribute the user's sentence to the model.
-    """
+    """What the model heard the user say, not the model's own words."""
 
     TOOL_CALL = "tool_call"
     """The model wants a tool run before it continues. Mid-turn, not after."""

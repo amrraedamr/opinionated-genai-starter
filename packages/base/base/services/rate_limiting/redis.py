@@ -59,12 +59,7 @@ local free = math.floor((tolerance - (new_tat - now)) / emission)
 if free < 0 then free = 0 end
 return {1, free, 0}
 """
-"""GCRA in one round trip.
-
-Redis supplies the clock rather than the caller, so replicas with skewed clocks
-still agree about one budget — which is the entire reason for counting here
-instead of in each process.
-"""
+"""GCRA in one round trip, on Redis's clock so replicas with skewed clocks agree."""
 
 
 class RedisRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
