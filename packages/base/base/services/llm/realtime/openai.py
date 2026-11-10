@@ -36,8 +36,8 @@ if TYPE_CHECKING:
         AsyncRealtimeConnectionManager,
     )
     from openai.types.realtime import (
-        RealtimeFunctionToolParam,
         RealtimeServerEvent,
+        RealtimeToolsConfigParam,
         ResponseDoneEvent,
     )
     from openai.types.realtime.realtime_session_create_request_param import (
@@ -104,7 +104,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         _, client = create_openai_clients(
             api_key=self.config.api_key,
             api_host=self.config.api_host,
-            api_type=self.config.api_type,
+            api_type=self._provider,
         )
         self._manager = client.realtime.connect(model=self._session.model)
         self._connection = await self._manager.__aenter__()
@@ -129,7 +129,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
             payload["tools"] = self._tools()
         return payload
 
-    def _tools(self) -> "list[RealtimeFunctionToolParam]":
+    def _tools(self) -> "RealtimeToolsConfigParam":
         """The toolbox in the realtime API's flat function shape."""
         return [
             {
@@ -174,14 +174,13 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
                 yield translated
 
     def _translate(self, event: "RealtimeServerEvent") -> RealtimeOutput | None:
-        kind = getattr(event, "type", None)
-        if kind in (_TEXT_DELTA, _ASSISTANT_TRANSCRIPT_DELTA):
+        if event.type == _TEXT_DELTA or event.type == _ASSISTANT_TRANSCRIPT_DELTA:
             return RealtimeTextDelta(text=event.delta)
-        if kind == _AUDIO_DELTA:
+        if event.type == _AUDIO_DELTA:
             return RealtimeAudioDelta(audio=base64.b64decode(event.delta))
-        if kind == _USER_TRANSCRIPT_DELTA:
+        if event.type == _USER_TRANSCRIPT_DELTA:
             return RealtimeTranscriptDelta(text=event.delta) if event.delta else None
-        if kind == _FUNCTION_CALL_DONE:
+        if event.type == _FUNCTION_CALL_DONE:
             self._awaiting.add(event.call_id)
             return RealtimeToolCall(
                 call=StoredToolCall(
@@ -191,9 +190,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
                     ),
                 )
             )
-        if kind == _RESPONSE_DONE:
+        if event.type == _RESPONSE_DONE:
             return self._turn_end(event)
-        if kind == _ERROR:
+        if event.type == _ERROR:
             if event.error.code == _CANCEL_NOT_ACTIVE:
                 return None
             return RealtimeError(message=event.error.message, recoverable=True)

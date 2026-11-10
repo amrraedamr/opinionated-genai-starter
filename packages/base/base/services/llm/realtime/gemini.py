@@ -37,14 +37,17 @@ try:
         AudioTranscriptionConfig,
         Blob,
         Content,
-        FunctionDeclarationDict,
         FunctionResponse,
         HttpOptions,
         LiveConnectConfig,
+        Modality,
         Part,
         PrebuiltVoiceConfig,
         SpeechConfig,
         VoiceConfig,
+    )
+    from google.genai.types import (
+        Tool as GeminiTool,
     )
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError(
@@ -66,8 +69,8 @@ if TYPE_CHECKING:
 _INPUT_MIME_TYPE: Final = f"audio/pcm;rate={GEMINI_INPUT_SAMPLE_RATE_HZ}"
 
 _MODALITIES: Final = {
-    RealtimeModality.TEXT: "TEXT",
-    RealtimeModality.AUDIO: "AUDIO",
+    RealtimeModality.TEXT: Modality.TEXT,
+    RealtimeModality.AUDIO: Modality.AUDIO,
 }
 
 
@@ -140,19 +143,11 @@ class GeminiLiveSession(AbstractRealtimeSession):
                 )
             )
         if self._toolbox.tools:
-            config.tools = [{"function_declarations": self._declarations()}]
+            config.tools = [
+                GeminiTool.model_validate(tool)
+                for tool in GeminiContentAdapter.to_tools(self._toolbox.tools)
+            ]
         return config
-
-    def _declarations(self) -> "list[FunctionDeclarationDict]":
-        """The toolbox as Gemini function declarations, in the schema subset it accepts."""
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": GeminiContentAdapter.to_schema(tool.json_schema),
-            }
-            for tool in self._toolbox.tools
-        ]
 
     async def asend(self, value: RealtimeInput) -> None:
         """Pass input to the model: text as a complete turn, audio as a stream."""

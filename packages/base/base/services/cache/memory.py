@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 from uuid import UUID
 
 from base.models.definitions.cache import CacheChannels, CacheKeys
+from base.models.view_models import JSONObject
 from base.models.view_models.exceptions.cache import (
     CacheBadRequestError,
 )
@@ -168,7 +169,7 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -188,7 +189,7 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -200,7 +201,7 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         composite = self._get_key(key, namespace)
         with self._lock:
             entry = self._get_entry(self._scored, composite)
@@ -217,7 +218,7 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         return self.get_scored(key, namespace, above)
 
     def clear_scored(

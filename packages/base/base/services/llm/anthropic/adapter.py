@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from base.models.definitions.message import MessageRole
+from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredMessage
 from base.models.view_models.content import ContentPart, ImagePart, TextPart
 from base.models.view_models.prompt import (
@@ -182,7 +183,7 @@ class AnthropicMessageAdapter:
         return decoded
 
     @staticmethod
-    def to_tools(tools: Sequence[Tool[Any]]) -> list[dict[str, Any]]:
+    def to_tools(tools: Sequence[Tool[BaseModel]]) -> list[dict[str, Any]]:
         """Tools as Anthropic wants them: schema under `input_schema`."""
         return [
             {

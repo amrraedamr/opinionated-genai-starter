@@ -29,6 +29,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError("openai", "openai", feature="OpenAIMessageAdapter") from exc
 
 from base.models.definitions.message import MessageRole
+from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredMessage
 from base.models.view_models.content import ContentPart, ImagePart, TextPart
 from base.models.view_models.prompt import (
@@ -289,7 +290,7 @@ class OpenAIMessageAdapter:
 
     @staticmethod
     def to_chat_completions_tools(
-        tools: Sequence[Tool[Any]],
+        tools: Sequence[Tool[BaseModel]],
     ) -> list[dict[str, Any]]:
         """Tools as the Chat Completions API wants them: nested under `function`."""
         return [
@@ -305,7 +306,7 @@ class OpenAIMessageAdapter:
         ]
 
     @staticmethod
-    def to_responses_tools(tools: "Sequence[Tool[Any]]") -> list[dict[str, Any]]:
+    def to_responses_tools(tools: "Sequence[Tool[BaseModel]]") -> list[dict[str, Any]]:
         """The same tools, flattened the way the Responses API wants them."""
         return [
             {

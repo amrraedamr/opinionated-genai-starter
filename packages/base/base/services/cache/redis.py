@@ -6,6 +6,7 @@ from uuid import UUID
 
 from base.clients.redis_client import RedisClient
 from base.models.definitions.cache import CacheChannels, CacheKeys
+from base.models.view_models import JSONObject
 from base.services.cache import AbstractCacheService
 from base.services.common.meta import SingletonABC
 from base.services.error_handling import aretrying, retrying
@@ -157,7 +158,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -175,7 +176,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -194,7 +195,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         items: list[str] = self._redis_client.sync_client.zrangebyscore(  # type: ignore
             self._get_key(key, namespace),
             "-inf" if above is None else f"({above}",
@@ -208,7 +209,7 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         items: list[str] = await self._redis_client.async_client.zrangebyscore(  # type: ignore
             self._get_key(key, namespace),
             "-inf" if above is None else f"({above}",

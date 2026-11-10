@@ -1006,7 +1006,7 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         cache_hint: CacheHint | None,
         prompt: RenderedPrompt | None,
         messages: Sequence[StoredMessage] | None = None,
-        tools: Sequence[Tool[Any]] | None = None,
+        tools: Sequence[Tool[BaseModel]] | None = None,
         schema: type[BaseModel] | None = None,
     ) -> None:
         """Ask for the head to be cached, in the only terms OpenAI offers.
@@ -1030,7 +1030,7 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
     @staticmethod
     def _head_fingerprint(
         prompt: RenderedPrompt | None,
-        tools: Sequence[Tool[Any]] | None,
+        tools: Sequence[Tool[BaseModel]] | None,
         schema: type[BaseModel] | None = None,
         messages: Sequence[StoredMessage] | None = None,
     ) -> str:
@@ -1111,7 +1111,7 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         self,
         prompt: RenderedPrompt | None,
         messages: Sequence[StoredMessage] | None,
-        tools: Sequence[Tool[Any]] | None,
+        tools: Sequence[Tool[BaseModel]] | None,
         stream_iterator: StreamIterator | None,
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,
@@ -1151,7 +1151,7 @@ class OpenAIService(AbstractLLMService, metaclass=KeyedSingletonABC):
         self,
         prompt: RenderedPrompt | None,
         messages: Sequence[StoredMessage] | None,
-        tools: Sequence[Tool[Any]] | None,
+        tools: Sequence[Tool[BaseModel]] | None,
         stream_iterator: StreamIterator | None,
         max_output_tokens: int | None,
         reasoning_effort: ReasoningEffort | None,

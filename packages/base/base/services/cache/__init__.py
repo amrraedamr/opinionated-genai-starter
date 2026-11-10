@@ -4,6 +4,7 @@ from typing import Any, Never
 from uuid import UUID, uuid5
 
 from base.models.definitions.cache import CacheChannels, CacheKeys
+from base.models.view_models import JSONObject
 from base.models.view_models.exceptions.cache import (
     CacheBadRequestError,
     CacheUnexpectedError,
@@ -103,7 +104,7 @@ class AbstractCacheService(ABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -115,7 +116,7 @@ class AbstractCacheService(ABC):
         self,
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
-        value: Any = None,
+        value: JSONObject | None = None,
         score: int = 0,
         ttl_seconds: int = 600,
         max_length: int | None = None,
@@ -128,7 +129,7 @@ class AbstractCacheService(ABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         """Values in ascending score order, only those scored above `above`."""
 
     @abstractmethod
@@ -137,7 +138,7 @@ class AbstractCacheService(ABC):
         key: CacheKeys | str,
         namespace: UUID | str | None = None,
         above: int | None = None,
-    ) -> list[Any]:
+    ) -> list[JSONObject]:
         """Asynchronously returns values in ascending score order."""
 
     @abstractmethod

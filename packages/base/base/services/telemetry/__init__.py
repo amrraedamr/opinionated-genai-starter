@@ -97,8 +97,8 @@ class Telemetry(metaclass=Singleton):
         # Own provider, not the global one, which another library may have claimed
         tracer = self._provider.get_tracer(__name__)
         with tracer.start_as_current_span(name, kind=kind) as span:
-            for key, value in self._ambient().items():
-                span.set_attribute(key, value)
+            for key, known in self._ambient().items():
+                span.set_attribute(key, known)
             for key, value in (attributes or {}).items():
                 if value is not None:
                     span.set_attribute(key, value)
@@ -128,8 +128,8 @@ class Telemetry(metaclass=Singleton):
         # Own provider, not the global one, which another library may have claimed
         tracer = self._provider.get_tracer(__name__)
         with tracer.start_as_current_span(name, context=parent, kind=kind) as span:
-            for key, value in self._ambient().items():
-                span.set_attribute(key, value)
+            for key, known in self._ambient().items():
+                span.set_attribute(key, known)
             for key, value in (attributes or {}).items():
                 if value is not None:
                     span.set_attribute(key, value)

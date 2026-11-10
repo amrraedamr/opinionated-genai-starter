@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from base.models.definitions.message import MessageRole
+from base.models.view_models import BaseModel
 from base.models.view_models.chat_history import StoredMessage
 from base.models.view_models.content import (
     ContentPart,
@@ -227,7 +228,7 @@ class GeminiContentAdapter:
         return decoded if isinstance(decoded, dict) else {}
 
     @classmethod
-    def to_tools(cls, tools: Sequence[Tool[Any]]) -> list[dict[str, Any]]:
+    def to_tools(cls, tools: Sequence[Tool[BaseModel]]) -> list[dict[str, Any]]:
         """Tools as one Gemini tool carrying every declaration.
 
         Gemini takes a list of tools each holding function declarations rather

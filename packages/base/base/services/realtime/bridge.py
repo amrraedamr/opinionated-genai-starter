@@ -108,7 +108,7 @@ class RealtimeBridge:
         audio = frame.payload.get("audio")
         if isinstance(audio, str):
             try:
-                chunk = RealtimeAudioInput(audio=audio)
+                chunk = RealtimeAudioInput.model_validate({"audio": audio})
             except ValidationError:
                 await self._connection.asend(RealtimeEnvelope.error("Malformed audio"))
                 return
