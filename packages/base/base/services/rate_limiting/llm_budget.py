@@ -54,46 +54,28 @@ class TokenBudget:
         return AbstractRateLimiter.compose_key(tenant=TenantContext.get())
 
     async def acheck(self) -> None:
-        """Refuse before the call when nothing is left.
-
-        A zero cost asks without spending, so merely checking cannot itself
-        exhaust the budget. When nothing is left, one more probe asks for a
-        single token purely to learn the wait — it is certain to be refused,
-        so it spends nothing, and a refusal with no retry is no use to a
-        caller.
-        """
+        """Refuse before the call when nothing is left."""
         decision = await self.limiter.aspend(
             self.key, RateLimitPolicy.LLM_TOKENS, cost=0
         )
-        if decision.allowed and decision.remaining > 0:
-            return
-        raise LLMBudgetExhausted(
-            await self.limiter.aspend(self.key, RateLimitPolicy.LLM_TOKENS, cost=1)
-        )
+        if decision.remaining == 0:
+            raise LLMBudgetExhausted(decision)
 
     def check(self) -> None:
         """Refuse before the call when nothing is left."""
         decision = self.limiter.spend(self.key, RateLimitPolicy.LLM_TOKENS, cost=0)
-        if decision.allowed and decision.remaining > 0:
-            return
-        raise LLMBudgetExhausted(
-            self.limiter.spend(self.key, RateLimitPolicy.LLM_TOKENS, cost=1)
-        )
+        if decision.remaining == 0:
+            raise LLMBudgetExhausted(decision)
 
     async def aspend(self, tokens: int) -> None:
-        """Record what the call actually used.
-
-        Never raises. The work is done and the provider has been paid; failing
-        here would lose the accounting and the reply with it. Going over simply
-        means the next caller is refused.
-        """
+        """Record what the call used, even past the limit."""
         if tokens > 0:
-            await self.limiter.aspend(self.key, RateLimitPolicy.LLM_TOKENS, tokens)
+            await self.limiter.acharge(self.key, RateLimitPolicy.LLM_TOKENS, tokens)
 
     def spend(self, tokens: int) -> None:
-        """Record what the call actually used. Never raises."""
+        """Record what the call used, even past the limit."""
         if tokens > 0:
-            self.limiter.spend(self.key, RateLimitPolicy.LLM_TOKENS, tokens)
+            self.limiter.charge(self.key, RateLimitPolicy.LLM_TOKENS, tokens)
 
 
 __all__ = ["LLMBudgetExhausted", "TokenBudget"]

@@ -16,11 +16,13 @@ try:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy.orm import Session
+    from sqlalchemy.schema import DDLElement
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise MissingExtraError(
         "sql", "sqlalchemy", feature="PgVectorSearchService"
     ) from exc
 
+from base.models.definitions.tenancy import RLS_SETTING
 from base.models.definitions.vector_search import (
     VECTOR_UPSERT_BATCH_SIZE,
     DistanceMetric,
@@ -29,6 +31,7 @@ from base.models.view_models.vector_search import VectorRecord, VectorSearchResu
 from base.services.common.meta import SingletonABC
 from base.services.error_handling import aretrying, retrying
 from base.services.error_handling.vector_search.pgvector import PgVectorErrorHandler
+from base.services.sql.rls import DropTenantPolicy, RowLevelSecurity
 from base.services.sql.service import SQLService
 from base.services.vector_search import AbstractVectorSearchService
 
@@ -171,15 +174,21 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
 
     def _create_sql(
         self, collection: str, vector_size: int, distance: str
-    ) -> list[str]:
+    ) -> list[str | DDLElement]:
         table = self._table(collection)
         _, index_ops, _ = self._metric(distance)
-        return [
+        fenced = RowLevelSecurity.enabled()
+        tenant_column = (
+            f", tenant_id TEXT NOT NULL DEFAULT current_setting('{RLS_SETTING}', true)"
+            if fenced
+            else ""
+        )
+        statements: list[str | DDLElement] = [
             "CREATE EXTENSION IF NOT EXISTS vector",
             f"CREATE TABLE IF NOT EXISTS {table} ("
             f"  id TEXT PRIMARY KEY,"
             f"  embedding vector({int(vector_size)}) NOT NULL,"
-            f"  metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb)",
+            f"  metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb{tenant_column})",
             f'CREATE INDEX IF NOT EXISTS "{collection}_embedding_idx" '
             f"ON {table} USING hnsw (embedding {index_ops})",
             f'CREATE INDEX IF NOT EXISTS "{collection}_metadata_idx" '
@@ -187,6 +196,12 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
             f'CREATE INDEX IF NOT EXISTS "{collection}_text_idx" ON {table} '
             f"USING gin (to_tsvector('simple', coalesce(metadata ->> 'text', '')))",
         ]
+        if fenced:
+            statements += [
+                DropTenantPolicy(collection),
+                *RowLevelSecurity.statements(collection),
+            ]
+        return statements
 
     @retrying
     def create_collection(
@@ -199,7 +214,9 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         del kwargs
         with self._session() as session:
             for statement in self._create_sql(collection, vector_size, distance):
-                session.execute(text(statement))
+                session.execute(
+                    text(statement) if isinstance(statement, str) else statement
+                )
         self._metrics[collection] = self._metric_name(distance)
 
     @aretrying
@@ -213,7 +230,9 @@ class PgVectorSearchService(AbstractVectorSearchService, metaclass=SingletonABC)
         del kwargs
         async with self._asession() as session:
             for statement in self._create_sql(collection, vector_size, distance):
-                await session.execute(text(statement))
+                await session.execute(
+                    text(statement) if isinstance(statement, str) else statement
+                )
         self._metrics[collection] = self._metric_name(distance)
 
     @retrying

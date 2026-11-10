@@ -25,6 +25,7 @@ from base.services.broker import AbstractBroker
 from base.services.logging.console import ConsoleLoggerService
 from base.services.messaging.protocol import OutboxRow
 from base.services.sql.service import SQLService
+from base.tools.tenancy import TenantContext
 from base.tools.tracing import OptionalTelemetry
 from contracts.events import Event
 
@@ -156,23 +157,21 @@ class OutboxDispatcher:
 
 
 def add_event(session: AsyncSession, model: type[OutboxRow], event: Event) -> None:
-    """Stage an event in the caller's transaction, so it commits with the write.
-
-    The traceparent is captured here rather than in `Event.of`, for two
-    reasons. This is the moment the event is genuinely caused, inside whatever
-    span the producer is in; and `contracts` cannot reach telemetry, because a
-    package describing the wire format must not depend on how a service is
-    observed.
-    """
-    stamped = event
+    """Stage an event in the caller's transaction, stamped with trace and tenant."""
+    updates: dict[str, str] = {}
     if event.meta.traceparent is None:
         traceparent = OptionalTelemetry.current_traceparent()
         if traceparent is not None:
-            stamped = event.model_copy(
-                update={
-                    "meta": event.meta.model_copy(update={"traceparent": traceparent})
-                }
-            )
+            updates["traceparent"] = traceparent
+    if event.meta.tenant_id is None:
+        tenant = TenantContext.get()
+        if tenant is not None:
+            updates["tenant_id"] = str(tenant)
+    stamped = (
+        event.model_copy(update={"meta": event.meta.model_copy(update=updates)})
+        if updates
+        else event
+    )
     session.add(
         model(
             id=stamped.meta.event_id,

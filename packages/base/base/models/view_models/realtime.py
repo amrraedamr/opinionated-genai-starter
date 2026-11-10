@@ -57,6 +57,17 @@ class RealtimeEnvelope(BaseModel):
         return cls(type=RealtimeMessageType.PONG)
 
 
+class InboxEntry(BaseModel):
+    """One durable message, at its place in a user's inbox."""
+
+    sequence: int
+    envelope: RealtimeEnvelope
+
+    def delivered(self) -> RealtimeEnvelope:
+        """The envelope as a client receives it, carrying its sequence."""
+        return self.envelope.model_copy(update={"seq": self.sequence})
+
+
 class ConnectionTicket(BaseModel):
     """A short-lived, single-use permission to open one socket.
 

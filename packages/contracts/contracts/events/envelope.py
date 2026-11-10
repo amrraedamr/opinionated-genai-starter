@@ -14,11 +14,10 @@ class EventMeta(BaseModel):
     producer: str
     correlation_id: UUID | None = None
     traceparent: str | None = None
-    """W3C trace context, so a consumer's work joins the trace that caused it.
+    """W3C trace context; absent when the producer was not tracing."""
 
-    Absent when the producer was not tracing. A consumer treats that as the
-    start of a new trace rather than as an error.
-    """
+    tenant_id: str | None = None
+    """The tenant the producer acted for; the consumer acts for it too."""
 
     schema_version: int = CURRENT_EVENT_VERSION
 

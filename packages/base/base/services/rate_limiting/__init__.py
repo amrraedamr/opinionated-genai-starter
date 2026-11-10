@@ -86,6 +86,30 @@ class AbstractRateLimiter(ABC):
         return await self._aspend(key, policy, cost)
 
     @abstractmethod
+    def _charge(self, key: str, policy: RateLimitPolicy, cost: int) -> RateDecision: ...
+
+    @final
+    def charge(self, key: str, policy: RateLimitPolicy, cost: int) -> RateDecision:
+        """Record `cost` units already spent, even past the limit."""
+        if cost < 0:
+            raise ValueError("cost cannot be negative")
+        return self._charge(key, policy, cost)
+
+    @abstractmethod
+    async def _acharge(
+        self, key: str, policy: RateLimitPolicy, cost: int
+    ) -> RateDecision: ...
+
+    @final
+    async def acharge(
+        self, key: str, policy: RateLimitPolicy, cost: int
+    ) -> RateDecision:
+        """Record `cost` units already spent, even past the limit, asynchronously."""
+        if cost < 0:
+            raise ValueError("cost cannot be negative")
+        return await self._acharge(key, policy, cost)
+
+    @abstractmethod
     def _reset(self, key: str, policy: RateLimitPolicy) -> None: ...
 
     @final

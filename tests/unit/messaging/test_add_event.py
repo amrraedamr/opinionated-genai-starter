@@ -93,3 +93,35 @@ def test_a_staged_event_round_trips_through_the_stored_payload() -> None:
     restored = Event.model_validate(session.added[0].event)
     assert restored.payload == event.payload
     assert isinstance(restored.meta.event_id, UUID)
+
+
+def test_the_tenant_in_effect_is_stamped_on_the_event() -> None:
+    from base.models.definitions.tenancy import TenantId
+    from base.tools.tenancy import TenantContext
+
+    session = RecordingSession()
+    with TenantContext.scope(TenantId("acme")):
+        add_event(session, Row, Event.of("t", {}, producer="p"))  # type: ignore[arg-type]
+
+    assert session.added[0].event["meta"]["tenant_id"] == "acme"
+
+
+def test_an_event_produced_without_a_tenant_carries_none() -> None:
+    session = RecordingSession()
+    add_event(session, Row, Event.of("t", {}, producer="p"))  # type: ignore[arg-type]
+    assert session.added[0].event["meta"]["tenant_id"] is None
+
+
+def test_a_tenant_already_on_the_event_is_kept() -> None:
+    from base.models.definitions.tenancy import TenantId
+    from base.tools.tenancy import TenantContext
+
+    session = RecordingSession()
+    event = Event.of("t", {}, producer="p")
+    event = event.model_copy(
+        update={"meta": event.meta.model_copy(update={"tenant_id": "origin"})}
+    )
+    with TenantContext.scope(TenantId("other")):
+        add_event(session, Row, event)  # type: ignore[arg-type]
+
+    assert session.added[0].event["meta"]["tenant_id"] == "origin"

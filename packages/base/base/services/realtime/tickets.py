@@ -81,21 +81,12 @@ class TicketService(metaclass=Singleton):
         )
 
     async def aredeem(self, ticket: str | None) -> ConnectionTicket | None:
-        """Spend a ticket, or refuse. `None` means do not open the socket.
-
-        The record is removed before it is read back, so two sockets racing on
-        the same ticket cannot both win: whichever delete returns the value
-        holds it, and the other finds nothing.
-        """
+        """Spend a ticket atomically, so two racing sockets cannot both open."""
         if not ticket:
             return None
-        stored = await self.cache.aget(ticket, namespace=TICKET_NAMESPACE)
+        stored = await self.cache.atake(ticket, namespace=TICKET_NAMESPACE)
         if stored is None:
             return None
-        await self.cache.aremove(ticket, namespace=TICKET_NAMESPACE)
-
-        # `model_validate_json`, not `deserialize`: the latter skips validation,
-        # so `expires_at` would come back a string and never compare as a time.
         record = ConnectionTicket.model_validate_json(stored)
         return None if record.expired else record
 

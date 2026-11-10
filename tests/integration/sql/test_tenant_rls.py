@@ -129,12 +129,8 @@ async def test_no_tenant_sees_nothing(notes: SQLService) -> None:
     assert await ids_visible(notes, None) == []
 
 
-async def test_the_pgvector_path_is_fenced_too(notes: SQLService) -> None:
-    """`PgVectorService` opens sessions through `_aget_session`, not a transaction.
-
-    That is the path with no tenant predicate anywhere in it, and the reason
-    this feature exists, so it is pinned separately.
-    """
+async def test_a_bare_session_is_fenced_too(notes: SQLService) -> None:
+    """`_aget_session` opens a session outside `atransaction`; it is fenced too."""
     with TenantContext.scope(ACME):
         async with notes._aget_session() as session:
             await session.execute(text(f"SET LOCAL ROLE {ROLE}"))
@@ -219,3 +215,68 @@ async def test_disabled_changes_nothing(make_settings: MakeSettings) -> None:
             connection = await session.connection()
             await connection.run_sync(Base.metadata.drop_all)
         await service.adispose()
+
+
+COLLECTION = "rls_vectors"
+
+
+@pytest.fixture
+async def vectors(make_settings: MakeSettings) -> AsyncIterator[Any]:
+    """A pgvector collection holding one vector per tenant, written by each."""
+    from base.models.view_models.vector_search import VectorRecord
+    from base.services.common.meta import purge_all
+    from base.services.vector_search.pgvector import PgVectorSearchService
+
+    purge_all()
+    configure(make_settings, rls=True)
+    service = PgVectorSearchService()
+    await service.adelete_collection(COLLECTION)
+    await service.acreate_collection(COLLECTION, vector_size=3)
+    sql = SQLService()
+    async with sql.atransaction() as session:
+        await session.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {ROLE} NOLOGIN; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
+        await session.execute(text(f"GRANT ALL ON {COLLECTION} TO {ROLE}"))
+    for tenant, record_id in ((ACME, "acme-doc"), (GLOBEX, "globex-doc")):
+        with TenantContext.scope(tenant):
+            await service.aupsert(
+                COLLECTION, [VectorRecord(id=record_id, vector=[1.0, 0.0, 0.0])]
+            )
+    try:
+        yield service
+    finally:
+        await service.adelete_collection(COLLECTION)
+        purge_all()
+
+
+async def visible_vectors(service: Any, tenant: TenantId | None) -> list[str]:
+    """Ids a similarity search returns, as an unprivileged role, for `tenant`."""
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    def demote(session: Any, transaction: Any, connection: Any) -> None:
+        connection.exec_driver_sql(f"SET LOCAL ROLE {ROLE}")
+
+    with TenantContext.scope(tenant):
+        event.listen(Session, "after_begin", demote)
+        try:
+            hits = await service.asearch(COLLECTION, [1.0, 0.0, 0.0], limit=10)
+        finally:
+            event.remove(Session, "after_begin", demote)
+    return sorted(hit.id for hit in hits)
+
+
+async def test_a_similarity_search_sees_only_the_current_tenant(vectors: Any) -> None:
+    assert await visible_vectors(vectors, ACME) == ["acme-doc"]
+
+
+async def test_the_other_tenant_searches_its_own_vectors(vectors: Any) -> None:
+    assert await visible_vectors(vectors, GLOBEX) == ["globex-doc"]
+
+
+async def test_a_search_with_no_tenant_finds_nothing(vectors: Any) -> None:
+    assert await visible_vectors(vectors, None) == []

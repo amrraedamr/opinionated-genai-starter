@@ -42,6 +42,7 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         self._store: dict[str, _TTLEntry] = {}
         self._hashsets: dict[str, _TTLEntry] = {}
         self._lists: dict[str, _TTLEntry] = {}
+        self._scored: dict[str, _TTLEntry] = {}
         self._lock = threading.Lock()
         self._subscribers: dict[str, list[asyncio.Queue[str]]] = defaultdict(list)
 
@@ -113,6 +114,20 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
     ) -> None:
         self.set(key, namespace, value, ttl_seconds)
 
+    def take(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> str | None:
+        composite = self._get_key(key, namespace)
+        with self._lock:
+            entry = self._get_entry(self._store, composite)
+            self._store.pop(composite, None)
+        return None if entry is None else json.loads(entry.value, cls=ExpansiveDecoder)
+
+    async def atake(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> str | None:
+        return self.take(key, namespace)
+
     def remove(self, key: CacheKeys | str, namespace: UUID | str | None = None) -> None:
         composite = self._get_key(key, namespace)
         with self._lock:
@@ -122,6 +137,100 @@ class InMemoryCacheService(AbstractCacheService, metaclass=SingletonABC):
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
         self.remove(key, namespace)
+
+    # Counters
+
+    def increment(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> int:
+        self._check_ttl(ttl_seconds)
+        composite = self._get_key(key, namespace)
+        with self._lock:
+            entry = self._get_entry(self._store, composite)
+            value = (json.loads(entry.value) if entry else 0) + 1
+            self._store[composite] = _TTLEntry(self._encode(value), ttl_seconds)
+        return value
+
+    async def aincrement(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> int:
+        return self.increment(key, namespace, ttl_seconds)
+
+    # Sorted Sets
+
+    def add_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        value: Any = None,
+        score: int = 0,
+        ttl_seconds: int = 600,
+        max_length: int | None = None,
+    ) -> None:
+        composite = self._get_key(key, namespace)
+        encoded = self._encode(value)
+        with self._lock:
+            entry = self._get_entry(self._scored, composite)
+            members: dict[str, int] = dict(entry.value) if entry else {}
+            members[encoded] = score
+            if max_length is not None and len(members) > max_length:
+                kept = sorted(members.items(), key=lambda pair: pair[1])[-max_length:]
+                members = dict(kept)
+            self._scored[composite] = _TTLEntry(members, ttl_seconds)
+
+    async def aadd_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        value: Any = None,
+        score: int = 0,
+        ttl_seconds: int = 600,
+        max_length: int | None = None,
+    ) -> None:
+        self.add_scored(key, namespace, value, score, ttl_seconds, max_length)
+
+    def get_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        above: int | None = None,
+    ) -> list[Any]:
+        composite = self._get_key(key, namespace)
+        with self._lock:
+            entry = self._get_entry(self._scored, composite)
+            members: dict[str, int] = dict(entry.value) if entry else {}
+        ordered = sorted(members.items(), key=lambda pair: pair[1])
+        return [
+            json.loads(encoded, cls=ExpansiveDecoder)
+            for encoded, score in ordered
+            if above is None or score > above
+        ]
+
+    async def aget_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        above: int | None = None,
+    ) -> list[Any]:
+        return self.get_scored(key, namespace, above)
+
+    def clear_scored(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> None:
+        composite = self._get_key(key, namespace)
+        with self._lock:
+            self._scored.pop(composite, None)
+
+    async def aclear_scored(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> None:
+        self.clear_scored(key, namespace)
 
     # Hashset Operations
 

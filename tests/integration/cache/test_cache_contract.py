@@ -339,3 +339,115 @@ async def test_locks_in_two_namespaces_are_independent(
 
 def test_the_service_names_itself(cache: AbstractCacheService) -> None:
     assert cache.get_service_name()
+
+
+async def test_take_returns_the_value_and_removes_it(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    await cache.aset("taken", namespace, value="ticket")
+    assert await cache.atake("taken", namespace) == "ticket"
+    assert await cache.aget("taken", namespace) is None
+
+
+def test_take_returns_the_value_and_removes_it_synchronously(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    cache.set("taken", namespace, value="ticket")
+    assert cache.take("taken", namespace) == "ticket"
+    assert cache.get("taken", namespace) is None
+
+
+async def test_take_of_a_missing_key_is_none(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    assert await cache.atake("absent", namespace) is None
+
+
+async def test_concurrent_takes_hand_the_value_to_exactly_one_caller(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    import asyncio
+
+    for _ in range(20):
+        await cache.aset("contended", namespace, value="ticket")
+        results = await asyncio.gather(
+            *(cache.atake("contended", namespace) for _ in range(8))
+        )
+        assert sum(r is not None for r in results) == 1
+
+
+async def test_increment_counts_from_one(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    assert await cache.aincrement("counter", namespace) == 1
+    assert await cache.aincrement("counter", namespace) == 2
+
+
+def test_increment_counts_from_one_synchronously(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    assert cache.increment("counter", namespace) == 1
+    assert cache.increment("counter", namespace) == 2
+
+
+async def test_an_incremented_counter_reads_back_as_a_number(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    await cache.aincrement("counter", namespace)
+    await cache.aincrement("counter", namespace)
+    assert await cache.aget("counter", namespace, value_type=int) == 2
+
+
+async def test_concurrent_increments_never_return_the_same_value(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    import asyncio
+
+    values = await asyncio.gather(
+        *(cache.aincrement("contended-counter", namespace) for _ in range(50))
+    )
+    assert sorted(values) == list(range(1, 51))
+
+
+async def test_scored_values_come_back_in_score_order(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    for score in (3, 1, 2):
+        await cache.aadd_scored("scored", namespace, value=f"v{score}", score=score)
+    assert await cache.aget_scored("scored", namespace) == ["v1", "v2", "v3"]
+
+
+async def test_only_values_scored_above_the_cursor_are_returned(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    for score in (1, 2, 3):
+        await cache.aadd_scored("scored", namespace, value=f"v{score}", score=score)
+    assert await cache.aget_scored("scored", namespace, above=1) == ["v2", "v3"]
+
+
+async def test_a_cap_keeps_the_highest_scores_whatever_order_they_arrived(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    """The case a capped list got wrong: a late low score must not displace a high one."""
+    for score in (1, 2, 4, 5, 3):
+        await cache.aadd_scored(
+            "capped", namespace, value=f"v{score}", score=score, max_length=3
+        )
+    assert await cache.aget_scored("capped", namespace) == ["v3", "v4", "v5"]
+
+
+def test_scored_values_round_trip_synchronously(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    cache.add_scored("scored", namespace, value={"a": 1}, score=1)
+    assert cache.get_scored("scored", namespace) == [{"a": 1}]
+    cache.clear_scored("scored", namespace)
+    assert cache.get_scored("scored", namespace) == []
+
+
+async def test_a_cleared_scored_set_is_empty(
+    cache: AbstractCacheService, namespace: UUID
+) -> None:
+    await cache.aadd_scored("scored", namespace, value="v", score=1)
+    await cache.aclear_scored("scored", namespace)
+    assert await cache.aget_scored("scored", namespace) == []

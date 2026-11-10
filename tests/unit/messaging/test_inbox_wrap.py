@@ -171,3 +171,42 @@ def test_the_states_an_event_can_be_in() -> None:
         "processed",
         "failed",
     ]
+
+
+async def test_the_handler_runs_for_the_tenant_the_event_carries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from base.tools.tenancy import TenantContext
+
+    processor, _ = build(monkeypatch)
+    seen: list[object] = []
+
+    async def handler(incoming: Event) -> None:
+        seen.append(TenantContext.get())
+
+    tenanted = event()
+    tenanted = tenanted.model_copy(
+        update={"meta": tenanted.meta.model_copy(update={"tenant_id": "acme"})}
+    )
+    await processor.wrap(handler)(tenanted)
+
+    assert seen == ["acme"]
+
+
+async def test_the_tenant_does_not_outlive_the_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from base.tools.tenancy import TenantContext
+
+    processor, _ = build(monkeypatch)
+
+    async def handler(incoming: Event) -> None:
+        return None
+
+    tenanted = event()
+    tenanted = tenanted.model_copy(
+        update={"meta": tenanted.meta.model_copy(update={"tenant_id": "acme"})}
+    )
+    await processor.wrap(handler)(tenanted)
+
+    assert TenantContext.get() is None
