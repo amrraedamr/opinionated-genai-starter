@@ -37,6 +37,7 @@ from base.models.view_models.realtime_session import (
     RealtimeTurnEnd,
 )
 from base.services.llm.realtime.openai import OpenAIRealtimeSession
+from base.services.tool_calling import Tool, Toolbox
 
 
 class FakeConnection:
@@ -417,3 +418,82 @@ def test_a_plain_openai_session_resolves_openai_settings_not_azure() -> None:
         ProviderType.OPENAI, RealtimeSessionConfig(model="gpt-realtime")
     )
     assert built._provider == ProviderType.OPENAI  # type: ignore[attr-defined]
+
+
+def call_done(call_id: str) -> ResponseFunctionCallArgumentsDoneEvent:
+    return ResponseFunctionCallArgumentsDoneEvent(
+        type="response.function_call_arguments.done",
+        arguments="{}",
+        call_id=call_id,
+        event_id="e",
+        item_id="i",
+        name="lookup",
+        output_index=0,
+        response_id="r",
+    )
+
+
+async def test_parallel_tool_calls_ask_for_one_reply_once_all_are_answered() -> None:
+    """A reply per result starts several overlapping turns; the API rejects all but one."""
+    live = session([call_done("a"), call_done("b")])
+    [_ async for _ in live.areceive()]
+
+    await live.asend_tool_result("a", "1")
+    assert fake(live).types() == ["conversation.item.create"]
+    await live.asend_tool_result("b", "2")
+    assert fake(live).types() == [
+        "conversation.item.create",
+        "conversation.item.create",
+        "response.create",
+    ]
+
+
+def lookup_toolbox() -> Toolbox:
+    async def handler(_: object) -> str:
+        return "ok"
+
+    return Toolbox(
+        Tool.from_json_schema(
+            name="lookup",
+            description="Look something up.",
+            schema={"type": "object", "properties": {"q": {"type": "string"}}},
+            handler=handler,
+        )
+    )
+
+
+def test_the_toolbox_is_offered_in_the_realtime_shape() -> None:
+    live = OpenAIRealtimeSession(
+        RealtimeSessionConfig(model="gpt-realtime"), toolbox=lookup_toolbox()
+    )
+    [tool] = live._session_payload()["tools"]
+    assert tool == {
+        "type": "function",
+        "name": "lookup",
+        "description": "Look something up.",
+        "parameters": {"type": "object", "properties": {"q": {"type": "string"}}},
+    }
+
+
+async def test_cached_input_tokens_are_reported() -> None:
+    """Billed at a discount; dropping them overcharges every cached turn."""
+    event = _done(status="completed")
+    event = ResponseDoneEvent.model_validate(
+        {
+            "type": "response.done",
+            "event_id": "e",
+            "response": {
+                "id": "r",
+                "object": "realtime.response",
+                "status": "completed",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 5,
+                    "total_tokens": 105,
+                    "input_token_details": {"cached_tokens": 80},
+                },
+            },
+        }
+    )
+    [out] = await translate([event])
+    assert out.usage.cached_input_tokens == 80  # type: ignore[union-attr]

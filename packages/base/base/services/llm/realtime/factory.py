@@ -6,8 +6,6 @@ currently does not. Selecting by the same enum would let a caller ask for a
 session no amount of configuration can produce.
 """
 
-from typing import TYPE_CHECKING
-
 from base.models.definitions.model import ProviderType
 from base.models.definitions.realtime_session import RealtimeModality
 from base.models.view_models.model import ModelConfigurations
@@ -15,9 +13,7 @@ from base.models.view_models.realtime_session import RealtimeSessionConfig
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsRealtimeConfig
 from base.services.llm.realtime import AbstractRealtimeSession
-
-if TYPE_CHECKING:
-    from base.models.view_models.realtime_session import ToolSchema
+from base.services.tool_calling import Toolbox
 
 REALTIME_PROVIDERS = (
     ProviderType.OPENAI,
@@ -36,7 +32,7 @@ def build_realtime_session(
     provider: ProviderType | None = None,
     session: RealtimeSessionConfig | None = None,
     config: ModelConfigurations | None = None,
-    tool_schemas: "list[ToolSchema] | None" = None,
+    toolbox: Toolbox | None = None,
 ) -> AbstractRealtimeSession:
     """Construct the session this service is configured for.
 
@@ -60,11 +56,11 @@ def build_realtime_session(
         case ProviderType.OPENAI | ProviderType.AZURE_OPENAI:
             from base.services.llm.realtime.openai import OpenAIRealtimeSession
 
-            return OpenAIRealtimeSession(session, config, tool_schemas, provider)
+            return OpenAIRealtimeSession(session, config, toolbox, provider)
         case ProviderType.GEMINI:
             from base.services.llm.realtime.gemini import GeminiLiveSession
 
-            return GeminiLiveSession(session, config, tool_schemas)
+            return GeminiLiveSession(session, config, toolbox)
         case _:
             raise ValueError(
                 f"{provider.value!r} has no realtime API. "

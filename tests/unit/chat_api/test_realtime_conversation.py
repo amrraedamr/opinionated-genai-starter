@@ -36,6 +36,7 @@ from base.services.configuration.mixins import (
 )
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.realtime import ConnectionManager
+from base.services.tool_calling import Toolbox
 from chat_api import routers
 from chat_api.lifespans import realtime_lifespan
 from chat_api.routers import realtime as realtime_router
@@ -126,7 +127,8 @@ def sessions(monkeypatch: pytest.MonkeyPatch) -> list[ScriptedSession]:
     """Every provider session the route opens, in order."""
     opened: list[ScriptedSession] = []
 
-    def build() -> ScriptedSession:
+    def build(toolbox: Toolbox | None = None) -> ScriptedSession:
+        del toolbox
         opened.append(ScriptedSession())
         return opened[-1]
 

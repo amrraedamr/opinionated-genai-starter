@@ -23,6 +23,7 @@ The subprotocol header is the one field a browser will send that nobody logs.
 MAX_MESSAGE_BYTES: Final = 65_536
 HEARTBEAT_SECONDS: Final = 20.0
 HEARTBEAT_TIMEOUT_SECONDS: Final = 60.0
+BUDGET_EXHAUSTED_REASON: Final = "Token budget exhausted; try again shortly."
 """Three missed heartbeats. A socket whose peer vanished without a close frame
 looks identical to an idle one until something asks."""
 

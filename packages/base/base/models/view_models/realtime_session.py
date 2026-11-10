@@ -47,10 +47,6 @@ class RealtimeSessionConfig(BaseModel):
     voice: str | None = None
     """Named per provider. Meaningless without `AUDIO` among the modalities."""
 
-    tool_names: list[str] = []
-    """Resolved against `Toolbox`, so a session cannot reach a tool the
-    service did not register."""
-
 
 class RealtimeTextInput(BaseModel):
     """Something the user typed."""
@@ -141,16 +137,6 @@ constructed holding audio.
 """
 
 
-ToolSchema = dict[str, object]
-"""One function a session may call, as JSON Schema.
-
-Not `dict[str, Any]`: the values really are arbitrary JSON, but `object`
-forces a reader to narrow before using one, where `Any` would let a typo
-through silently. Each adapter restates it in its provider's own spelling,
-which is where the shape is actually checked.
-"""
-
-
 __all__ = [
     "AudioBytes",
     "RealtimeAudioDelta",
@@ -164,5 +150,4 @@ __all__ = [
     "RealtimeToolCall",
     "RealtimeTranscriptDelta",
     "RealtimeTurnEnd",
-    "ToolSchema",
 ]

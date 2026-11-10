@@ -38,6 +38,7 @@ from base.models.view_models.realtime_session import (
 from base.models.view_models.usage import ProviderUsage
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.logging.console import ConsoleLoggerService
+from base.services.tool_calling import Toolbox
 from base.tools.openai_clients import create_openai_clients
 
 if TYPE_CHECKING:
@@ -92,13 +93,14 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         self,
         session: RealtimeSessionConfig,
         config: ModelConfigurations | None = None,
-        tool_schemas: "list[RealtimeFunctionToolParam] | None" = None,
+        toolbox: Toolbox | None = None,
         provider: ProviderType = ProviderType.OPENAI,
     ) -> None:
         self._session = session
         self._config = config
         self._provider = provider
-        self._tool_schemas = tool_schemas or []
+        self._toolbox = toolbox if toolbox is not None else Toolbox()
+        self._awaiting: set[str] = set()
         self._logger = ConsoleLoggerService()
         self._manager: "AsyncRealtimeConnectionManager | None" = None
         self._connection: AsyncRealtimeConnection | None = None
@@ -145,9 +147,21 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
             payload["instructions"] = self._session.instructions
         if self._session.voice and RealtimeModality.AUDIO in self._session.modalities:
             payload["audio"]["output"] = {"voice": self._session.voice}
-        if self._tool_schemas:
-            payload["tools"] = self._tool_schemas
+        if self._toolbox.tools:
+            payload["tools"] = self._tools()
         return payload
+
+    def _tools(self) -> "list[RealtimeFunctionToolParam]":
+        """The toolbox in the realtime API's flat function shape."""
+        return [
+            {
+                "type": "function",
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.json_schema,
+            }
+            for tool in self._toolbox.tools
+        ]
 
     async def asend(self, value: RealtimeInput) -> None:
         """Pass input to the model.
@@ -201,6 +215,7 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
         if kind == USER_TRANSCRIPT_DELTA:
             return RealtimeTranscriptDelta(text=event.delta) if event.delta else None
         if kind == FUNCTION_CALL_DONE:
+            self._awaiting.add(event.call_id)
             return RealtimeToolCall(
                 call=StoredToolCall(
                     id=event.call_id,
@@ -226,17 +241,18 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
             usage=ProviderUsage(
                 input_tokens=usage.input_tokens or 0,
                 output_tokens=usage.output_tokens or 0,
+                cached_input_tokens=(
+                    usage.input_token_details.cached_tokens or 0
+                    if usage.input_token_details
+                    else 0
+                ),
             )
             if usage
             else None,
         )
 
     async def asend_tool_result(self, call_id: str, result: str) -> None:
-        """Answer a tool and let the model carry on.
-
-        The result is submitted and a response asked for, because the model
-        stopped when it asked; without the second message it waits forever.
-        """
+        """Answer a tool; once every call of the turn is answered, ask the model to carry on."""
         connection = self._require_connection()
         await connection.send(
             {
@@ -248,7 +264,9 @@ class OpenAIRealtimeSession(AbstractRealtimeSession):
                 },
             }
         )
-        await connection.send({"type": "response.create"})
+        self._awaiting.discard(call_id)
+        if not self._awaiting:
+            await connection.send({"type": "response.create"})
 
     async def ainterrupt(self) -> None:
         """Cancel the turn in progress because the user started talking."""
