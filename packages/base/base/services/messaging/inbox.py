@@ -21,8 +21,10 @@ from base.models.definitions.telemetry import (
     MESSAGING_MESSAGE_ID,
     MESSAGING_OPERATION,
 )
+from base.models.definitions.tenancy import TenantId
 from base.services.messaging.protocol import InboxRow
 from base.services.sql.service import SQLService
+from base.tools.tenancy import TenantContext
 from base.tools.tracing import OptionalTelemetry
 from contracts.events import Event
 
@@ -56,13 +58,18 @@ class InboxProcessor:
                 if not await self._aclaim(event):
                     return
                 try:
-                    await handler(event)
+                    with TenantContext.scope(self._tenant_of(event)):
+                        await handler(event)
                 except Exception as exc:
                     await self._afinish(event, InboxState.FAILED, exc)
                     raise
                 await self._afinish(event, InboxState.PROCESSED)
 
         return process
+
+    @staticmethod
+    def _tenant_of(event: Event) -> TenantId | None:
+        return TenantId(event.meta.tenant_id) if event.meta.tenant_id else None
 
     async def _aclaim(self, event: Event) -> bool:
         """Whether this process should run the handler for this event."""

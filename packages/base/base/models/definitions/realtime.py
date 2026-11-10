@@ -37,19 +37,12 @@ PRESENCE_TTL_SECONDS: Final = 90
 and short enough that a replica killed without warning stops claiming them."""
 
 REALTIME_INBOX_NAMESPACE: Final = "realtime:inbox"
-REALTIME_INBOX_LOCK_NAMESPACE: Final = "realtime:inbox:lock"
-"""Separate from the inbox itself. Redis has one keyspace, so a lock sharing a
-key with the list it guards is a `SET` against a LIST, which it refuses."""
-
+REALTIME_INBOX_SEQUENCE_NAMESPACE: Final = "realtime:inbox:seq"
 REALTIME_CURSOR_NAMESPACE: Final = "realtime:cursor"
 
 INBOX_RETENTION_SECONDS: Final = 86_400
-"""A day. Long enough for a phone that was off overnight, short enough that an
-inbox nobody ever reconnects to does not grow forever."""
-
-INBOX_LOCK_TTL_SECONDS: Final = 5
-"""Only held across one append. If a replica dies mid-append, the next writer
-waits this long rather than until someone notices."""
+INBOX_MAX_ENTRIES: Final = 1_000
+"""Oldest entries are dropped past this, so an active inbox stays bounded."""
 
 
 class ChannelDelivery(StrEnum):

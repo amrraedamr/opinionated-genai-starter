@@ -173,20 +173,6 @@ async def test_clearing_an_inbox_leaves_nothing_to_catch_up_on(
     assert await inbox.asince(user, after_seq=0) == []
 
 
-async def test_the_latest_sequence_of_an_empty_inbox_is_zero(
-    inbox: DurableInbox, user: str
-) -> None:
-    assert await inbox.alatest_seq(user) == 0
-
-
-async def test_the_latest_sequence_tracks_the_last_message(
-    inbox: DurableInbox, user: str
-) -> None:
-    for text in ("one", "two", "three"):
-        await inbox.aappend(user, message(text))
-    assert await inbox.alatest_seq(user) == 3
-
-
 async def test_an_ephemeral_channel_is_not_a_delivery_promise() -> None:
     """Named so the two are not interchangeable at a call site."""
     assert ChannelDelivery.EPHEMERAL != ChannelDelivery.DURABLE
@@ -218,3 +204,39 @@ async def test_a_cleared_inbox_resyncs_rather_than_replays_from_a_stale_cursor(
     assert [m.payload["text"] for m in await inbox.asince(user, after_seq=3)] == [
         "new epoch"
     ]
+
+
+async def test_an_active_inbox_keeps_only_the_newest_entries(
+    inbox: DurableInbox, user: str
+) -> None:
+    from base.models.definitions.realtime import INBOX_MAX_ENTRIES
+
+    for n in range(INBOX_MAX_ENTRIES + 5):
+        await inbox.aappend(user, message(str(n)))
+
+    held = await inbox.asince(user, after_seq=0)
+
+    assert len(held) == INBOX_MAX_ENTRIES
+    assert held[0].seq == 6
+
+
+async def test_concurrent_writers_leave_the_inbox_in_sequence_order(
+    inbox: DurableInbox, user: str
+) -> None:
+    await asyncio.gather(*(inbox.aappend(user, message(str(n))) for n in range(20)))
+
+    held = await inbox.asince(user, after_seq=0)
+
+    assert [m.seq for m in held] == list(range(1, 21))
+
+
+async def test_clearing_an_inbox_restarts_its_numbering(
+    inbox: DurableInbox, user: str
+) -> None:
+    for text in ("one", "two"):
+        await inbox.aappend(user, message(text))
+    await inbox.aclear(user)
+
+    first = await inbox.aappend(user, message("fresh"))
+
+    assert first.seq == 1

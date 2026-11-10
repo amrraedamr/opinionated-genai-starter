@@ -140,8 +140,16 @@ def test_a_dumped_event_carries_the_fields_a_consumer_reads() -> None:
         "producer",
         "correlation_id",
         "traceparent",
+        "tenant_id",
         "schema_version",
     }
+
+
+def test_an_event_from_a_producer_without_tenancy_still_parses() -> None:
+    """A field added to the envelope must not break consumers of older events."""
+    dumped = json.loads(Event.of("t", {}, producer="p").model_dump_json())
+    del dumped["meta"]["tenant_id"]
+    assert Event.model_validate(dumped).meta.tenant_id is None
 
 
 def test_an_event_from_a_future_version_is_refused_on_validation() -> None:

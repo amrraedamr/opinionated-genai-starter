@@ -55,6 +55,18 @@ class AbstractCacheService(ABC):
         """Asynchronously stores data in the cache using key and namespace (optional)."""
 
     @abstractmethod
+    def take(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> str | None:
+        """Atomically reads and removes a value, so only one caller can have it."""
+
+    @abstractmethod
+    async def atake(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> str | None:
+        """Asynchronously, atomically reads and removes a value."""
+
+    @abstractmethod
     def remove(self, key: CacheKeys | str, namespace: UUID | str | None = None) -> None:
         """Removes data from the cache using key and namespace (optional)."""
 
@@ -63,6 +75,82 @@ class AbstractCacheService(ABC):
         self, key: CacheKeys | str, namespace: UUID | str | None = None
     ) -> None:
         """Asynchronously removes data from the cache using key and namespace (optional)."""
+
+    # Counters
+
+    @abstractmethod
+    def increment(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> int:
+        """Atomically adds one to a counter and returns the new value."""
+
+    @abstractmethod
+    async def aincrement(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> int:
+        """Asynchronously, atomically adds one to a counter and returns it."""
+
+    # Sorted Sets
+
+    @abstractmethod
+    def add_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        value: Any = None,
+        score: int = 0,
+        ttl_seconds: int = 600,
+        max_length: int | None = None,
+    ) -> None:
+        """Adds a value at `score`, keeping at most the `max_length` highest."""
+
+    @abstractmethod
+    async def aadd_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        value: Any = None,
+        score: int = 0,
+        ttl_seconds: int = 600,
+        max_length: int | None = None,
+    ) -> None:
+        """Asynchronously adds a value at `score`, keeping the highest `max_length`."""
+
+    @abstractmethod
+    def get_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        above: int | None = None,
+    ) -> list[Any]:
+        """Values in ascending score order, only those scored above `above`."""
+
+    @abstractmethod
+    async def aget_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        above: int | None = None,
+    ) -> list[Any]:
+        """Asynchronously returns values in ascending score order."""
+
+    @abstractmethod
+    def clear_scored(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> None:
+        """Removes a scored set."""
+
+    @abstractmethod
+    async def aclear_scored(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> None:
+        """Asynchronously removes a scored set."""
 
     # Hashset Operations
 

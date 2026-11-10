@@ -242,3 +242,37 @@ async def test_checking_does_not_itself_spend(budgeted: Any) -> None:
         budget.key, RateLimitPolicy.LLM_TOKENS, cost=0
     )
     assert decision.remaining == 100
+
+
+async def test_a_reply_larger_than_what_was_left_still_exhausts_the_budget(
+    budgeted: Any,
+) -> None:
+    """The case an all-or-nothing spend dropped: overshooting the remainder."""
+    service = budgeted(tokens_per_minute=100)
+    service.tokens = 60
+    await service.acomplete(messages=[message()])
+    await service.acomplete(messages=[message()])
+
+    with pytest.raises(LLMBudgetExhausted):
+        await service.acomplete(messages=[message()])
+
+
+async def test_a_reply_larger_than_the_whole_budget_is_still_counted(
+    budgeted: Any,
+) -> None:
+    service = budgeted(tokens_per_minute=100)
+    service.tokens = 500
+    await service.acomplete(messages=[message()])
+
+    with pytest.raises(LLMBudgetExhausted):
+        await service.acomplete(messages=[message()])
+
+
+async def test_a_refusal_says_how_long_to_wait(budgeted: Any) -> None:
+    service = budgeted(tokens_per_minute=100)
+    service.tokens = 100
+    await service.acomplete(messages=[message()])
+
+    with pytest.raises(LLMBudgetExhausted) as refused:
+        await service.acomplete(messages=[message()])
+    assert refused.value.retry_after_seconds > 0

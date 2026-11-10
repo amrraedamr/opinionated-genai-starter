@@ -8,6 +8,7 @@ limiter object and showing it inherits what the first already spent.
 """
 
 from collections.abc import AsyncIterator
+from uuid import uuid4
 
 import pytest
 
@@ -157,3 +158,13 @@ async def test_the_counter_expires_rather_than_accumulating(
     counter = limiter._counter_key(KEY, RateLimitPolicy.AUTH)
     ttl = await RedisClient().async_client.pttl(counter)
     assert ttl > 0
+
+
+async def test_a_charge_past_the_limit_is_recorded(limiter: RedisRateLimiter) -> None:
+    """A spend would refuse this; a charge records work already done."""
+    key = f"charge-{uuid4()}"
+    await limiter.acharge(key, RateLimitPolicy.AUTH, 500)
+
+    decision = await limiter.aspend(key, RateLimitPolicy.AUTH, cost=0)
+    assert decision.remaining == 0
+    assert decision.retry_after_seconds > 0

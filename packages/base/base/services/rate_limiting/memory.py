@@ -39,6 +39,20 @@ class InMemoryRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
     ) -> RateDecision:
         return await asyncio.to_thread(self._spend, key, policy, cost)
 
+    def _charge(self, key: str, policy: RateLimitPolicy, cost: int) -> RateDecision:
+        with self._lock:
+            now = time.monotonic()
+            self._decide(key, policy, 0, now)
+            window = self._windows.setdefault(self._counter_key(key, policy), deque())
+            window.extend([now] * cost)
+            limit = self.budget_for(policy)
+            return RateDecision(allowed=True, remaining=max(0, limit - len(window)))
+
+    async def _acharge(
+        self, key: str, policy: RateLimitPolicy, cost: int
+    ) -> RateDecision:
+        return await asyncio.to_thread(self._charge, key, policy, cost)
+
     def _reset(self, key: str, policy: RateLimitPolicy) -> None:
         with self._lock:
             self._windows.pop(self._counter_key(key, policy), None)
@@ -66,9 +80,13 @@ class InMemoryRateLimiter(AbstractRateLimiter, metaclass=SingletonABC):
             )
 
         window.extend([now] * cost)
+        remaining = max(0, limit - len(window))
         if not window:
             self._windows.pop(counter, None)
-        return RateDecision(allowed=True, remaining=max(0, limit - len(window)))
+        retry = self._retry_after(window, now, 1, limit) if remaining == 0 else 0.0
+        return RateDecision(
+            allowed=True, remaining=remaining, retry_after_seconds=retry
+        )
 
     @staticmethod
     def _retry_after(window: deque[float], now: float, cost: int, limit: int) -> float:

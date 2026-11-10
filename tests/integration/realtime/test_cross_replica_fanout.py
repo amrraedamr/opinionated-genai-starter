@@ -278,3 +278,50 @@ async def test_two_replicas_publishing_at_once_never_reuse_a_sequence(
 
     assert sorted(m.seq for m in stored) == list(range(1, 13))
     await first._inbox.aclear(user)
+
+
+async def test_concurrent_publishers_leave_a_gapless_ordered_inbox(
+    replicas: tuple[Any, Any],
+) -> None:
+    first, second = replicas
+    user = str(uuid4())
+    await asyncio.gather(
+        *(
+            (first if n % 2 == 0 else second).apublish_to_user(
+                user,
+                RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={"n": n}),
+                ChannelDelivery.DURABLE,
+            )
+            for n in range(12)
+        )
+    )
+
+    held = await second._inbox.asince(user, 0)
+
+    assert [m.seq for m in held] == list(range(1, 13))
+    await first._inbox.aclear(user)
+
+
+async def test_a_lock_left_behind_by_a_dead_replica_cannot_duplicate_sequences(
+    replicas: tuple[Any, Any],
+) -> None:
+    """Sequencing must not depend on a lock that a killed process can strand."""
+    first, _ = replicas
+    user = str(uuid4())
+    cache = first.cache
+    await cache.aacquire_lock(user, namespace="realtime:inbox:lock", ttl_seconds=60)
+
+    stored = await asyncio.gather(
+        *(
+            first.apublish_to_user(
+                user,
+                RealtimeEnvelope(type=RealtimeMessageType.MESSAGE, payload={}),
+                ChannelDelivery.DURABLE,
+            )
+            for _ in range(6)
+        )
+    )
+
+    assert sorted(m.seq for m in stored) == list(range(1, 7))
+    await cache.arelease_lock(user, namespace="realtime:inbox:lock")
+    await first._inbox.aclear(user)

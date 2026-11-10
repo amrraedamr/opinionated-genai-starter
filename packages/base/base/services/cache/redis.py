@@ -89,6 +89,24 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         )
 
     @retrying
+    def take(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> str | None:
+        result: str | None = self._redis_client.sync_client.getdel(  # type: ignore
+            self._get_key(key, namespace)
+        )
+        return None if result is None else json.loads(result, cls=ExpansiveDecoder)
+
+    @aretrying
+    async def atake(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> str | None:
+        result: str | None = await self._redis_client.async_client.getdel(  # type: ignore
+            self._get_key(key, namespace)
+        )
+        return None if result is None else json.loads(result, cls=ExpansiveDecoder)
+
+    @retrying
     def remove(self, key: CacheKeys | str, namespace: UUID | str | None = None) -> None:
         self._redis_client.sync_client.delete(self._get_key(key, namespace))
 
@@ -99,6 +117,116 @@ class RedisCacheService(AbstractCacheService, metaclass=SingletonABC):
         await self._redis_client.async_client.delete(  # type: ignore
             self._get_key(key, namespace)
         )
+
+    # Counters
+
+    @retrying
+    def increment(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> int:
+        self._check_ttl(ttl_seconds)
+        composite = self._get_key(key, namespace)
+        pipe = self._redis_client.sync_client.pipeline()
+        pipe.incr(composite)
+        if ttl_seconds is not None:
+            pipe.expire(composite, ttl_seconds)
+        return int(pipe.execute()[0])
+
+    @aretrying
+    async def aincrement(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> int:
+        self._check_ttl(ttl_seconds)
+        composite = self._get_key(key, namespace)
+        pipe = self._redis_client.async_client.pipeline()
+        pipe.incr(composite)
+        if ttl_seconds is not None:
+            pipe.expire(composite, ttl_seconds)
+        return int((await pipe.execute())[0])
+
+    # Sorted Sets
+
+    @retrying
+    def add_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        value: Any = None,
+        score: int = 0,
+        ttl_seconds: int = 600,
+        max_length: int | None = None,
+    ) -> None:
+        composite = self._get_key(key, namespace)
+        pipe = self._redis_client.sync_client.pipeline()
+        pipe.zadd(composite, {self._encode(value): score})
+        if max_length is not None:
+            pipe.zremrangebyrank(composite, 0, -max_length - 1)
+        pipe.expire(composite, ttl_seconds)
+        pipe.execute()
+
+    @aretrying
+    async def aadd_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        value: Any = None,
+        score: int = 0,
+        ttl_seconds: int = 600,
+        max_length: int | None = None,
+    ) -> None:
+        composite = self._get_key(key, namespace)
+        pipe = self._redis_client.async_client.pipeline()
+        pipe.zadd(composite, {self._encode(value): score})
+        if max_length is not None:
+            pipe.zremrangebyrank(composite, 0, -max_length - 1)
+        pipe.expire(composite, ttl_seconds)
+        await pipe.execute()
+
+    @retrying
+    def get_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        above: int | None = None,
+    ) -> list[Any]:
+        items: list[str] = self._redis_client.sync_client.zrangebyscore(  # type: ignore
+            self._get_key(key, namespace),
+            "-inf" if above is None else f"({above}",
+            "+inf",
+        )
+        return [json.loads(item, cls=ExpansiveDecoder) for item in items]
+
+    @aretrying
+    async def aget_scored(
+        self,
+        key: CacheKeys | str,
+        namespace: UUID | str | None = None,
+        above: int | None = None,
+    ) -> list[Any]:
+        items: list[str] = await self._redis_client.async_client.zrangebyscore(  # type: ignore
+            self._get_key(key, namespace),
+            "-inf" if above is None else f"({above}",
+            "+inf",
+        )
+        return [json.loads(item, cls=ExpansiveDecoder) for item in items]
+
+    @retrying
+    def clear_scored(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> None:
+        self._redis_client.sync_client.delete(self._get_key(key, namespace))
+
+    @aretrying
+    async def aclear_scored(
+        self, key: CacheKeys | str, namespace: UUID | str | None = None
+    ) -> None:
+        await self._redis_client.async_client.delete(self._get_key(key, namespace))  # type: ignore
 
     # Hashset Operations
 
