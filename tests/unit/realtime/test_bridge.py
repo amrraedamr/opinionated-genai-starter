@@ -103,6 +103,7 @@ class FakeSession(AbstractRealtimeSession):
         self.tool_results: list[tuple[str, str]] = []
         self.interrupts = 0
         self.closed = False
+        self.connected = False
         self._script = list(script or [])
         self._gate = asyncio.Event()
 
@@ -118,7 +119,7 @@ class FakeSession(AbstractRealtimeSession):
         return "fake"
 
     async def aconnect(self) -> None:
-        return None
+        self.connected = True
 
     async def asend(self, value: RealtimeInput) -> None:
         self.sent.append(value)
@@ -300,6 +301,35 @@ async def test_speaking_over_the_model_cuts_it_off(settings: None) -> None:
     )
     await run(live)
     assert session.interrupts == 1
+
+
+async def test_microphone_audio_does_not_cut_the_model_off(settings: None) -> None:
+    """Audio streams continuously; the provider's own VAD decides a barge-in."""
+    live, _, session = bridge(
+        client=[says(audio=base64.b64encode(b"\x00\x01").decode())],
+        provider=[RealtimeTextDelta(text="let me explain at length")],
+        client_waits_for_model=True,
+    )
+    await run(live)
+    assert session.interrupts == 0
+
+
+async def test_malformed_audio_is_refused_without_ending_the_session(
+    settings: None,
+) -> None:
+    live, socket, session = bridge(client=[says(audio="not base64!!"), says(text="hi")])
+    await run(live)
+
+    assert any(f.type == RealtimeMessageType.ERROR for f in socket.frames())
+    assert [s.text for s in session.sent if isinstance(s, RealtimeTextInput)] == ["hi"]
+
+
+async def test_the_provider_session_is_connected_before_it_is_read(
+    settings: None,
+) -> None:
+    live, _, session = bridge(provider=[RealtimeTextDelta(text="hi")])
+    await run(live)
+    assert session.connected
 
 
 async def test_input_before_the_model_speaks_interrupts_nothing(

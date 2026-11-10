@@ -16,7 +16,9 @@ from base.models.view_models.usage import ProviderUsage
 
 AudioBytes = Annotated[
     bytes,
-    BeforeValidator(lambda v: base64.b64decode(v) if isinstance(v, str) else v),
+    BeforeValidator(
+        lambda v: base64.b64decode(v, validate=True) if isinstance(v, str) else v
+    ),
     PlainSerializer(
         lambda v: base64.b64encode(v).decode(), return_type=str, when_used="json"
     ),

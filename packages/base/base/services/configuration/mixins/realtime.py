@@ -10,7 +10,8 @@ class RealtimeSettingsMixin(BaseModel):
     provider has a realtime API at all."""
 
     realtime_model: str = "gpt-realtime"
-    realtime_voice: str = "alloy"
+    realtime_voice: str = ""
+    """Provider-specific; empty leaves the provider's own default."""
     realtime_instructions: str = ""
     """What the model is told before anyone speaks. Empty leaves it default."""
 

@@ -29,7 +29,12 @@ build-backend = "uv_build"
 # Slice metadata — see services/identity/pyproject.toml for the contract.
 [tool.starter.slice]
 summary = "Conversations — chat, agents, prompts, chat history and log streaming."
-mixins = ["LLMSettingsMixin", "PromptSettingsMixin"]
+mixins = [
+    "LLMSettingsMixin",
+    "PromptSettingsMixin",
+    "RateLimitSettingsMixin",
+    "RealtimeSettingsMixin",
+]
 extras = ["openai", "tokenizer", "sse"]
 publishes_events = true
 

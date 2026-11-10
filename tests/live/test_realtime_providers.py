@@ -35,6 +35,9 @@ from base.services.llm.realtime.openai import OpenAIRealtimeSession
 from tests.conftest import credential
 
 MODEL = "gpt-realtime"
+CONNECT_ATTEMPTS = 3
+SPEECH_ATTEMPTS = 3
+MIN_SPEECH_SECONDS = 0.8
 
 
 def trailing_silence(session: OpenAIRealtimeSession) -> bytes:
@@ -79,6 +82,21 @@ def live_session(
     )
 
 
+async def connected(session: OpenAIRealtimeSession) -> OpenAIRealtimeSession:
+    """Connect, retrying only a gateway's transient 5xx refusal of the upgrade."""
+    from websockets.exceptions import InvalidStatus
+
+    for attempt in range(CONNECT_ATTEMPTS):
+        try:
+            await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+            return session
+        except InvalidStatus as refused:
+            if refused.response.status_code < 500 or attempt == CONNECT_ATTEMPTS - 1:
+                raise
+            await asyncio.sleep(1.0 + attempt)
+    return session
+
+
 async def until_turn_end(
     session: OpenAIRealtimeSession, collect: list[RealtimeOutput]
 ) -> RealtimeTurnEnd | None:
@@ -96,7 +114,7 @@ async def until_turn_end(
 async def test_a_realtime_session_opens_through_the_gateway() -> None:
     """A websocket upgrade is not an HTTP request, and a proxy may refuse it."""
     session = live_session()
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     await session.aclose()
 
 
@@ -108,7 +126,7 @@ async def test_a_typed_question_is_answered() -> None:
     nothing, so an empty reply here is the whole failure.
     """
     session = live_session(instructions="Answer in one short sentence.")
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         await session.asend(RealtimeTextInput(text="Name the capital of France."))
         events: list[RealtimeOutput] = []
@@ -128,7 +146,7 @@ async def test_a_typed_question_is_answered() -> None:
 async def test_a_turn_reports_what_it_consumed() -> None:
     """Billing cannot wait for a session that stays open for an hour."""
     session = live_session(instructions="Answer in one word.")
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         await session.asend(RealtimeTextInput(text="Say hello."))
         end = await asyncio.wait_for(until_turn_end(session, []), timeout=TURN_TIMEOUT)
@@ -154,7 +172,7 @@ async def test_real_speech_survives_the_trip() -> None:
         voice="alloy",
         instructions="Answer in one short sentence.",
     )
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         await session.asend(RealtimeTextInput(text="Say hello and name a colour."))
         events: list[RealtimeOutput] = []
@@ -179,7 +197,7 @@ async def test_an_audio_session_still_produces_text() -> None:
         voice="alloy",
         instructions="Answer in one short sentence.",
     )
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         await session.asend(RealtimeTextInput(text="Name the capital of France."))
         events: list[RealtimeOutput] = []
@@ -198,7 +216,7 @@ async def test_answering_a_tool_lets_the_model_carry_on() -> None:
         tool_schemas=WEATHER_TOOL,
         instructions="Use the tool for weather questions. Answer in one sentence.",
     )
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         await session.asend(RealtimeTextInput(text="What is the weather in Cairo?"))
 
@@ -235,7 +253,7 @@ async def test_answering_a_tool_lets_the_model_carry_on() -> None:
 async def test_interrupting_stops_the_model_mid_answer() -> None:
     """And is not reported as the model deciding it had finished."""
     session = live_session(instructions="Be very verbose.")
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         await session.asend(
             RealtimeTextInput(text="Count from 1 to 200 with commentary on each.")
@@ -273,10 +291,9 @@ async def test_speech_is_heard_and_reported_back() -> None:
     itself, so no microphone is needed to prove the path.
     """
     session = live_session(instructions="Reply briefly.")
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    spoken = await _speech_of(session, "Hello there.")
+    await connected(session)
     try:
-        spoken = await _speech_of(session, "Hello.")
-
         heard = ""
         replied = ""
 
@@ -310,7 +327,7 @@ async def test_speech_ends_a_turn_without_being_told_to() -> None:
     session would wait forever, and the adapter would have to guess instead.
     """
     session = live_session(instructions="Reply briefly.")
-    await asyncio.wait_for(session.aconnect(), timeout=CONNECT_TIMEOUT)
+    await connected(session)
     try:
         spoken = await _speech_of(session, "Hello there.")
         for start in range(0, len(spoken), 4800):
@@ -324,25 +341,23 @@ async def test_speech_ends_a_turn_without_being_told_to() -> None:
 
 
 async def _speech_of(session: OpenAIRealtimeSession, words: str) -> bytes:
-    """Real speech to feed back in, so the test needs no microphone.
-
-    Trailed by silence, because the server detects the end of a turn by
-    hearing someone stop. Generated speech ends on the last syllable, so
-    without it the session waits for a pause that never comes — which a real
-    microphone, always sending the room, never fails to provide.
-    """
-    speaker = live_session(
-        modalities=[RealtimeModality.AUDIO],
-        voice="alloy",
-        instructions=f"Say exactly this and nothing else: {words}",
-    )
-    await asyncio.wait_for(speaker.aconnect(), timeout=CONNECT_TIMEOUT)
-    try:
-        await speaker.asend(RealtimeTextInput(text=words))
-        events: list[RealtimeOutput] = []
-        await asyncio.wait_for(until_turn_end(speaker, events), timeout=TURN_TIMEOUT)
+    """Real speech to feed back in, at least MIN_SPEECH_SECONDS, then silence."""
+    for _ in range(SPEECH_ATTEMPTS):
+        speaker = live_session(
+            modalities=[RealtimeModality.AUDIO],
+            voice="alloy",
+            instructions=f"Say exactly this and nothing else: {words}",
+        )
+        await connected(speaker)
+        try:
+            await speaker.asend(RealtimeTextInput(text=words))
+            events: list[RealtimeOutput] = []
+            await asyncio.wait_for(
+                until_turn_end(speaker, events), timeout=TURN_TIMEOUT
+            )
+        finally:
+            await speaker.aclose()
         spoken = b"".join(e.audio for e in events if isinstance(e, RealtimeAudioDelta))
-        assert spoken, "the provider generated no speech to feed back"
-        return spoken + trailing_silence(session)
-    finally:
-        await speaker.aclose()
+        if len(spoken) >= MIN_SPEECH_SECONDS * 2 * session.input_sample_rate:
+            return spoken + trailing_silence(session)
+    raise AssertionError("the provider did not generate usable speech to feed back")

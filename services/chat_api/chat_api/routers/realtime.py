@@ -7,12 +7,15 @@ how long one lives, that it works once, how it is stored. Those are
 reusable one.
 """
 
+import asyncio
+
 from fastapi import APIRouter, WebSocket
 
 from base.models.definitions.realtime import RealtimeCloseCode
 from base.models.view_models.auth import Principal
 from base.models.view_models.realtime import TicketRequest, TicketResponse
 from base.services.auth import principal_dependency
+from base.services.guardrails.factory import build_guardrail_pipeline
 from base.services.llm.realtime.factory import build_realtime_session
 from base.services.realtime import (
     ConnectionManager,
@@ -46,18 +49,7 @@ async def issue_ticket(
 
 @router.websocket("/conversation")
 async def conversation(websocket: WebSocket) -> None:
-    """Talk to a model over a socket, start to finish.
-
-    Here rather than in `base` for the same reason as the ticket route: a
-    service owns its HTTP surface. What `base` owns is everything this calls,
-    so a second service wiring its own conversation gets the same handshake,
-    the same bounds and the same guardrails without copying them.
-
-    The whole thing runs inside a connection scope. A socket never passes
-    `request_context`, so without one a scoped service resolves whatever the
-    last HTTP request left behind, and anything billed here lands in a scope
-    nobody reads.
-    """
+    """Talk to a model over a socket, inside a connection scope."""
     ticket = await accept_connection(websocket)
     if ticket is None:
         return
@@ -68,7 +60,14 @@ async def conversation(websocket: WebSocket) -> None:
         if not await manager.aregister(connection):
             await connection.aclose(RealtimeCloseCode.TRY_LATER, "Draining")
             return
+        heartbeat = asyncio.create_task(connection.aheartbeat())
         try:
-            await RealtimeBridge(connection, build_realtime_session()).arun()
+            await RealtimeBridge(
+                connection,
+                build_realtime_session(),
+                guardrails=build_guardrail_pipeline(),
+                manager=manager,
+            ).arun()
         finally:
+            heartbeat.cancel()
             await manager.aunregister(connection)

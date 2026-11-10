@@ -154,7 +154,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "RealtimeSettingsMixin": {
         "realtime_provider": "openai",
         "realtime_model": "gpt-realtime",
-        "realtime_voice": "alloy",
+        "realtime_voice": "",
         "realtime_instructions": "",
         "realtime_audio_enabled": True,
     },

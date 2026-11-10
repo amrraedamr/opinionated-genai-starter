@@ -20,6 +20,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Final
 
 from base.models.definitions.model import FinishReason, ProviderType
+from base.models.definitions.realtime import RealtimeCloseCode
 from base.models.definitions.realtime_session import RealtimeModality
 from base.models.view_models.chat_history import StoredToolCall, StoredToolCallFunction
 from base.models.view_models.model import ModelConfigurations
@@ -41,8 +42,8 @@ from base.tools.errors import MissingExtraError
 
 try:
     from google.genai import Client
+    from google.genai.errors import APIError
     from google.genai.types import (
-        ActivityStart,
         AudioTranscriptionConfig,
         Blob,
         Content,
@@ -185,16 +186,17 @@ class GeminiLiveSession(AbstractRealtimeSession):
         )
 
     async def areceive(self) -> AsyncIterator[RealtimeOutput]:
-        """Events as the model produces them, in our vocabulary.
-
-        One server message can carry several of ours — a turn that speaks and
-        completes in the same breath — so each is expanded rather than
-        reduced to whichever was noticed first.
-        """
+        """Events across every turn; the SDK's `receive` ends after one."""
         live = self._require_live()
-        async for message in live.receive():
-            for event in self._translate(message):
-                yield event
+        while True:
+            try:
+                async for message in live.receive():
+                    for event in self._translate(message):
+                        yield event
+            except APIError as error:
+                if error.code == RealtimeCloseCode.NORMAL:
+                    return
+                raise
 
     def _translate(self, message: "LiveServerMessage") -> list[RealtimeOutput]:
         events: list[RealtimeOutput] = []
@@ -276,14 +278,8 @@ class GeminiLiveSession(AbstractRealtimeSession):
         )
 
     async def ainterrupt(self) -> None:
-        """Tell the model the user has started talking.
-
-        There is no cancel message. Gemini stops when fresh input arrives and
-        reports it afterwards as an interruption, so barging in is stated as
-        activity rather than asked for as a cancellation.
-        """
-        live = self._require_live()
-        await live.send_realtime_input(activity_start=ActivityStart())
+        """A no-op: with automatic activity detection, new input interrupts."""
+        self._require_live()
 
     async def aclose(self) -> None:
         """End the session. Quiet if it is already closed."""

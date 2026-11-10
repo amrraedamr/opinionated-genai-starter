@@ -60,6 +60,8 @@ SLICE_OWNED = {
         "LLMSettingsMixin",
         "AzureOpenAILLMSettingsMixin",
         "PromptSettingsMixin",
+        "RateLimitSettingsMixin",
+        "RealtimeSettingsMixin",
     },
     "ingestion_worker": set(),
 }
