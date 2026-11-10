@@ -10,6 +10,8 @@ from typing import Any
 import httpx
 import pytest
 from openai import APIConnectionError, APIStatusError
+from openai.types.moderation import CategoryScores
+from openai.types.moderation_create_response import ModerationCreateResponse
 
 from base.models.definitions.guardrails import GuardrailOutcome, GuardrailStage
 from base.models.definitions.model import ProviderType
@@ -18,48 +20,48 @@ from base.services.configuration.mixins import GuardrailSettingsMixin
 from base.services.guardrails.llm.openai import OpenAIModerationGuardrail
 from tests.conftest import MakeSettings
 
-CATEGORIES = ("hate", "violence", "self_harm", "sexual")
 REQUEST = httpx.Request("POST", "https://moderation.invalid/moderations")
+CATEGORIES = [
+    field.alias or name for name, field in CategoryScores.model_fields.items()
+]
 
 
-class Scores:
-    """Stands in for the SDK's category-scores model."""
-
-    def __init__(self, **scores: float) -> None:
-        self._scores = {category: 0.0 for category in CATEGORIES} | scores
-
-    def model_dump(self) -> dict[str, float]:
-        return dict(self._scores)
-
-
-class Result:
-    def __init__(self, scores: Scores) -> None:
-        self.category_scores = scores
-
-
-class Response:
-    def __init__(self, scores: Scores) -> None:
-        self.results = [Result(scores)]
+def scores(**over: float) -> ModerationCreateResponse:
+    """A real SDK reply, scored by API category name (`self-harm`, not `self_harm`)."""
+    return ModerationCreateResponse.model_validate(
+        {
+            "id": "modr-test",
+            "model": "omni-moderation-latest",
+            "results": [
+                {
+                    "flagged": False,
+                    "categories": dict.fromkeys(CATEGORIES, False),
+                    "category_scores": dict.fromkeys(CATEGORIES, 0.0) | over,
+                    "category_applied_input_types": {c: ["text"] for c in CATEGORIES},
+                }
+            ],
+        }
+    )
 
 
 class Endpoint:
     """Records every call, so a test can assert what was actually sent."""
 
-    def __init__(self, scores: Scores) -> None:
-        self.scores = scores
+    def __init__(self, response: ModerationCreateResponse) -> None:
+        self.response = response
         self.inputs: list[str] = []
         self.models: list[str] = []
 
-    def create(self, *, model: str, input: str) -> Response:
+    def create(self, *, model: str, input: str) -> ModerationCreateResponse:
         self.models.append(model)
         self.inputs.append(input)
-        return Response(self.scores)
+        return self.response
 
 
 class AsyncEndpoint(Endpoint):
     """The same recorder, awaitable, for the async client."""
 
-    async def create(self, *, model: str, input: str) -> Response:  # type: ignore[override]
+    async def create(self, *, model: str, input: str) -> ModerationCreateResponse:  # type: ignore[override]
         return super().create(model=model, input=input)
 
 
@@ -90,14 +92,14 @@ def build(make_settings: MakeSettings, **settings: Any) -> OpenAIModerationGuard
 
 def test_clean_content_is_allowed(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings)
-    attach(guardrail, Endpoint(Scores()))
+    attach(guardrail, Endpoint(scores()))
     verdict = guardrail.check("hello there", GuardrailStage.INPUT)
     assert verdict.outcome == GuardrailOutcome.ALLOW
 
 
 def test_a_score_over_the_threshold_blocks(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings, moderation_threshold=0.5)
-    attach(guardrail, Endpoint(Scores(violence=0.9)))
+    attach(guardrail, Endpoint(scores(violence=0.9)))
     verdict = guardrail.check("something", GuardrailStage.INPUT)
     assert verdict.outcome == GuardrailOutcome.BLOCK
     assert verdict.category == "violence"
@@ -105,7 +107,7 @@ def test_a_score_over_the_threshold_blocks(make_settings: MakeSettings) -> None:
 
 def test_a_score_under_the_threshold_is_allowed(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings, moderation_threshold=0.9)
-    attach(guardrail, Endpoint(Scores(violence=0.6)))
+    attach(guardrail, Endpoint(scores(violence=0.6)))
     assert (
         guardrail.check("something", GuardrailStage.INPUT).outcome
         == GuardrailOutcome.ALLOW
@@ -115,14 +117,14 @@ def test_a_score_under_the_threshold_is_allowed(make_settings: MakeSettings) -> 
 def test_the_threshold_is_inclusive(make_settings: MakeSettings) -> None:
     """A score exactly at the configured line counts as crossing it."""
     guardrail = build(make_settings, moderation_threshold=0.5)
-    attach(guardrail, Endpoint(Scores(hate=0.5)))
+    attach(guardrail, Endpoint(scores(hate=0.5)))
     assert guardrail.check("x", GuardrailStage.INPUT).outcome == GuardrailOutcome.BLOCK
 
 
 def test_the_worst_category_is_the_one_reported(make_settings: MakeSettings) -> None:
     """With several over the line, the report names the strongest signal."""
     guardrail = build(make_settings, moderation_threshold=0.3)
-    attach(guardrail, Endpoint(Scores(hate=0.4, violence=0.95, sexual=0.35)))
+    attach(guardrail, Endpoint(scores(hate=0.4, violence=0.95, sexual=0.35)))
     assert guardrail.check("x", GuardrailStage.INPUT).category == "violence"
 
 
@@ -131,7 +133,7 @@ def test_only_watched_categories_are_enforced(make_settings: MakeSettings) -> No
     guardrail = build(
         make_settings, moderation_threshold=0.5, moderation_categories=["hate"]
     )
-    attach(guardrail, Endpoint(Scores(violence=0.99)))
+    attach(guardrail, Endpoint(scores(violence=0.99)))
     assert guardrail.check("x", GuardrailStage.INPUT).outcome == GuardrailOutcome.ALLOW
 
 
@@ -139,13 +141,13 @@ def test_a_watched_category_still_blocks(make_settings: MakeSettings) -> None:
     guardrail = build(
         make_settings, moderation_threshold=0.5, moderation_categories=["hate"]
     )
-    attach(guardrail, Endpoint(Scores(hate=0.99, violence=0.99)))
+    attach(guardrail, Endpoint(scores(hate=0.99, violence=0.99)))
     assert guardrail.check("x", GuardrailStage.INPUT).category == "hate"
 
 
 def test_the_configured_model_is_the_one_called(make_settings: MakeSettings) -> None:
     guardrail = build(make_settings, moderation_model="omni-moderation-latest")
-    endpoint = attach(guardrail, Endpoint(Scores()))
+    endpoint = attach(guardrail, Endpoint(scores()))
     guardrail.check("hello", GuardrailStage.INPUT)
     assert endpoint.models == ["omni-moderation-latest"]
     assert endpoint.inputs == ["hello"]
@@ -154,7 +156,7 @@ def test_the_configured_model_is_the_one_called(make_settings: MakeSettings) -> 
 def test_empty_content_never_reaches_the_endpoint(make_settings: MakeSettings) -> None:
     """An empty string is not worth a billable call."""
     guardrail = build(make_settings)
-    endpoint = attach(guardrail, Endpoint(Scores()))
+    endpoint = attach(guardrail, Endpoint(scores()))
     assert guardrail.check("", GuardrailStage.INPUT).outcome == GuardrailOutcome.ALLOW
     assert endpoint.inputs == []
 
@@ -171,7 +173,7 @@ def test_an_unreachable_endpoint_allows_the_content(
     """A moderation outage must not take the service down with it."""
 
     class Dead:
-        def create(self, **_: Any) -> Response:
+        def create(self, **_: Any) -> ModerationCreateResponse:
             raise APIConnectionError(request=None)  # type: ignore[arg-type]
 
     guardrail = build(make_settings)
@@ -185,11 +187,9 @@ def test_an_unreachable_endpoint_allows_the_content(
 def test_a_reply_with_no_results_is_allowed(make_settings: MakeSettings) -> None:
     """A malformed reply is not evidence of a violation."""
 
-    class Empty:
-        results: list[Result] = []
-
+    empty = scores().model_copy(update={"results": []})
     guardrail = build(make_settings)
-    assert guardrail._verdict(Empty()).outcome == GuardrailOutcome.ALLOW
+    assert guardrail._verdict(empty).outcome == GuardrailOutcome.ALLOW
 
 
 def test_the_guardrail_names_itself(make_settings: MakeSettings) -> None:
@@ -199,7 +199,7 @@ def test_the_guardrail_names_itself(make_settings: MakeSettings) -> None:
 async def test_the_async_path_blocks_the_same_way(make_settings: MakeSettings) -> None:
     """The async client is a second client, so it gets its own proof."""
     guardrail = build(make_settings, moderation_threshold=0.5)
-    endpoint = attach_async(guardrail, AsyncEndpoint(Scores(hate=0.8)))
+    endpoint = attach_async(guardrail, AsyncEndpoint(scores(hate=0.8)))
     verdict = await guardrail.acheck("something", GuardrailStage.INPUT)
     assert verdict.outcome == GuardrailOutcome.BLOCK
     assert verdict.category == "hate"
@@ -210,7 +210,7 @@ async def test_an_unreachable_endpoint_allows_the_content_async(
     make_settings: MakeSettings,
 ) -> None:
     class Dead:
-        async def create(self, **_: Any) -> Response:
+        async def create(self, **_: Any) -> ModerationCreateResponse:
             raise APIConnectionError(request=None)  # type: ignore[arg-type]
 
     guardrail = build(make_settings)
@@ -223,7 +223,7 @@ async def test_empty_content_never_reaches_the_endpoint_async(
     make_settings: MakeSettings,
 ) -> None:
     guardrail = build(make_settings)
-    endpoint = attach_async(guardrail, AsyncEndpoint(Scores()))
+    endpoint = attach_async(guardrail, AsyncEndpoint(scores()))
     await guardrail.acheck("", GuardrailStage.INPUT)
     assert endpoint.inputs == []
 
@@ -232,7 +232,7 @@ def rejects(status: int) -> Any:
     """An endpoint answering with one HTTP status, as the service would."""
 
     class Refusing:
-        def create(self, **_: Any) -> Response:
+        def create(self, **_: Any) -> ModerationCreateResponse:
             raise APIStatusError(
                 "refused", response=httpx.Response(status, request=REQUEST), body=None
             )
@@ -303,7 +303,7 @@ def test_an_unreachable_endpoint_is_only_a_warning(make_settings: MakeSettings) 
     guardrail = build(make_settings)
 
     class Dead:
-        def create(self, **_: Any) -> Response:
+        def create(self, **_: Any) -> ModerationCreateResponse:
             raise APIConnectionError(request=REQUEST)
 
     guardrail._client.moderations = Dead()  # type: ignore[assignment]
@@ -314,3 +314,12 @@ def test_an_unreachable_endpoint_is_only_a_warning(make_settings: MakeSettings) 
 
     assert logger.errors == []
     assert len(logger.warnings) == 1
+
+
+def test_categories_are_watched_by_their_api_names(make_settings: MakeSettings) -> None:
+    """The SDK's field is `self_harm`; the API and its docs say `self-harm`."""
+    guardrail = build(make_settings, moderation_categories=["self-harm"])
+    attach(guardrail, Endpoint(scores(**{"self-harm": 0.99})))
+    verdict = guardrail.check("x", GuardrailStage.INPUT)
+    assert verdict.outcome == GuardrailOutcome.BLOCK
+    assert verdict.category == "self-harm"

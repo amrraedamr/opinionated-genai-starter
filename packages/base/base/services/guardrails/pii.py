@@ -7,7 +7,8 @@ guardrail that cries wolf gets turned off, which protects nothing.
 """
 
 import re
-from re import Pattern
+from collections.abc import Callable
+from re import Match, Pattern
 from typing import ClassVar
 
 from base.models.definitions.guardrails import GuardrailStage
@@ -16,23 +17,35 @@ from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsGuardrailConfig
 from base.services.guardrails import AbstractGuardrail
 
-EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-CARD = re.compile(r"(?<![\w-])(?:\d[ -]?){12,18}\d(?![\w-])")
-IBAN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b")
-PHONE = re.compile(r"(?<![\w#-])\+?\d[\d\s().-]{5,16}\d(?![\w-])")
+EMAIL = re.compile(r"(?<![\w.+-])[\w.+-]+@[\w-]+\.[\w.-]+\b")
+CARD = re.compile(r"(?<![\w-])(?:\d[ -]?){12,24}\d(?![\w-])")
+IBAN = re.compile(
+    r"\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b", re.IGNORECASE
+)
+PHONE = re.compile(
+    r"(?<![\w#+(-])(?:[+(]|(?<!\d[.:]))\d[\d\s().-]{5,16}\d(?![\w-]|[:.]\d)"
+)
+PHONE_WORD = re.compile(
+    r"\b(?:call|phone|telephone|tel|mobile|mob|cell|whatsapp|text|sms|fax|ring|dial)\b",
+    re.IGNORECASE,
+)
+GROUP = re.compile(r"[^ -]+")
+CARD_MAX_GROUPS = 5
+IBAN_MAX_GROUPS = 9
+CARD_GROUPINGS = frozenset({(4, 4, 4, 4), (4, 4, 4, 4, 3), (4, 6, 5), (4, 6, 4)})
+IPV4 = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 DATE_LIKE = re.compile(
     r"^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$|^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$"
 )
 
+type Locate = Callable[[Match[str]], tuple[int, int] | None]
+
 
 class PatternPiiGuardrail(AbstractGuardrail):
-    """Redacts emails, phone numbers, payment cards and IBANs.
-
-    Runs at every stage: the same number is a problem arriving from a user, in
-    a reply, and in whatever a tool hands back.
-    """
+    """Redacts emails, phone numbers, payment cards and IBANs, at every stage."""
 
     PLACEHOLDER: ClassVar[str] = "[redacted:{category}]"
+    PHONE_WORD_REACH: ClassVar[int] = 24
 
     def __init__(self, config: SupportsGuardrailConfig | None = None) -> None:
         self._config = config or settings_for(SupportsGuardrailConfig)
@@ -63,9 +76,9 @@ class PatternPiiGuardrail(AbstractGuardrail):
         found: list[str] = []
         text = content
         text = self._replace(text, EMAIL, "email", found)
-        text = self._replace(text, IBAN, "iban", found, self._is_iban)
-        text = self._replace(text, CARD, "card", found, self._is_card)
-        text = self._replace(text, PHONE, "phone", found, self._is_phone)
+        text = self._replace(text, IBAN, "iban", found, self._iban)
+        text = self._replace(text, CARD, "card", found, self._card)
+        text = self._replace(text, PHONE, "phone", found, self._phone)
         for name, pattern in self._extra.items():
             text = self._replace(text, pattern, name, found)
 
@@ -79,25 +92,53 @@ class PatternPiiGuardrail(AbstractGuardrail):
         pattern: Pattern[str],
         category: str,
         found: list[str],
-        accept: object = None,
+        locate: Locate | None = None,
     ) -> str:
-        """Swap matches `accept` agrees with for a placeholder naming the kind."""
+        """Swap the part of each match `locate` points at for a placeholder."""
 
-        def swap(match: re.Match[str]) -> str:
+        def swap(match: Match[str]) -> str:
             value = match.group(0)
-            if callable(accept) and not accept(value):
+            span = locate(match) if locate else (0, len(value))
+            if span is None:
                 return value
             found.append(category)
-            return self.PLACEHOLDER.format(category=category)
+            start, end = span
+            placeholder = self.PLACEHOLDER.format(category=category)
+            return value[:start] + placeholder + value[end:]
 
         return pattern.sub(swap, text)
+
+    @staticmethod
+    def _window(
+        value: str, valid: Callable[[str], bool], most: int
+    ) -> tuple[int, int] | None:
+        """The longest run of at most `most` whole groups that `valid` accepts."""
+        groups = [match.span() for match in GROUP.finditer(value)]
+        for size in range(min(len(groups), most), 0, -1):
+            for first in range(len(groups) - size + 1):
+                start, end = groups[first][0], groups[first + size - 1][1]
+                if valid(value[start:end]):
+                    return start, end
+        return None
+
+    def _card(self, match: Match[str]) -> tuple[int, int] | None:
+        return self._window(match.group(0), self._is_card, CARD_MAX_GROUPS)
+
+    def _iban(self, match: Match[str]) -> tuple[int, int] | None:
+        return self._window(match.group(0), self._is_iban, IBAN_MAX_GROUPS)
+
+    def _phone(self, match: Match[str]) -> tuple[int, int] | None:
+        return (0, len(match.group(0))) if self._is_phone(match) else None
 
     @staticmethod
     def _digits(value: str) -> str:
         return re.sub(r"\D", "", value)
 
     def _is_card(self, value: str) -> bool:
-        """Luhn is what separates a card from any other run of digits."""
+        """Grouped the way cards are printed, and passing Luhn."""
+        groups = tuple(len(group) for group in re.findall(r"\d+", value))
+        if len(groups) > 1 and groups not in CARD_GROUPINGS:
+            return False
         digits = self._digits(value)
         if not 13 <= len(digits) <= 19:
             return False
@@ -115,7 +156,7 @@ class PatternPiiGuardrail(AbstractGuardrail):
     def _is_iban(value: str) -> bool:
         """Mod-97 over the rearranged account number, which is the standard."""
         candidate = value.replace(" ", "").upper()
-        if not 15 <= len(candidate) <= 34:
+        if not 15 <= len(candidate) <= 34 or not IBAN.fullmatch(candidate):
             return False
         rearranged = candidate[4:] + candidate[:4]
         converted = "".join(str(ord(c) - 55) if c.isalpha() else c for c in rearranged)
@@ -123,23 +164,25 @@ class PatternPiiGuardrail(AbstractGuardrail):
             return False
         return int(converted) % 97 == 1
 
-    def _is_phone(self, value: str) -> bool:
-        """A run of digits is only a phone number if it is shaped like one.
-
-        A bare eight-digit run is far more often an order or invoice number, so
-        bare runs are only accepted at the lengths real numbers actually take.
-        """
-        trimmed = value.strip()
-        if DATE_LIKE.match(trimmed):
+    def _is_phone(self, match: Match[str]) -> bool:
+        """Grouped numbers count; bare or dotted runs need a phone word before them."""
+        value = match.group(0)
+        if DATE_LIKE.match(value.strip("()")) or IPV4.match(value):
             return False
-        digits = self._digits(trimmed)
+        groups = re.findall(r"\d+", value)
+        if len(groups) >= 3 and all(len(group) == 4 for group in groups):
+            return False
+        digits = self._digits(value)
         if not 7 <= len(digits) <= 15:
             return False
-        if trimmed.startswith("+"):
+        if value.startswith("+") or any(sep in value for sep in " -()"):
             return True
-        if any(separator in trimmed for separator in " .-()"):
-            return True
-        return len(digits) in (10, 11)
+        if "." not in value and len(digits) not in (10, 11):
+            return False
+        reach = match.string[
+            max(0, match.start() - self.PHONE_WORD_REACH) : match.start()
+        ]
+        return PHONE_WORD.search(reach) is not None
 
 
 __all__ = ["PatternPiiGuardrail"]

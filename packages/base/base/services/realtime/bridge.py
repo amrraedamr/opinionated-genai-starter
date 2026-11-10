@@ -21,7 +21,7 @@ from collections.abc import Sequence
 
 from pydantic import ValidationError
 
-from base.models.definitions.guardrails import GuardrailStage
+from base.models.definitions.guardrails import RETRACTION_TEXT, GuardrailStage
 from base.models.definitions.realtime import RealtimeCloseCode, RealtimeMessageType
 from base.models.view_models.realtime import RealtimeEnvelope
 from base.models.view_models.realtime_session import (
@@ -35,7 +35,9 @@ from base.models.view_models.realtime_session import (
     RealtimeTranscriptDelta,
     RealtimeTurnEnd,
 )
+from base.services.guardrails.factory import build_guarded_stream
 from base.services.guardrails.pipeline import GuardrailPipeline
+from base.services.guardrails.streaming import GuardedStream
 from base.services.llm.realtime import AbstractRealtimeSession
 from base.services.logging.console import ConsoleLoggerService
 from base.services.realtime.connection import RealtimeConnection
@@ -66,6 +68,7 @@ class RealtimeBridge:
         self._logger = ConsoleLoggerService()
         self._speaking = False
         self._turn_started = 0.0
+        self._reply: GuardedStream | None = None
         self._tools: set[asyncio.Task[None]] = set()
 
     @property
@@ -160,6 +163,7 @@ class RealtimeBridge:
                 self._run_tool(event)
             case RealtimeTurnEnd():
                 self._end_turn(event)
+                await self._afinish_reply()
                 await self._connection.asend(
                     RealtimeEnvelope(
                         type=RealtimeMessageType.MESSAGE,
@@ -174,18 +178,40 @@ class RealtimeBridge:
                     )
 
     async def _asay(self, text: str) -> None:
-        """Send the model's words on, if they survive the output stage."""
+        """Send the model's words through this turn's guard; a block cuts the turn."""
+        reply = self._turn_reply()
+        if reply.blocked:
+            return
         self._begin_turn()
-        allowed = await self._achecked(text, GuardrailStage.OUTPUT)
-        if allowed is None:
+        allowed = await reply.apush(text)
+        if reply.blocked:
             await self._session.ainterrupt()
             self._speaking = False
+            await self._connection.asend(RealtimeEnvelope.error(RETRACTION_TEXT))
             return
-        await self._connection.asend(
-            RealtimeEnvelope(
-                type=RealtimeMessageType.MESSAGE, payload={"text": allowed}
+        await self._asend_text(allowed)
+
+    async def _afinish_reply(self) -> None:
+        """Send the held tail; retract the turn if the whole of it is refused."""
+        reply, self._reply = self._reply, None
+        if reply is None or reply.blocked:
+            return
+        await self._asend_text(await reply.aflush())
+        if await reply.averdict() is not None:
+            await self._connection.asend(RealtimeEnvelope.error(RETRACTION_TEXT))
+
+    def _turn_reply(self) -> GuardedStream:
+        if self._reply is None:
+            self._reply = build_guarded_stream(self._guardrails or GuardrailPipeline())
+        return self._reply
+
+    async def _asend_text(self, text: str) -> None:
+        if text:
+            await self._connection.asend(
+                RealtimeEnvelope(
+                    type=RealtimeMessageType.MESSAGE, payload={"text": text}
+                )
             )
-        )
 
     async def _aheard(self, text: str) -> None:
         """Report what the model heard, checked as the user's own words.

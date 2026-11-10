@@ -119,16 +119,13 @@ class OpenAIModerationGuardrail(AbstractGuardrail):
 
     @staticmethod
     def _scores(response: "ModerationCreateResponse") -> dict[str, float]:
-        """The SDK returns a model per result; this wants a plain mapping."""
-        results = getattr(response, "results", None) or []
-        if not results:
+        """Scores keyed by API category name: `self-harm`, not `self_harm`."""
+        if not response.results:
             return {}
-        category_scores = results[0].category_scores
-        if hasattr(category_scores, "model_dump"):
-            category_scores = category_scores.model_dump()
+        scores = response.results[0].category_scores.model_dump(by_alias=True)
         return {
             category: float(score)
-            for category, score in dict(category_scores).items()
+            for category, score in scores.items()
             if score is not None
         }
 

@@ -94,3 +94,12 @@ def test_both_counterparts_reach_the_endpoint(make_settings: MakeSettings) -> No
     guardrail = build(make_settings)
     verdict = guardrail.check("Good morning.", GuardrailStage.INPUT)
     assert verdict.outcome == GuardrailOutcome.ALLOW
+
+
+async def test_scores_carry_the_api_category_names(make_settings: MakeSettings) -> None:
+    """What a deployment writes in `moderation_categories` must match a key."""
+    guardrail = build(make_settings)
+    response = await guardrail._async_client.moderations.create(
+        model=MODEL, input="hello there"
+    )
+    assert "self-harm" in guardrail._scores(response)
