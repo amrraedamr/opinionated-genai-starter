@@ -224,19 +224,29 @@ jobs:
             --entrypoint python \
             ${{ matrix.service }}:${{ github.sha }} \
             -c "from importlib.metadata import entry_points; eps = list(entry_points(group='console_scripts', name='serve')); assert eps, 'service declares no serve entry point'; [ep.load() for ep in eps]; print('entrypoint imports cleanly')"
+      - name: What the image carries
+        # Asked of the image rather than assumed, so a service with no broker or
+        # no SQL is checked against configuration it could actually be given.
+        id: carries
+        run: |
+          docker run --rm --entrypoint python ${{ matrix.service }}:${{ github.sha }} -c \
+            "import importlib.util as u; from base.models.definitions.broker import BrokerBackend; print('broker=' + ('redis' if BrokerBackend.REDIS.is_installed else 'memory')); print('sql=' + ('true' if u.find_spec('sqlalchemy') else 'false'))" \
+            | tee -a "$GITHUB_OUTPUT"
       - name: Preflight inside the image
         run: |
           docker run --rm \
             --workdir /app/services/${{ matrix.service }} \
-            --env SQL_BACKEND=postgresql --env BROKER=redis \
+            --env SQL_BACKEND=postgresql --env BROKER=${{ steps.carries.outputs.broker }} \
             --entrypoint python \
             ${{ matrix.service }}:${{ github.sha }} -m base.preflight
       - name: Image rejects configuration it cannot honour
         run: |
-          for bad in "SQL_BACKEND=mysql" "BROKER=Redis"; do
+          BAD="BROKER=Redis"
+          if [ "${{ steps.carries.outputs.sql }}" = "true" ]; then BAD="$BAD SQL_BACKEND=mysql"; fi
+          for bad in $BAD; do
             if docker run --rm \
               --workdir /app/services/${{ matrix.service }} \
-              --env SQL_BACKEND=postgresql --env BROKER=redis --env "$bad" \
+              --env SQL_BACKEND=postgresql --env BROKER=${{ steps.carries.outputs.broker }} --env "$bad" \
               --entrypoint python \
               ${{ matrix.service }}:${{ github.sha }} -m base.preflight; then
               echo "preflight accepted $bad, which this image cannot honour"; exit 1

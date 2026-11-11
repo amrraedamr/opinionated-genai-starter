@@ -18,6 +18,11 @@ Rules 1 and 2 derive their deny list from `base`'s own manifest rather than a
 hand-maintained one, so a new extra is covered the day it is added. Rule 3 is
 deliberately a pinned list: a core dependency lands in every image ever built,
 so growing that set should be a decision someone reviews, not a side effect.
+
+Rule 2 forgives a distribution something the service declared also needs. The
+`mcp` SDK requires `sse-starlette`, which the `sse` extra also lists; a service
+declaring `mcp` ships it for `mcp`'s sake, not by leaking the `sse` extra. That
+is judged from the resolved graph in `uv.lock`, so it follows real requirements.
 """
 
 import re
@@ -82,6 +87,35 @@ def declared_extras(service: str) -> set[str]:
     return found
 
 
+def locked_graph() -> dict[str, dict]:
+    """Every locked distribution by normalized name, as `uv.lock` resolves it."""
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    return {normalize(package["name"]): package for package in lock["package"]}
+
+
+def requires(graph: dict[str, dict], name: str, extras: set[str]) -> set[str]:
+    """What `name` depends on directly, including the named extras of it."""
+    package = graph.get(name, {})
+    found = {normalize(dep["name"]) for dep in package.get("dependencies", [])}
+    optional = package.get("optional-dependencies", {})
+    for extra in extras:
+        found |= {normalize(dep["name"]) for dep in optional.get(extra, [])}
+    return found
+
+
+def needed_by(graph: dict[str, dict], extras: set[str]) -> set[str]:
+    """Everything `base` with these extras needs, followed through the graph."""
+    needed: set[str] = set()
+    pending = list(requires(graph, "base", extras) - {"base"})
+    while pending:
+        name = pending.pop()
+        if name in needed or name not in graph:
+            continue
+        needed.add(name)
+        pending.extend(requires(graph, name, set()))
+    return needed
+
+
 def production_closure(service: str) -> set[str]:
     """Distributions the service's image installs, matching the Dockerfile's sync."""
     result = subprocess.run(
@@ -107,6 +141,7 @@ def production_closure(service: str) -> set[str]:
 
 def main() -> int:
     extras = extra_distributions()
+    graph = locked_graph()
     failures: list[str] = []
 
     # 3. base's core stays the pinned set
@@ -132,7 +167,7 @@ def main() -> int:
             )
 
         # 2. nothing belonging only to an extra this service did not declare
-        allowed = {dist for extra in declared & extras.keys() for dist in extras[extra]}
+        allowed = needed_by(graph, declared & extras.keys())
         denied = {
             dist: extra
             for extra, dists in extras.items()
