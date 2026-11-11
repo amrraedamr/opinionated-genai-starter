@@ -26,6 +26,10 @@ from base.services.configuration.mixins.llm.azure_openai import (
 )
 from base.services.configuration.mixins.llm.gemini import GeminiSettingsMixin
 from base.services.configuration.mixins.llm.openai import OpenAILLMSettingsMixin
+from base.services.configuration.mixins.mcp import (
+    McpClientSettingsMixin,
+    McpServerSettingsMixin,
+)
 from base.services.configuration.mixins.nosql.cosmos import CosmosSettingsMixin
 from base.services.configuration.mixins.nosql.mongo import MongoSettingsMixin
 from base.services.configuration.mixins.oauth import OAuthSettingsMixin
@@ -76,6 +80,8 @@ __all__ = [
     "IdpSettingsMixin",
     "KeyVaultSettingsMixin",
     "LLMSettingsMixin",
+    "McpClientSettingsMixin",
+    "McpServerSettingsMixin",
     "MicrosoftOAuthSettingsMixin",
     "MongoSettingsMixin",
     "MySQLSettingsMixin",

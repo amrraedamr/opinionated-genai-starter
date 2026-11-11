@@ -4,6 +4,7 @@ from sqlalchemy import Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy_utils import UUIDType
 
+from base.models.definitions.tenancy import DEFAULT_TENANT
 from identity.models.definitions.database import DatabaseTable
 from identity.models.orm import IdentityBase, TimestampMixin
 
@@ -29,3 +30,8 @@ class UserDTO(TimestampMixin, IdentityBase):
 
     first_name: Mapped[str | None] = mapped_column(String(50), default=None)
     last_name: Mapped[str | None] = mapped_column(String(50), default=None)
+
+    tenant_id: Mapped[str] = mapped_column(
+        String(255), default=DEFAULT_TENANT, server_default=DEFAULT_TENANT
+    )
+    """The customer this user belongs to, carried into every token as its tenant claim."""

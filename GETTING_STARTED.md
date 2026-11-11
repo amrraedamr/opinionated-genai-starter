@@ -1,8 +1,8 @@
 # Getting Started
 
-You have cloned a workspace with three services in it. This walks you from
-that to a request crossing two of them and an event reaching a third, then
-shows you how to add your own.
+You have cloned a workspace with four services in it. This walks you from
+that to a request crossing two of them, an event reaching a third, and a tool
+called on the fourth over MCP, then shows you how to add your own.
 
 For what this is and why it is shaped this way, see [`README.md`](README.md).
 
@@ -73,12 +73,14 @@ Two Alembic histories, two databases. Neither knows about the other's tables.
 
 ## 5. Run them
 
-Three terminals, or use the compose stack below.
+Three terminals, or use the compose stack below. `mcp_server` is optional;
+start it too to try MCP.
 
 ```bash
 cd services/identity   && uv run python -c "from identity.app import start; start()"
 cd services/chat_api   && uv run python -c "from chat_api.app import start; start()"
 cd services/ingestion_worker && uv run python -c "from ingestion_worker.worker import start; start()"
+cd services/mcp_server && uv run python -c "from mcp_server.app import start; start()"
 ```
 
 Or all of it, built and wired, in one command:
@@ -156,6 +158,60 @@ on `event.meta.event_id`.
 
 ---
 
+## See a tool cross over MCP
+
+`mcp_server` offers a toolbox over the Model Context Protocol. It has no user
+table either: it verifies the same token identity issued, and runs each call as
+that caller. With the compose stack up it listens on port 8004; ask it what it
+offers, over plain HTTP:
+
+```bash
+curl -s http://localhost:8004/api/mcp_server/tools -H "Authorization: ******"
+# ["add","echo","utc_now","whoami","word_count"]
+```
+
+Any MCP client can call those tools at `http://localhost:8004/mcp/` with that
+bearer. So can this library's own client, which is how another service would:
+
+```python
+from base.clients.credentials import StaticTokenProvider
+from base.models.definitions.mcp import McpTransport
+from base.models.view_models.mcp import McpServerConfig
+from base.services.mcp import McpClient
+
+client = McpClient(
+    McpServerConfig(name="ref", transport=McpTransport.HTTP, url="http://localhost:8004/mcp/"),
+    StaticTokenProvider(token),
+)
+await client.aconnect()
+tools = await client.atools()   # ref__add, ref__echo, ref__word_count, ref__utc_now, ref__whoami
+```
+
+Without a token the server answers `401`. The tools are prefixed `ref__` on
+this side so a second server offering `add` would not collide.
+
+---
+
+## Test everything by hand
+
+`frontend/` is a test console: sign in, chat with streaming and tool calls,
+fire the guardrails, talk to the realtime model by voice, hit the rate limits,
+and read every service's readiness, with each request on one timeline. Run it
+in front of the whole stack, with every capability switched on:
+
+```bash
+docker compose --env-file .env \
+  -f deploy/docker-compose.yml -f deploy/docker-compose.console.yml up --build
+```
+
+Then open <http://localhost:8090>. The root `.env` supplies the model
+credentials (`AZURE_OPENAI_LLM_*` for chat, `OPENAI_LLM_*` for realtime and
+moderation); traces land in Jaeger at <http://localhost:16686>. If the
+infrastructure is already up on its own, add `-p genai-infra` so the services
+join it.
+
+---
+
 ## Add your own service
 
 ```bash
@@ -182,7 +238,9 @@ so if you try.
 - [`README.md`](README.md) — the shape, the rules, and what the shared base
   gives you.
 - [`docs/architecture/`](docs/architecture/) — why it is this way: the library
-  boundary, data ownership, configuration composition, service contracts.
+  boundary, data ownership, configuration composition, service contracts, and
+  the opt-in capabilities — tenancy, tracing, rate limiting, guardrails, MCP
+  and realtime.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — the conventions a review will ask
   about, and the boundaries CI enforces.
 - `tools/new_service.py` — scaffolding a service. `--from identity,chat_api`
@@ -191,8 +249,8 @@ so if you try.
 
 ## Reliability and production
 
-For the real event path set `BROKER=redis` in all three services and give each service its own database. Apply migrations for `chat_api`, `identity`, and `ingestion_worker` before starting replicas. API writes commit an outbox row atomically; dispatchers publish after commit. The worker's durable inbox makes handlers idempotent.
+For the real event path set `BROKER=redis` in the three services that use the broker and give each its own database; `mcp_server` has neither. Apply migrations for `chat_api`, `identity`, and `ingestion_worker` before starting replicas. API writes commit an outbox row atomically; dispatchers publish after commit. The worker's durable inbox makes handlers idempotent.
 
-`chat_api` must receive only `AUTH_PUBLIC_KEY_PATH`. Only `identity` receives `AUTH_PRIVATE_KEY_PATH`. Configure `TRUSTED_HOSTS`, `REQUEST_MAX_BYTES`, `REQUEST_CONCURRENCY_LIMIT`, `REQUEST_RATE_LIMIT_PER_MINUTE`, and `AUTH_RATE_LIMIT_PER_MINUTE`. These controls are intentionally process-local; enforce global limits and TLS at a gateway/ingress.
+`chat_api` and `mcp_server` must receive only `AUTH_PUBLIC_KEY_PATH`. Only `identity` receives `AUTH_PRIVATE_KEY_PATH`. Configure `TRUSTED_HOSTS`, `REQUEST_MAX_BYTES`, `REQUEST_CONCURRENCY_LIMIT`, `RATE_LIMIT_REQUESTS_PER_MINUTE` and `RATE_LIMIT_AUTH_PER_MINUTE`. Budgets count per replica unless `RATE_LIMIT_BACKEND=redis`, and the request and auth budgets key on the client address, so enforce per-client limits and TLS at a gateway or ingress.
 
 Docker Compose is a local developer stack, not a production topology. `docs/architecture/06-build-and-deploy.md` lists what a real deployment has to satisfy.

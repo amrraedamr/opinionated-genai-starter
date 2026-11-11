@@ -23,11 +23,17 @@ docker compose -f deploy/docker-compose.infra.yml up -d
 
 ```bash
 uv run ruff check .
+uv run ruff format --check .
 uv run python tools/boundary_lint.py
+uv run python tools/deps_lint.py
+uv run python tools/import_lint.py
+uv lock --check
+uv run pytest tests/unit
 ```
 
-CI runs the same two, then builds only the services your change affects. If
-those pass locally they will pass there.
+CI runs the same, plus `tests/integration` against the containers in
+`deploy/docker-compose.infra.yml`, then builds only the services your change
+affects. If those pass locally they will pass there.
 
 If you changed a dependency, commit the updated `uv.lock` alongside it.
 
@@ -63,6 +69,11 @@ an app factory, Alembic wiring, and an `.env.example`.
   thing twice, it belongs there.
 - **Settings compose.** `CoreSettings` holds only what every service shares.
   Anything else is a mixin a service opts into.
+- **A capability is opt-in.** A new one gets a mixin, an extra for anything it
+  installs, and stays off until a service asks for it; a service that never
+  uses it carries nothing. `deps_lint` and the slice manifests check the second
+  half. [docs/architecture/09-capabilities.md](docs/architecture/09-capabilities.md)
+  shows the six that exist.
 - **Type everything.** Full annotations, including on async counterparts.
 - **Comment sparingly.** Explain a decision that isn't obvious from the code;
   don't narrate what the next line does.

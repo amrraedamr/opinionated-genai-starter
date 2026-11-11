@@ -5,6 +5,12 @@
 Docs 01–06 cover the structural changes. This document lists everything else found while
 reading the codebase, ranked by impact on modularity.
 
+> **Status.** This is the backlog as it was written, kept for its reasoning. The "State
+> today" column describes the codebase before the migration. Since then items 1–6 and 10
+> have shipped: `tools/new_service.py`, the Redis Streams broker, capability probes behind
+> `/readyz`, correlation ids across HTTP and the broker, `boundary_lint` in CI, unit,
+> integration and live test tiers, and OpenTelemetry ([09](09-capabilities.md#tracing)).
+
 | # | Item | Impact | Effort | State today |
 | --- | --- | --- | --- | --- |
 | 1 | Service scaffolding template | High | Medium | None |

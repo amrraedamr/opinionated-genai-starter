@@ -7,6 +7,7 @@ nothing, and it must stay on plain pydantic: the repository's shared
 the env-var mapping these tests pin.
 """
 
+import json
 from enum import Enum
 from typing import Any, Literal, Union, get_args, get_origin
 
@@ -16,6 +17,7 @@ from pydantic import BaseModel as PydanticBaseModel
 from base.models.definitions.broker import BrokerBackend
 from base.models.definitions.rate_limiting import RateLimitBackend
 from base.models.view_models import BaseModel as CamelisingBaseModel
+from base.models.view_models.mcp import McpServerConfig
 from base.services.configuration import mixins as mixins_package
 from base.services.configuration.mixins import (
     BrokerSettingsMixin,
@@ -174,6 +176,11 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "model_keyvault_tag": "modelconfig",
     },
     "LLMSettingsMixin": {"capture_raw_traces": False},
+    "McpClientSettingsMixin": {"mcp_servers": []},
+    "McpServerSettingsMixin": {
+        "mcp_server_enabled": False,
+        "mcp_server_path": "/mcp",
+    },
     "MicrosoftOAuthSettingsMixin": {
         "oauth_microsoft_client_id": "",
         "oauth_microsoft_client_secret": "",
@@ -457,6 +464,9 @@ def _environment_sample(annotation: Any, default: Any) -> tuple[str, Any]:
         return "1.25", 1.25
     if origin is dict:
         return '{"probe": "value"}', {"probe": "value"}
+    if origin is list and get_args(annotation) == (McpServerConfig,):
+        server = {"name": "probe", "transport": "http", "url": "http://probe/mcp"}
+        return json.dumps([server]), [McpServerConfig.model_validate(server)]
     if origin is list:
         return '["probe"]', ["probe"]
     return "set-from-the-environment", "set-from-the-environment"

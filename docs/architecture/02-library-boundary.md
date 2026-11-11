@@ -310,8 +310,8 @@ Notes from doing it:
   imported it; only the service's SSE endpoints do.
 - **`requests` stays in core** — `HttpRequestService` uses it alongside `httpx`.
 - **`aiohttp` and `certifi` were removed entirely.** Nothing imported either.
-- **No `otel` extra yet.** There is no instrumentation code to install it for; it lands
-  with the correlation-ID work in phase 6.
+- **`otel`, `mcp` and `tools` came later**, with the capabilities in
+  [09](09-capabilities.md). Each is installed only by a service that declares it.
 
 Services then declare intent legibly:
 
@@ -319,10 +319,11 @@ Services then declare intent legibly:
 # chat_api          → base[server,sql,postgres,auth,openai,tokenizer,redis,sse]
 # identity          → base[server,sql,postgres,auth,redis]
 # ingestion_worker  → base[sql,postgres,redis]   # no server extra
+# mcp_server        → base[server,mcp,auth]      # no database, no broker
 ```
 
-`sqlite` is absent from all three, because all three run PostgreSQL in production and use
-SQLite only as the local default (`SQL_BACKEND=sqlite`). For them it is a `dev` dependency
+`sqlite` is absent from the three SQL services, because they run PostgreSQL in production
+and use SQLite only as the local default (`SQL_BACKEND=sqlite`). For them it is a `dev` dependency
 group: images build with `uv sync --no-dev`, so the driver stays out.
 
 That is a per-service decision, not a rule. SQLite is a legitimate production backend —

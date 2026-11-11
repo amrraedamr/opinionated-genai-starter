@@ -1,0 +1,34 @@
+[project]
+name = "mcp_server"
+version = "0.1.0"
+description = "Offers tools over the Model Context Protocol to any MCP client."
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "base[server,mcp,auth,otel]",
+]
+
+[project.scripts]
+serve = "mcp_server.app:start"
+
+[tool.uv.sources]
+base = { workspace = true }
+
+[tool.uv.build-backend]
+module-root = ""
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.starter.slice]
+summary = "Tools over MCP — a toolbox any MCP client can list and call, as a verified caller."
+mixins = ["McpServerSettingsMixin"]
+extras = ["mcp", "auth", "otel"]
+publishes_events = false
+
+[[tool.starter.slice.capabilities]]
+imports = [
+    "from base.capabilities.mcp_server import McpServer",
+    "from {pkg}.tools import toolbox",
+]
+expr = "McpServer(toolbox)"

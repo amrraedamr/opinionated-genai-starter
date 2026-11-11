@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from base.models.definitions.errors import AuthErrors
 from base.models.definitions.tenancy import DEFAULT_TENANT_CLAIM, TenantId
+from base.models.view_models.tokens import ForwardedBearer
 from base.services.auth import (
     TokenIssuer,
     TokenVerifier,
@@ -35,7 +36,12 @@ from base.services.configuration.mixins import (
 )
 from base.tools.errors import ErrorsException
 from base.tools.exception_handlers import AppExceptionHandler
-from base.tools.tenancy import CallerContext, TenantContext, current_tenant
+from base.tools.tenancy import (
+    BearerContext,
+    CallerContext,
+    TenantContext,
+    current_tenant,
+)
 from tests.conftest import MakeSettings
 from tests.unit.auth.conftest import KeyPair
 
@@ -321,3 +327,23 @@ async def test_an_authenticated_request_acts_for_its_user(
         return CallerContext.get()
 
     assert await asyncio.create_task(run(), context=contextvars.Context()) == str(user)
+
+
+async def test_an_authenticated_request_can_act_as_its_caller_downstream(
+    make_settings: MakeSettings, keys: KeyPair
+) -> None:
+    """The presented token is kept, with its expiry, for a call made as the caller."""
+    _settings(make_settings, keys)
+    token = TokenIssuer().issue_access({"user_id": str(UUID(int=42))})
+
+    async def run() -> ForwardedBearer | None:
+        await current_principal(
+            HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        )
+        return BearerContext.get()
+
+    bearer = await asyncio.create_task(run(), context=contextvars.Context())
+    assert bearer is not None
+    assert bearer.token == token
+    assert bearer.expires_at is not None and not bearer.expired
+    assert token not in repr(bearer)

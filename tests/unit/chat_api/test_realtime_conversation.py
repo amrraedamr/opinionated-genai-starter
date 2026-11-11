@@ -32,6 +32,7 @@ from base.services.configuration.mixins import (
     RealtimeSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
+    TenancySettingsMixin,
     TokenIssuingSettingsMixin,
 )
 from base.services.llm.realtime import AbstractRealtimeSession
@@ -41,7 +42,7 @@ from chat_api import routers
 from chat_api.lifespans import realtime_lifespan
 from chat_api.routers import realtime as realtime_router
 from tests.conftest import MakeSettings
-from tests.unit.chat_api.conftest import access_token
+from tests.unit.chat_api.conftest import access_token, bearer
 
 REPLY_TIMEOUT = 5.0
 
@@ -137,8 +138,17 @@ def sessions(monkeypatch: pytest.MonkeyPatch) -> list[ScriptedSession]:
 
 
 @pytest.fixture
+def tenancy() -> bool:
+    """Off, as most of these run; a test that needs it overrides this."""
+    return False
+
+
+@pytest.fixture
 async def server(
-    make_settings: MakeSettings, sqlite_path: Any, key_paths: tuple[str, str]
+    make_settings: MakeSettings,
+    sqlite_path: Any,
+    key_paths: tuple[str, str],
+    tenancy: bool,
 ) -> AsyncIterator[Server]:
     private_path, public_path = key_paths
     settings = make_settings(
@@ -147,6 +157,8 @@ async def server(
         TokenIssuingSettingsMixin,
         RealtimeSettingsMixin,
         RateLimitSettingsMixin,
+        TenancySettingsMixin,
+        tenancy_enabled=tenancy,
         service_name="chat_api",
         sql_backend="sqlite",
         sqlite_db_path=str(sqlite_path),
@@ -274,3 +286,83 @@ async def test_a_message_published_on_another_replica_reaches_the_socket(
         )
 
     assert pushed.payload == {"ping": 1}
+
+
+async def test_a_notification_you_send_yourself_reaches_your_open_socket(
+    server: Server, sessions: list[ScriptedSession]
+) -> None:
+    user = uuid.uuid4()
+    ticket = await server.aticket(user)
+    async with server.connect(ticket) as ws:
+        async with httpx.AsyncClient(base_url=server.http) as client:
+            response = await client.post(
+                "/api/realtime/notifications",
+                json={"payload": {"note": "hi"}},
+                headers=bearer(user),
+            )
+        assert response.status_code == 200, response.text
+        seq = response.json()["data"]["seq"]
+        frame = RealtimeEnvelope.model_validate_json(
+            await asyncio.wait_for(ws.recv(), timeout=REPLY_TIMEOUT)
+        )
+    assert frame.payload == {"note": "hi"}
+    assert frame.channel == "notifications"
+    assert frame.seq == seq == 1
+
+
+async def test_a_notification_waits_for_a_device_that_was_offline(
+    server: Server, sessions: list[ScriptedSession]
+) -> None:
+    user = uuid.uuid4()
+    async with httpx.AsyncClient(base_url=server.http) as client:
+        await client.post(
+            "/api/realtime/notifications",
+            json={"payload": {"note": "while you were away"}},
+            headers=bearer(user),
+        )
+    async with server.connect(await server.aticket(user)) as ws:
+        await ws.send(json.dumps({"type": "resume", "seq": 0}))
+        missed = RealtimeEnvelope.model_validate_json(
+            await asyncio.wait_for(ws.recv(), timeout=REPLY_TIMEOUT)
+        )
+    assert missed.payload == {"note": "while you were away"}
+
+
+async def test_presence_shows_an_open_socket(
+    server: Server, sessions: list[ScriptedSession]
+) -> None:
+    user = uuid.uuid4()
+
+    async def online() -> bool:
+        async with httpx.AsyncClient(base_url=server.http) as client:
+            response = await client.get("/api/realtime/presence", headers=bearer(user))
+        assert response.status_code == 200, response.text
+        return bool(response.json()["data"]["online"])
+
+    assert not await online()
+    async with server.connect(await server.aticket(user)):
+        assert await online()
+
+
+@pytest.mark.parametrize("tenancy", [True])
+async def test_a_notification_reaches_the_inbox_the_socket_reads_with_tenancy_on(
+    server: Server, sessions: list[ScriptedSession]
+) -> None:
+    """The route and the socket must agree on the tenant, or resume reads an empty inbox."""
+    user = uuid.uuid4()
+    headers = {"Authorization": f"Bearer {access_token(user, tid='acme')}"}
+    async with httpx.AsyncClient(base_url=server.http) as client:
+        await client.post(
+            "/api/realtime/notifications",
+            json={"payload": {"note": "while you were away"}},
+            headers=headers,
+        )
+        ticket = (
+            await client.post("/api/realtime/tickets", json={}, headers=headers)
+        ).json()["ticket"]
+    async with server.connect(ticket) as ws:
+        await ws.send(json.dumps({"type": "resume", "seq": 0}))
+        missed = RealtimeEnvelope.model_validate_json(
+            await asyncio.wait_for(ws.recv(), timeout=REPLY_TIMEOUT)
+        )
+    assert missed.payload == {"note": "while you were away"}

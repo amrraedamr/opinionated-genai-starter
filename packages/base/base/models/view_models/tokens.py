@@ -5,9 +5,11 @@ it, and it guards on the `auth` extra. A service that only authenticates
 itself signs and verifies nothing, so it should not need pyjwt to say so.
 """
 
+from datetime import UTC, datetime
 from typing import NewType
 
 from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
 
 from base.models.view_models import BaseModel
 
@@ -18,6 +20,17 @@ RefreshToken = NewType("RefreshToken", str)
 class TokenPair(BaseModel):
     access_token: AccessToken
     refresh_token: RefreshToken
+
+
+class ForwardedBearer(BaseModel):
+    """The token a caller presented, kept to act as them downstream until it expires."""
+
+    token: AccessToken = Field(repr=False)
+    expires_at: datetime | None = None
+
+    @property
+    def expired(self) -> bool:
+        return self.expires_at is not None and datetime.now(UTC) >= self.expires_at
 
 
 class TokenResponse(PydanticBaseModel):
@@ -40,4 +53,10 @@ class TokenResponse(PydanticBaseModel):
     scope: str | None = None
 
 
-__all__ = ["AccessToken", "RefreshToken", "TokenPair", "TokenResponse"]
+__all__ = [
+    "AccessToken",
+    "ForwardedBearer",
+    "RefreshToken",
+    "TokenPair",
+    "TokenResponse",
+]

@@ -64,6 +64,8 @@ gemini = ["google-genai>=2.34.0,<3"]
 tokenizer = ["tiktoken>=0.12.0,<0.13"]
 # Tools described by raw JSON Schema, such as an MCP server's.
 tools = ["jsonschema>=4.26.0,<5"]
+# Model Context Protocol client and server. Its transport is httpx2, not httpx.
+mcp = ["mcp>=2.3.0,<3", "jsonschema>=4.26.0,<5"]
 # Tracing. The instrumentation packages version separately from the core ones
 # and ship as betas, which is how OpenTelemetry releases them.
 otel = [

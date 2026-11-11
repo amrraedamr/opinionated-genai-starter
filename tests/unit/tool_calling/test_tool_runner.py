@@ -7,6 +7,7 @@ caller's list alone, and that `max_rounds` is a real ceiling rather than a hint.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -21,8 +22,20 @@ from base.models.view_models.chat_history import (
     StoredToolCallFunction,
 )
 from base.models.view_models.llm_result import LLMResult
+from base.models.view_models.prompt import (
+    RenderedPrompt,
+    RenderedPromptInstruction,
+    RenderedPromptMessage,
+)
+from base.models.view_models.streams import (
+    StreamEnd,
+    StreamError,
+    StreamMessage,
+    StreamStart,
+)
 from base.services.tool_calling import Tool, Toolbox, ToolError
 from base.services.tool_calling.runner import ToolRunner
+from base.tools.stream import StreamIterator
 
 CONVERSATION = ConversationId(uuid.UUID(int=7))
 
@@ -214,7 +227,7 @@ def test_a_ceiling_below_one_is_refused_at_construction() -> None:
 async def test_a_turn_with_no_messages_is_refused() -> None:
     llm = ScriptedLLM(LLMResult(content="x"))
 
-    with pytest.raises(ToolError, match="at least one message"):
+    with pytest.raises(ToolError, match="a prompt or at least one message"):
         await runner(llm).arun([])
 
 
@@ -228,3 +241,104 @@ async def test_extra_keywords_are_forwarded_to_the_provider_on_every_round() -> 
 
     assert all(c["max_output_tokens"] == 64 for c in llm.calls)
     assert all(c["label"] == "Runner" for c in llm.calls)
+
+
+# From a prompt
+
+
+def prompt() -> RenderedPrompt:
+    return RenderedPrompt(
+        instructions=[
+            RenderedPromptInstruction(role=MessageRole.SYSTEM, content="be brief")
+        ],
+        messages=[RenderedPromptMessage(role=MessageRole.USER, content="weather?")],
+    )
+
+
+async def test_a_prompt_is_sent_on_every_round_with_the_tool_turns_after_it() -> None:
+    llm = ScriptedLLM(
+        LLMResult(content=None, tool_calls=[call("c1")]),
+        LLMResult(content="done"),
+    )
+
+    outcome = await runner(llm).arun(prompt=prompt(), conversation_id=CONVERSATION)
+
+    assert outcome.result.content == "done"
+    assert all(c["prompt"] == prompt() for c in llm.calls)
+    assert llm.calls[0]["messages"] is None
+    assert [m.role for m in llm.calls[1]["messages"]] == [
+        MessageRole.ASSISTANT,
+        MessageRole.TOOL,
+    ]
+    assert [m.sequence for m in outcome.messages] == [1, 2]
+
+
+async def test_a_turn_from_a_prompt_alone_needs_its_conversation() -> None:
+    with pytest.raises(ToolError, match="conversation_id"):
+        await runner(ScriptedLLM(LLMResult(content="x"))).arun(prompt=prompt())
+
+
+async def test_each_round_goes_through_the_completion_it_was_given() -> None:
+    """How an agent keeps its own guardrails on every round."""
+    seen: list[dict[str, Any]] = []
+    llm = ScriptedLLM(
+        LLMResult(content=None, tool_calls=[call("c1")]),
+        LLMResult(content="done"),
+    )
+
+    async def guarded(**kwargs: Any) -> LLMResult:
+        seen.append(kwargs)
+        return await llm.acomplete(**kwargs)
+
+    await ToolRunner(toolbox(), complete=guarded).arun([user()])
+
+    assert len(seen) == 2
+
+
+# Streaming
+
+
+class StreamingLLM(ScriptedLLM):
+    """Streams each reply as a provider does: start, its text, end."""
+
+    async def acomplete(self, **kwargs: Any) -> LLMResult:
+        result = await super().acomplete(**kwargs)
+        stream: StreamIterator = kwargs["stream_iterator"]
+        await stream.asend(StreamStart())
+        if result.content:
+            await stream.asend(StreamMessage(data=result.content))
+        await stream.asend(StreamEnd())
+        return result
+
+
+async def drained(stream: StreamIterator) -> list[str]:
+    return [json.loads(str(frame["data"]))["message_type"] async for frame in stream]  # type: ignore[index]
+
+
+async def test_a_streamed_turn_ends_once_after_its_last_round() -> None:
+    """A round's end would otherwise close the stream before the answer arrives."""
+    llm = StreamingLLM(
+        LLMResult(content="checking", tool_calls=[call("c1")]),
+        LLMResult(content="21 in Doha"),
+    )
+    stream = StreamIterator()
+
+    await runner(llm).arun([user()], stream_iterator=stream)
+
+    assert await drained(stream) == ["start", "stream", "stream", "end"]
+
+
+async def test_a_streamed_error_still_reaches_the_caller() -> None:
+    llm = ScriptedLLM(LLMResult(content=None, tool_calls=[call("c1")]))
+    stream = StreamIterator()
+
+    async def failing(**kwargs: Any) -> LLMResult:
+        await kwargs["stream_iterator"].asend(StreamError(error_code=500, text="x"))
+        return await llm.acomplete(**kwargs)
+
+    with pytest.raises(ToolError):
+        await ToolRunner(toolbox(), max_rounds=1, complete=failing).arun(
+            [user()], stream_iterator=stream
+        )
+
+    assert await drained(stream) == ["error"]

@@ -4,9 +4,9 @@ Design for evolving this starter from **one application** into a **multi-app / m
 starter** that still shares a single opinionated foundation.
 
 > **Status: implemented.** All seven phases described here are built. The workspace holds
-> `base` and `contracts` under `packages/`, and `chat_api`, `identity` and
-> `ingestion_worker` under `services/`. Where implementation diverged from the original
-> design, these documents were corrected to match the code.
+> `base` and `contracts` under `packages/`, and `chat_api`, `identity`,
+> `ingestion_worker` and `mcp_server` under `services/`. Where implementation diverged
+> from the original design, these documents were corrected to match the code.
 
 ---
 
@@ -69,6 +69,7 @@ Three existing design decisions make this unusually cheap:
 | [06 — Build & Deploy](06-build-and-deploy.md) | Dockerfile template, compose, CI affected-service detection |
 | [07 — Modularity Backlog](07-modularity-backlog.md) | Remaining gaps that would make this genuinely modular |
 | [08 — Migration Plan](08-migration-plan.md) | Phased, incremental path — the app keeps running at every step |
+| [09 — Capabilities](09-capabilities.md) | Tenancy, tracing, rate limiting, guardrails, MCP and realtime, each opt-in |
 
 ---
 

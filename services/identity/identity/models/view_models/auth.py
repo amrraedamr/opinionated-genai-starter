@@ -1,5 +1,6 @@
 from pydantic import EmailStr, Field, field_validator
 
+from base.models.definitions.tenancy import DEFAULT_TENANT
 from base.models.view_models import BaseModel
 from base.services.auth import AccessToken, RefreshToken, TokenPair
 from base.tools.validators import validate_name, validate_password
@@ -23,6 +24,7 @@ class RegisterRequest(BaseModel):
     password: str
     first_name: str | None = None
     last_name: str | None = None
+    tenant_id: str = Field(default=DEFAULT_TENANT, min_length=1, max_length=255)
 
     @field_validator("first_name", "last_name")
     @classmethod

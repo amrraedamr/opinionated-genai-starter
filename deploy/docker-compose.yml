@@ -116,3 +116,28 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  mcp_server:
+    build:
+      context: ..
+      dockerfile: docker/service.Dockerfile
+      args:
+        SERVICE: mcp_server
+    image: genai/mcp_server:local
+    env_file:
+      - path: ../.env.shared
+        required: false
+      - path: ../services/mcp_server/.env
+        required: false
+    environment:
+      ENVIRONMENT: local
+      SERVICE_NAME: mcp_server
+      API_PREFIX: /api/mcp_server
+      # Other services reach it by its compose name, which the host allowlist must name.
+      TRUSTED_HOSTS: localhost,127.0.0.1,mcp_server
+      # Verifies the tokens identity issues; no database and no broker.
+      AUTH_PUBLIC_KEY_PATH: /keys/public.pem
+    volumes:
+      - ../keys/public.pem:/keys/public.pem:ro
+    ports:
+      - "8004:8000"

@@ -32,6 +32,10 @@ from base.services.configuration.protocols.llm.azure_openai import (
 )
 from base.services.configuration.protocols.llm.gemini import SupportsGeminiConfig
 from base.services.configuration.protocols.llm.openai import SupportsOpenAILLMConfig
+from base.services.configuration.protocols.mcp import (
+    SupportsMcpClientConfig,
+    SupportsMcpServerConfig,
+)
 from base.services.configuration.protocols.nosql.cosmos import SupportsCosmosConfig
 from base.services.configuration.protocols.nosql.mongo import SupportsMongoConfig
 from base.services.configuration.protocols.oauth import SupportsOAuthConfig
@@ -90,6 +94,8 @@ __all__ = [
     "SupportsIdpConfig",
     "SupportsKeyVaultConfig",
     "SupportsLLMConfig",
+    "SupportsMcpClientConfig",
+    "SupportsMcpServerConfig",
     "SupportsMicrosoftOAuthConfig",
     "SupportsMongoConfig",
     "SupportsMySQLConfig",

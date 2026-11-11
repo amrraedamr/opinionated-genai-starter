@@ -22,8 +22,11 @@ from base.models.definitions.realtime import (
 from base.models.definitions.tenancy import TenantId
 from base.models.view_models.auth import Principal
 from base.models.view_models.realtime import ConnectionTicket
+from base.models.view_models.tokens import AccessToken, ForwardedBearer
 from base.services.cache.memory import InMemoryCacheService
+from base.services.realtime.context import RealtimeContext
 from base.services.realtime.tickets import TicketService
+from base.tools.tenancy import BearerContext
 from tests.conftest import MakeSettings
 
 
@@ -118,6 +121,33 @@ async def test_the_reply_does_not_restate_who_the_caller_is(
     dumped = issued.jsonify()
     assert "acme" not in dumped
     assert "user-1" not in dumped
+
+
+async def test_a_ticket_carries_the_callers_token_to_the_socket(
+    tickets: TicketService,
+) -> None:
+    """So the socket's tool calls act as the caller, who has no header to send there."""
+    bearer = ForwardedBearer(token=AccessToken("caller-token"))
+    with BearerContext.scope(bearer):
+        issued = await tickets.aissue(principal())
+    assert "caller-token" not in issued.jsonify()
+    redeemed = await tickets.aredeem(issued.ticket)
+    assert redeemed is not None
+    assert redeemed.bearer == bearer
+    assert "caller-token" not in repr(redeemed)
+
+
+async def test_the_socket_acts_with_the_token_its_ticket_carried(
+    tickets: TicketService,
+) -> None:
+    bearer = ForwardedBearer(token=AccessToken("caller-token"))
+    with BearerContext.scope(bearer):
+        issued = await tickets.aissue(principal())
+    redeemed = await tickets.aredeem(issued.ticket)
+    assert redeemed is not None
+    async with RealtimeContext.connection(redeemed):
+        assert BearerContext.get() == bearer
+    assert BearerContext.get() is None
 
 
 async def test_two_tickets_are_never_the_same(tickets: TicketService) -> None:

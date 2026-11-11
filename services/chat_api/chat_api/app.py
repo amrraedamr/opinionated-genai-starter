@@ -10,12 +10,14 @@ from base.app import create_app  # noqa: E402
 from base.capabilities.broker import BrokerDependency  # noqa: E402
 from base.capabilities.prompts import Prompts  # noqa: E402
 from base.capabilities.sql import SQLDependency  # noqa: E402
+from base.capabilities.telemetry import Telemetry  # noqa: E402
 from base.capabilities.terminal_capture import TerminalCapture  # noqa: E402
 from chat_api import routers  # noqa: E402
 from chat_api.lifespans import (  # noqa: E402
     background_tasks_lifespan,
     realtime_lifespan,
 )
+from chat_api.mcp import MCP  # noqa: E402
 from chat_api.messaging import BROKER, messaging_lifespan  # noqa: E402
 from chat_api.prompts import templates  # noqa: E402
 from chat_api.stores.prompt import PromptStore  # noqa: E402
@@ -25,10 +27,12 @@ app = create_app(
     routers=routers,
     prefix=settings.api_prefix,
     capabilities=[
+        Telemetry(),
         TerminalCapture(settings.service_name),
         Prompts(templates=[templates], store=PromptStore()),
         SQLDependency(),
         BrokerDependency(BROKER),
+        MCP,
     ],
     cors_origins=settings.cors_origins_list or None,
     lifespan_hooks=[

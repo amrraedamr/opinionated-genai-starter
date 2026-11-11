@@ -15,6 +15,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from base.models.definitions.oauth import OAUTH_NONCE_COOKIE
+from base.models.definitions.tenancy import DEFAULT_TENANT_CLAIM
 from base.models.definitions.tokens import TokenType
 from base.services.auth import TokenVerifier
 from identity.models.orm.user import UserDTO
@@ -59,6 +60,15 @@ async def test_a_registered_password_is_stored_hashed(client: TestClient) -> Non
     assert user is not None
     assert user.password_hash is not None
     assert PASSWORD not in user.password_hash
+
+
+def test_a_user_registered_into_a_tenant_logs_in_as_that_tenant(
+    client: TestClient,
+) -> None:
+    register(client, tenantId="acme")
+    token = login(client).json()["data"]["accessToken"]
+    claims = TokenVerifier().decode_local(token, expected_type=TokenType.ACCESS)
+    assert claims[DEFAULT_TENANT_CLAIM] == "acme"
 
 
 def test_registering_an_address_twice_is_a_conflict(client: TestClient) -> None:

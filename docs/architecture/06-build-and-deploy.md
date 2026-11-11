@@ -11,7 +11,7 @@ workspace lock, installs only the selected service's dependency closure, and
 removes the other service sources before producing the runtime image.
 
 It syncs with `--no-dev`, so a service's `dev` dependency group stays out of the
-image. The three services here run PostgreSQL in production and reach for SQLite
+image. The three SQL services here run PostgreSQL in production and reach for SQLite
 only as a local default, so that is where their SQLite driver lives. A service
 that genuinely runs SQLite in production declares `base[sql,sqlite]` and ships it.
 
@@ -317,6 +317,16 @@ list from `base`'s own manifest, so a new extra is covered the day it is added. 
 is pinned on purpose — a core dependency lands in every image ever built, so growing that
 set should be a decision someone reviews rather than a side effect of one import.
 
+"Solely" is judged from the resolved graph in `uv.lock`, not from the extras' own lists.
+The `mcp` SDK requires `sse-starlette`, which the `sse` extra also lists; a service
+declaring `mcp` ships it for `mcp`'s sake, and that is not a leak of `sse`. A package that
+only an undeclared extra needs is still refused.
+
+The image job preflights each image with configuration that image could honour. It asks
+the image which broker it installs and whether it speaks SQL, rather than assuming
+`BROKER=redis` and a SQL backend everywhere, so a service with neither — `mcp_server` —
+is checked against what it can actually be given.
+
 ---
 
 ## Deployment shape
@@ -362,8 +372,8 @@ shutdown rather than by response completion.
 
 ## Production topology
 
-Build and deploy `chat_api`, `identity`, and `ingestion_worker` independently. Run one migration Job per service database before rollout, never on every replica — concurrent migrations race. Supply managed PostgreSQL and Redis dependencies, platform secrets, readiness/liveness probes, and graceful termination. `chat_api` gets only the public verification key; the private signing key is scoped to `identity`.
+Build and deploy `chat_api`, `identity`, `ingestion_worker` and `mcp_server` independently. Run one migration Job per service database before rollout, never on every replica — concurrent migrations race. Supply managed PostgreSQL and Redis dependencies, platform secrets, readiness/liveness probes, and graceful termination. `chat_api` gets only the public verification key; the private signing key is scoped to `identity`.
 
 This repository deliberately ships no platform manifests. Kubernetes, ECS, Container Apps and Nomad disagree about secrets, ingress and autoscaling, so a committed example would be placeholder YAML that rots rather than something you can run. The requirements above are what your platform's manifests have to satisfy.
 
-Compose is local-only. Multi-replica request limits need an ingress/API gateway and, where required, Redis-backed global enforcement. The shared middleware provides safe single-process backpressure, trusted hosts, request-size limits, security headers, and consistent overload responses without pretending to be a distributed rate limiter.
+Compose is local-only. The shared middleware provides single-process backpressure, trusted hosts, request-size limits, security headers and consistent overload responses. Rate budgets count per replica with `RATE_LIMIT_BACKEND=memory` and across the fleet with `redis`; see [09](09-capabilities.md#rate-limiting). Request, auth and connect budgets are keyed by client address, so behind a proxy put an ingress or gateway in front that limits per real client.

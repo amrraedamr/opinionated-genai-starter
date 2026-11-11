@@ -27,6 +27,7 @@ SETTINGS_CLASS = {
     "identity": ("identity.settings", "IdentitySettings"),
     "chat_api": ("chat_api.settings", "ChatApiSettings"),
     "ingestion_worker": ("ingestion_worker.settings", "IngestionWorkerSettings"),
+    "mcp_server": ("mcp_server.settings", "McpServerSettings"),
 }
 
 INFRASTRUCTURE = {
@@ -40,13 +41,17 @@ INFRASTRUCTURE = {
     "RedisSettingsMixin",
     "BrokerSettingsMixin",
     "TokenVerificationSettingsMixin",
+    "TenancySettingsMixin",
+    "TelemetrySettingsMixin",
+    "GuardrailSettingsMixin",
 }
 
 SLICE_OWNED = {
     # Every mixin a slice's settings composes, manifest-declared or not. The
     # entries beyond the manifest are the per-provider companions its umbrella
     # mixin implies — `OAuthSettingsMixin` plus the five providers identity
-    # offers, `LLMSettingsMixin` plus the SDK chat_api is configured for.
+    # offers, `LLMSettingsMixin` plus the two OpenAI-protocol providers chat_api
+    # talks to: Azure for chat, OpenAI for realtime and moderation.
     "identity": {
         "TokenIssuingSettingsMixin",
         "OAuthSettingsMixin",
@@ -60,10 +65,13 @@ SLICE_OWNED = {
     "chat_api": {
         "LLMSettingsMixin",
         "AzureOpenAILLMSettingsMixin",
+        "OpenAILLMSettingsMixin",
         "PromptSettingsMixin",
         "RealtimeSettingsMixin",
+        "McpClientSettingsMixin",
     },
     "ingestion_worker": set(),
+    "mcp_server": {"McpServerSettingsMixin"},
 }
 
 
@@ -138,6 +146,8 @@ def test_identity_composes_exactly_its_declared_bases() -> None:
             "MySQLSettingsMixin",
             "MongoSettingsMixin",
             "TokenVerificationSettingsMixin",
+            "TenancySettingsMixin",
+            "GuardrailSettingsMixin",
         }
         | SLICE_OWNED["identity"]
     )
@@ -211,13 +221,14 @@ def test_a_slices_mixins_name_real_mixins_of_base() -> None:
         ("identity", "identity"),
         ("chat_api", "chat_api"),
         ("ingestion_worker", "ingestion_worker"),
+        ("mcp_server", "mcp_server"),
     ],
 )
 def test_each_service_names_itself(service: str, service_name: str) -> None:
     assert settings_class(service).model_fields["service_name"].default == service_name
 
 
-@pytest.mark.parametrize("service", ["identity", "chat_api"])
+@pytest.mark.parametrize("service", ["identity", "chat_api", "mcp_server"])
 def test_an_http_service_prefixes_its_own_api(service: str) -> None:
     prefix = settings_class(service).model_fields["api_prefix"].default
 
@@ -234,7 +245,11 @@ def test_the_worker_declares_no_http_surface() -> None:
 
 @pytest.mark.parametrize(
     ("configured", "package"),
-    [("identity", "identity.routers"), ("chat_api", "chat_api.routers")],
+    [
+        ("identity", "identity.routers"),
+        ("chat_api", "chat_api.routers"),
+        ("mcp_server", "mcp_server.routers"),
+    ],
     indirect=["configured"],
 )
 def test_every_router_module_imports_and_exposes_a_router(

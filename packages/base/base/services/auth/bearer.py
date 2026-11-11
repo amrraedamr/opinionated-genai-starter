@@ -8,14 +8,16 @@ except ModuleNotFoundError as exc:  # pragma: no cover
         "server", "fastapi", feature="Bearer authentication dependencies"
     ) from exc
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from base.models.definitions.errors import AuthErrors
 from base.models.definitions.tenancy import TenantId
+from base.models.view_models.tokens import AccessToken, ForwardedBearer
 from base.services.auth.models import Principal
 from base.services.auth.tokens import TokenVerifier
 from base.tools.errors import raise_error
-from base.tools.tenancy import CallerContext, TenantContext
+from base.tools.tenancy import BearerContext, CallerContext, TenantContext
 
 http_bearer = HTTPBearer()
 http_bearer_dependency = Depends(http_bearer)
@@ -27,6 +29,15 @@ async def current_principal(
     """Resolve the caller from token claims, and act for them for the rest of the request."""
     principal = TokenVerifier().verify(credentials.credentials)
     CallerContext.set(str(principal.user_id or principal.subject))
+    expiry = principal.claims.get("exp")
+    BearerContext.set(
+        ForwardedBearer(
+            token=AccessToken(credentials.credentials),
+            expires_at=datetime.fromtimestamp(expiry, UTC)
+            if isinstance(expiry, int | float)
+            else None,
+        )
+    )
     return principal
 
 
