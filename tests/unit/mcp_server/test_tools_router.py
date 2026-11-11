@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 from mcp_server import routers
+from mcp_server.settings import McpServerSettings
 
 from base.app import create_app
 from base.services.configuration.mixins import (
@@ -22,7 +23,8 @@ def test_the_tool_list_needs_a_verified_caller(
         auth_private_key_path=private_path,
         auth_public_key_path=public_path,
     )
-    app = create_app(settings=settings, routers=routers, prefix="/api")
+    prefix = McpServerSettings.model_fields["api_prefix"].default
+    app = create_app(settings=settings, routers=routers, prefix=prefix)
     with TestClient(app) as http:
         refused = http.get("/api/mcp_server/tools")
         answer = http.get(
