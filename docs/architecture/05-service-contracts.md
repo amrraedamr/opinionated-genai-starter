@@ -289,9 +289,10 @@ one. The existing `debug_trace` view models extend naturally to span service bou
 
 ### OpenTelemetry
 
-Add an optional `base[otel]` extra that auto-instruments FastAPI, httpx and SQLAlchemy and
-exports OTLP, with `service.name` bound to `CoreSettings.service_name`. Off by default,
-one setting to enable — no per-service wiring.
+The optional `base[otel]` extra instruments FastAPI, httpx, Redis and SQLAlchemy and
+exports OTLP, with `service.name` bound to `CoreSettings.service_name`. Off by default;
+`OTEL_ENABLED=true` turns it on. Trace context also travels in each event's metadata, so a
+trace follows a request across the broker. See [09](09-capabilities.md#tracing).
 
 ---
 

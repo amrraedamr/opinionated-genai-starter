@@ -34,19 +34,21 @@ packages/
   contracts/     versioned event payloads every service agrees on
 services/
   identity/      users, registration, OAuth, token issuing      → identity_db
-  chat_api/      conversations, messages, agents                → chat_api_db
+  chat_api/      conversations, messages, agents, realtime      → chat_api_db
   ingestion_worker/  consumes events, durable inbox               → worker_db
+  mcp_server/    a toolbox any MCP client can call              → no database
 tools/           scaffolder, boundary lint, affected detection
 tests/           unit, integration and live suites
 deploy/          compose stacks
 docker/          one parameterised image for every service
 ```
 
-Three services ship as reference implementations, not as the product. They
+Four services ship as reference implementations, not as the product. They
 are also the test matrix: a worker that serves no HTTP is what keeps HTTP
-concerns out of `base`, and an auth service is what keeps token issuance
-separable from verification. `tools/new_service.py` writes the fourth, either
-fresh or composed from the slices these three already prove.
+concerns out of `base`, an auth service is what keeps token issuance separable
+from verification, and an MCP server with no database and no broker is what
+keeps both optional. `tools/new_service.py` writes the next one, either fresh or
+composed from the slices these already prove.
 
 ---
 
@@ -180,10 +182,11 @@ Shared infrastructure, available to every service whether you run one or many:
   Streaming, structured output, tool calls and multimodal content work the same
   whoever answers, and error handling maps provider failures to one hierarchy
   your code can branch on.
-- **Tool calling** — a tool is a function plus the Pydantic model describing
-  its arguments; that model generates the schema the LLM sees and validates
-  what comes back. `ToolRunner` executes the calls and loops until the model
-  answers, against any provider behind the LLM seam.
+- **Tool calling** — a tool is a function plus what describes its arguments:
+  a Pydantic model, or raw JSON Schema for a tool described elsewhere. That one
+  description is both the schema the LLM sees and the validator for what comes
+  back. `ToolRunner` executes the calls and loops until the model answers,
+  against any provider behind the LLM seam.
 - **RAG** — chunk, embed, upsert, search, with the passage stored next to its
   vector. Re-ingesting replaces rather than accumulating stale chunks.
   Retrieval fuses vector and full-text hits by rank where the backend offers
@@ -208,6 +211,25 @@ Shared infrastructure, available to every service whether you run one or many:
   narrow and deterministic class of prompt injection. Joiners, variation
   selectors and bidirectional controls are deliberately left alone, because
   they are load-bearing for emoji and for Arabic.
+
+Six capabilities, all but rate limiting off until a service asks for them —
+see [docs/architecture/09-capabilities.md](docs/architecture/09-capabilities.md):
+
+- **Tenancy** — the tenant comes from a token claim, scopes every read and write
+  of a tenant-scoped SQL model, travels across the broker, and can be fenced a
+  second time by Postgres row-level security.
+- **Tracing** — OpenTelemetry over OTLP, with prompts recorded only when
+  asked, and PII redacted from every span once guardrails are on.
+- **Rate limiting** — request, auth, socket and LLM-token budgets, per replica
+  or across the fleet on Redis, with an in-memory floor if Redis goes away.
+- **Guardrails** — PII redaction, moderation and an injection check on input,
+  output, streamed fragments and tool results; PII redaction also covers log
+  lines and spans.
+- **MCP** — call tools on other MCP servers, or offer a toolbox to any MCP
+  client as a verified caller with their tenant.
+- **Realtime** — a spoken or typed conversation with OpenAI realtime or Gemini
+  Live over a websocket, and per-user delivery to every device across replicas,
+  durable or ephemeral per channel.
 
 ---
 
@@ -269,4 +291,4 @@ Registration and conversation creation write their domain row and an outbox row 
 uv run broker-ops replay-dlq identity.user.registered --limit 100
 ```
 
-Non-local logging is structured JSON with correlation IDs and redaction. Prompt/response content is not traced or persisted in normal chat history by default. Compose is local only; see `docs/architecture/06-build-and-deploy.md` for what a production deployment has to satisfy. In-process limits are per replica; use an external gateway and Redis-backed/global controls for fleet-wide enforcement.
+Non-local logging is structured JSON with correlation IDs and redaction. Prompt/response content is not traced or persisted in normal chat history by default. Compose is local only; see `docs/architecture/06-build-and-deploy.md` for what a production deployment has to satisfy. Rate budgets count per replica unless `RATE_LIMIT_BACKEND=redis`; request, auth and connect budgets key on the client address, so behind a proxy put a gateway in front that limits per real client.
