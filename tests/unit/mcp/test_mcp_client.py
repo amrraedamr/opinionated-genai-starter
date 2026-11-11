@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx2
@@ -14,8 +15,9 @@ import pytest
 from mcp import types
 
 from base.capabilities.mcp_clients import McpClients
-from base.clients.credentials import StaticTokenProvider
+from base.clients.credentials import ForwardedTokenProvider, StaticTokenProvider
 from base.models.definitions.guardrails import GuardrailStage
+from base.models.definitions.health import ProbeStatus
 from base.models.definitions.mcp import McpTransport
 from base.models.view_models.chat_history import StoredToolCall, StoredToolCallFunction
 from base.models.view_models.exceptions import (
@@ -25,12 +27,14 @@ from base.models.view_models.exceptions import (
     McpToolNameError,
 )
 from base.models.view_models.mcp import McpServerConfig
+from base.models.view_models.tokens import AccessToken, ForwardedBearer
 from base.services.configuration.mixins import GuardrailSettingsMixin
 from base.services.guardrails import GuardrailBlocked
 from base.services.guardrails.injection import InjectionHeuristicGuardrail
 from base.services.guardrails.pipeline import GuardrailPipeline
 from base.services.mcp import McpClient
 from base.services.tool_calling import Toolbox
+from base.tools.tenancy import BearerContext
 from tests.conftest import MakeSettings
 
 FIXTURE = Path(__file__).with_name("fixture_server.py")
@@ -279,6 +283,153 @@ async def test_a_credential_that_was_not_provided_is_refused() -> None:
         await clients.astartup(None)  # type: ignore[arg-type]
 
 
-def test_the_toolbox_cannot_be_read_before_startup() -> None:
+async def test_the_toolbox_cannot_be_read_before_startup() -> None:
     with pytest.raises(McpConfigError, match="before startup"):
-        _ = McpClients(config=Servers()).toolbox
+        await McpClients(config=Servers()).atoolbox()
+
+
+# Per request
+
+
+async def test_startup_connects_to_nothing(server: FixtureServer) -> None:
+    """A server that takes the caller's token cannot be reached before a caller arrives."""
+    clients = McpClients(config=Servers([config(server.url)]))
+    await clients.astartup(None)  # type: ignore[arg-type]
+    try:
+        assert await server.aauthorization_seen() == []
+        assert not clients._clients or not clients._clients[0].connected
+    finally:
+        await clients.ashutdown(None)  # type: ignore[arg-type]
+
+
+async def test_the_toolbox_connects_on_first_use(server: FixtureServer) -> None:
+    clients = McpClients(config=Servers([config(server.url)]))
+    await clients.astartup(None)  # type: ignore[arg-type]
+    try:
+        toolbox = await clients.atoolbox()
+        assert "weather__forecast" in toolbox.names
+    finally:
+        await clients.ashutdown(None)  # type: ignore[arg-type]
+
+
+async def test_a_down_server_leaves_the_others_tools(server: FixtureServer) -> None:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        dead = f"http://127.0.0.1:{int(probe.getsockname()[1])}/mcp/"
+    clients = McpClients(config=Servers([config(server.url), config(dead, "gone")]))
+    await clients.astartup(None)  # type: ignore[arg-type]
+    try:
+        assert {"weather__forecast"} <= set((await clients.atoolbox()).names)
+        assert not any(
+            name.startswith("gone__") for name in (await clients.atoolbox()).names
+        )
+    finally:
+        await clients.ashutdown(None)  # type: ignore[arg-type]
+
+
+# Readiness
+
+
+async def test_readiness_is_ok_before_any_call() -> None:
+    clients = McpClients(config=Servers([config("http://127.0.0.1:9/mcp/")]))
+    await clients.astartup(None)  # type: ignore[arg-type]
+    assert (await clients.aprobe()).status == ProbeStatus.OK
+
+
+async def test_readiness_degrades_after_a_failed_call_and_recovers(
+    server: FixtureServer,
+) -> None:
+    """Passive: the probe sends nothing, because it has no caller token to send."""
+    clients = McpClients(config=Servers([config(server.url)]))
+    await clients.astartup(None)  # type: ignore[arg-type]
+    try:
+        await clients.atoolbox()
+        server.stop()
+        await clients.atoolbox()
+        probe = await clients.aprobe()
+        assert probe.status == ProbeStatus.DEGRADED
+        assert probe.detail == "last call failed: weather"
+        await server.astart()
+        await clients.atoolbox()
+        assert (await clients.aprobe()).status == ProbeStatus.OK
+    finally:
+        await clients.ashutdown(None)  # type: ignore[arg-type]
+
+
+async def test_the_probe_sends_no_request(server: FixtureServer) -> None:
+    mcp = McpClient(config(server.url), StaticTokenProvider("t"))
+    clients = McpClients(config=Servers([config(server.url)]))
+    clients._clients = [mcp]
+    await clients.aprobe()
+    assert await server.aauthorization_seen() == []
+
+
+# Forwarding the caller
+
+
+async def test_each_call_carries_the_token_of_its_own_caller(
+    server: FixtureServer,
+) -> None:
+    """One held session, two callers: each request goes out with whoever made it."""
+    mcp = McpClient(config(server.url), ForwardedTokenProvider())
+    try:
+        for name in ("alice", "bob", "alice"):
+            with BearerContext.scope(ForwardedBearer(token=AccessToken(name))):
+                await mcp.atools()
+    finally:
+        await mcp.aclose()
+    callers = [
+        header.removeprefix("Bearer ") for header in await server.aauthorization_seen()
+    ]
+    # The handshake and the closing DELETE go out as whoever opened the session.
+    assert [
+        name for i, name in enumerate(callers) if i == 0 or callers[i - 1] != name
+    ] == [
+        "alice",
+        "bob",
+        "alice",
+    ]
+
+
+async def test_no_caller_token_is_a_domain_error_and_sends_nothing(
+    server: FixtureServer,
+) -> None:
+    mcp = McpClient(config(server.url), ForwardedTokenProvider())
+    try:
+        with pytest.raises(McpConnectionError, match="no token to send"):
+            await mcp.atools()
+    finally:
+        await mcp.aclose()
+    assert await server.aauthorization_seen() == []
+
+
+async def test_a_missing_token_does_not_end_the_session_for_the_next_caller(
+    server: FixtureServer,
+) -> None:
+    mcp = McpClient(config(server.url), ForwardedTokenProvider())
+    try:
+        with BearerContext.scope(ForwardedBearer(token=AccessToken("alice"))):
+            await mcp.atools()
+        with pytest.raises(McpConnectionError):
+            await mcp.atools()
+        assert mcp.connected
+        with BearerContext.scope(ForwardedBearer(token=AccessToken("bob"))):
+            await mcp.atools()
+    finally:
+        await mcp.aclose()
+
+
+async def test_an_expired_caller_token_is_never_sent(server: FixtureServer) -> None:
+    mcp = McpClient(config(server.url), ForwardedTokenProvider())
+    expired = ForwardedBearer(
+        token=AccessToken("old"), expires_at=datetime.now(UTC) - timedelta(seconds=1)
+    )
+    try:
+        with (
+            BearerContext.scope(expired),
+            pytest.raises(McpConnectionError, match="expired"),
+        ):
+            await mcp.atools()
+    finally:
+        await mcp.aclose()
+    assert await server.aauthorization_seen() == []

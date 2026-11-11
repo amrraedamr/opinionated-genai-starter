@@ -54,8 +54,10 @@ class McpServer:
     """Mounts a toolbox at `mcp_server_path`, refusing any call without a valid ******
 
     Tools are listed and called straight from the toolbox, so a tool's schema and
-    validation are the ones every agent already uses. The SDK session manager is
-    started here because a mounted app's own lifespan never runs under FastAPI.
+    validation are the ones every agent already uses. Stateless, because the SDK ties
+    a session to the token that opened it and a client forwarding each caller's own
+    token sends a different one per call. The session manager is started here
+    because a mounted app's own lifespan never runs under FastAPI.
     """
 
     name = "mcp_server"
@@ -85,6 +87,7 @@ class McpServer:
         path = self.settings.mcp_server_path
         mounted = self._server.streamable_http_app(
             streamable_http_path="/",
+            stateless_http=True,
             auth=AuthSettings(
                 issuer_url=AnyHttpUrl(MCP_UNPUBLISHED_ISSUER), resource_server_url=None
             ),

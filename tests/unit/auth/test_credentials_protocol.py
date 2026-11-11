@@ -102,6 +102,8 @@ def test_the_package_exports_what_a_consumer_needs() -> None:
     assert sorted(credentials_package.__all__) == [
         "AccessToken",
         "BearerTokenAuth",
+        "CallerTokenMissing",
+        "ForwardedTokenProvider",
         "OutboundAuth",
         "StaticTokenProvider",
         "TokenProvider",

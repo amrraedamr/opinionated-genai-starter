@@ -12,6 +12,11 @@ import httpx
 
 from base.clients.credentials.protocol import OutboundAuth, TokenProvider
 from base.models.view_models.tokens import AccessToken
+from base.tools.tenancy import BearerContext
+
+
+class CallerTokenMissing(RuntimeError):
+    """A call meant to act as the caller has no live token of theirs to send."""
 
 
 class StaticTokenProvider:
@@ -22,6 +27,20 @@ class StaticTokenProvider:
 
     async def aget_token(self) -> AccessToken:
         return self._token
+
+
+class ForwardedTokenProvider:
+    """The token the current caller presented, so a dependency sees them rather than this service."""
+
+    async def aget_token(self) -> AccessToken:
+        bearer = BearerContext.get()
+        if bearer is None:
+            raise CallerTokenMissing(
+                "No caller token in context; forward it only from inside an authenticated request"
+            )
+        if bearer.expired:
+            raise CallerTokenMissing("The caller's token has expired")
+        return bearer.token
 
 
 class BearerTokenAuth(httpx.Auth):
@@ -59,6 +78,8 @@ class BearerTokenAuth(httpx.Auth):
 __all__ = [
     "AccessToken",
     "BearerTokenAuth",
+    "CallerTokenMissing",
+    "ForwardedTokenProvider",
     "OutboundAuth",
     "StaticTokenProvider",
     "TokenProvider",

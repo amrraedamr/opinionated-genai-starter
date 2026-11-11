@@ -11,23 +11,24 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 from base.clients.credentials.protocol import TokenProvider
 from base.models.definitions.health import ProbeStatus
+from base.models.view_models import BaseModel
 from base.models.view_models.exceptions import McpConfigError, McpError
 from base.models.view_models.health import ProbeResult
 from base.services.configuration import settings_for
 from base.services.configuration.protocols import SupportsMcpClientConfig
 from base.services.logging.console import ConsoleLoggerService
 from base.services.mcp import McpClient
-from base.services.tool_calling import Toolbox
+from base.services.tool_calling import Tool, Toolbox
 
 
 class McpClients:
-    """Connects in `astartup`, closes in `ashutdown`, and fails `/readyz` while a server is down.
+    """Connects to each server on first use, closes in `ashutdown`, degrades `/readyz` while one is down.
 
     A server's `credential` names one of `credentials`, so a token never sits in settings::
 
         mcp = McpClients(credentials={"docs": OutboundCredentials().provider})
         app = create_app(capabilities=[mcp, ...])
-        runner = ToolRunner(mcp.toolbox)
+        runner = ToolRunner(await mcp.atoolbox())
     """
 
     name = "mcp_clients"
@@ -39,47 +40,41 @@ class McpClients:
     ) -> None:
         self._config = config
         self._credentials = dict(credentials or {})
-        self._clients: list[McpClient] = []
-        self._toolbox: Toolbox | None = None
+        self._clients: list[McpClient] | None = None
         self._logger = ConsoleLoggerService()
 
-    @property
-    def toolbox(self) -> Toolbox:
-        """Every connected server's tools, namespaced so none collide; read it per request."""
-        if self._toolbox is None:
+    async def atoolbox(self) -> Toolbox:
+        """Every reachable server's tools, listed as the current caller; a down server is skipped."""
+        if self._clients is None:
             raise McpConfigError(
-                "McpClients.toolbox was read before startup; read it inside a request"
+                "McpClients.atoolbox was called before startup; call it inside a request"
             )
-        return self._toolbox
+        tools: list[Tool[BaseModel]] = []
+        for client in self._clients:
+            try:
+                tools.extend(await client.atools())
+            except McpError as exc:
+                self._logger.warning(f"MCP server {client.name!r} unavailable: {exc}")
+        return Toolbox(*tools)
 
     async def astartup(self, app: FastAPI) -> None:
+        """Check the configuration; each server is first reached by a caller's request."""
         del app
         self._clients = self._build()
-        for client in self._clients:
-            await client.aconnect()
-        tools = [tool for client in self._clients for tool in await client.atools()]
-        self._toolbox = Toolbox(*tools)
-        self._logger.info(
-            f"MCP: {len(self._clients)} server(s), {len(tools)} tool(s) available"
-        )
+        self._logger.info(f"MCP: {len(self._clients)} server(s) configured")
 
     async def ashutdown(self, app: FastAPI) -> None:
         del app
-        for client in self._clients:
+        for client in self._clients or []:
             await client.aclose()
 
     async def aprobe(self) -> ProbeResult:
-        """Ready only while every server answers; a tool list is the cheapest real request."""
-        down: list[str] = []
-        for client in self._clients:
-            try:
-                await client.atools()
-            except McpError:
-                down.append(client.name)
+        """Degraded while a server's last call failed; chat still answers without its tools."""
+        down = [client.name for client in self._clients or [] if client.failing]
         return ProbeResult(
             name=self.name,
-            status=ProbeStatus.FAILED if down else ProbeStatus.OK,
-            detail=f"unreachable: {', '.join(down)}" if down else None,
+            status=ProbeStatus.DEGRADED if down else ProbeStatus.OK,
+            detail=f"last call failed: {', '.join(down)}" if down else None,
         )
 
     def _build(self) -> list[McpClient]:

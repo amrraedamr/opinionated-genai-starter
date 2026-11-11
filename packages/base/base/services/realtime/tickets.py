@@ -13,6 +13,7 @@ from base.models.view_models.realtime import ConnectionTicket, TicketResponse
 from base.services.cache import AbstractCacheService
 from base.services.cache.factory import get_cache_service
 from base.services.common.meta import Singleton
+from base.tools.tenancy import BearerContext
 
 
 class TicketService(metaclass=Singleton):
@@ -31,7 +32,7 @@ class TicketService(metaclass=Singleton):
     async def aissue(
         self, principal: Principal, device_id: str | None = None
     ) -> TicketResponse:
-        """Mint a ticket for the caller this request already authenticated."""
+        """Mint a ticket for the caller this request already authenticated, carrying their token."""
         ticket = secrets.token_urlsafe(32)
         expires_at = datetime.now(UTC) + timedelta(seconds=TICKET_TTL_SECONDS)
         resolved_device = device_id or f"device-{secrets.token_urlsafe(8)}"
@@ -42,6 +43,7 @@ class TicketService(metaclass=Singleton):
             user_id=principal.user_id,
             tenant_id=principal.tenant_id,
             device_id=resolved_device,
+            bearer=BearerContext.get(),
         )
         await self.cache.aset(
             ticket,

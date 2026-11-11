@@ -30,6 +30,7 @@ from base.models.definitions.mcp import (
 from base.models.view_models import BaseModel, JSONObject
 from base.models.view_models.exceptions import (
     McpConnectionError,
+    McpRetryExhausted,
     McpTimeoutError,
     McpToolNameError,
 )
@@ -55,10 +56,16 @@ class McpClient:
         self._owner: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
         self._reconnect = asyncio.Lock()
+        self._failing = False
 
     @property
     def name(self) -> str:
         return self._config.name
+
+    @property
+    def failing(self) -> bool:
+        """Whether the last call failed; readiness has no caller token to try one itself."""
+        return self._failing
 
     @property
     def connected(self) -> bool:
@@ -127,6 +134,30 @@ class McpClient:
             yield streams
 
     async def _acall[T](self, request: Callable[[ClientSession], Awaitable[T]]) -> T:
+        """Run `request` on the session, connecting on first use and recording the outcome."""
+        await self._apreflight()
+        try:
+            result = await self._aattempt(request)
+        except McpRetryExhausted:
+            self._failing = True
+            raise
+        self._failing = False
+        return result
+
+    async def _apreflight(self) -> None:
+        """Get the token before the transport does: a provider raising in there ends the shared session."""
+        if self._provider is None:
+            return
+        try:
+            await self._provider.aget_token()
+        except Exception as exc:
+            raise McpConnectionError(
+                f"MCP server {self.name!r} has no token to send: {exc}",
+                attempts=1,
+                provider_error=exc,
+            ) from exc
+
+    async def _aattempt[T](self, request: Callable[[ClientSession], Awaitable[T]]) -> T:
         """Run `request` on the session, reconnecting once if the server has dropped."""
         attempts = MCP_RECONNECT_ATTEMPTS + 1
         for attempt in range(1, attempts + 1):

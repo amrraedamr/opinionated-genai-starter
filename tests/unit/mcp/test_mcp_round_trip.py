@@ -5,13 +5,16 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from base.clients.credentials import StaticTokenProvider
+from base.clients.credentials import ForwardedTokenProvider, StaticTokenProvider
 from base.models.definitions.mcp import McpTransport
 from base.models.view_models.exceptions import McpConnectionError
 from base.models.view_models.mcp import McpServerConfig
+from base.models.view_models.tokens import AccessToken, ForwardedBearer
 from base.services.auth import TokenIssuer
 from base.services.mcp import McpClient
 from base.services.tool_calling import Toolbox
+from base.tools.tenancy import BearerContext
+from tests.unit.mcp.conftest import token
 from tests.unit.mcp.test_mcp_client import call
 
 
@@ -56,3 +59,29 @@ async def test_the_client_without_a_token_cannot_connect(served: str) -> None:
     with pytest.raises(McpConnectionError):
         await client.aconnect()
     await client.aclose()
+
+
+async def test_one_held_client_runs_each_call_as_its_own_caller(served: str) -> None:
+    """The server is stateless, so a session is not tied to the token that opened it."""
+    client = McpClient(
+        McpServerConfig(name="self", transport=McpTransport.HTTP, url=served),
+        ForwardedTokenProvider(),
+    )
+    alice = ForwardedBearer(token=AccessToken(token(tid="acme")))
+    bob = ForwardedBearer(token=AccessToken(token(tid="globex")))
+    try:
+        answers: list[str] = []
+        with BearerContext.scope(alice):
+            remote = Toolbox(*await client.atools())
+        session = client._session
+        for caller in (alice, bob, alice):
+            with BearerContext.scope(caller):
+                answers.append(await remote.ainvoke(call("self__whoami", {})))
+        assert client._session is session, "switching callers reconnected"
+    finally:
+        await client.aclose()
+    assert [answer.split()[0] for answer in answers] == [
+        "tenant=acme",
+        "tenant=globex",
+        "tenant=acme",
+    ]

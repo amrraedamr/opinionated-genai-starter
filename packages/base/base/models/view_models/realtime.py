@@ -12,6 +12,7 @@ from base.models.definitions.realtime import (
 )
 from base.models.definitions.tenancy import TenantId
 from base.models.view_models import BaseModel, JSONObject
+from base.models.view_models.tokens import ForwardedBearer
 
 
 class RealtimeEnvelope(BaseModel):
@@ -73,6 +74,9 @@ class ConnectionTicket(BaseModel):
 
     device_id: str
     """Which of a user's clients this is, kept across reconnects so it can resume."""
+
+    bearer: ForwardedBearer | None = None
+    """The caller's token, so the socket's tool calls act as them until it expires."""
 
     connection_id: UUID = Field(default_factory=uuid4)
     """This socket, as distinct from the device that opened it."""
