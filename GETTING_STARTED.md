@@ -192,6 +192,26 @@ this side so a second server offering `add` would not collide.
 
 ---
 
+## Test everything by hand
+
+`frontend/` is a test console: sign in, chat with streaming and tool calls,
+fire the guardrails, talk to the realtime model by voice, hit the rate limits,
+and read every service's readiness, with each request on one timeline. Run it
+in front of the whole stack, with every capability switched on:
+
+```bash
+docker compose --env-file .env \
+  -f deploy/docker-compose.yml -f deploy/docker-compose.console.yml up --build
+```
+
+Then open <http://localhost:8090>. The root `.env` supplies the model
+credentials (`AZURE_OPENAI_LLM_*` for chat, `OPENAI_LLM_*` for realtime and
+moderation); traces land in Jaeger at <http://localhost:16686>. If the
+infrastructure is already up on its own, add `-p genai-infra` so the services
+join it.
+
+---
+
 ## Add your own service
 
 ```bash

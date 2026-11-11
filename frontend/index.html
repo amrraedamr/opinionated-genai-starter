@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bench — genai starter test console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=Martian+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="console.css">
+</head>
+<body>
+  <a class="skip" href="#bench">Skip to the bench</a>
+
+  <header class="masthead">
+    <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="title">
+      <h1>Bench</h1>
+      <p>Hand-test every capability of the stack, and watch the traffic it makes.</p>
+    </div>
+    <div class="who" id="who" data-state="out">
+      <span class="lamp" aria-hidden="true"></span>
+      <span id="who-text">Not signed in</span>
+      <button class="ghost" id="sign-out" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="rail" aria-label="Channels">
+      <p class="rail-label">Channels</p>
+      <ul id="channels">
+        <li><button data-bench="identity" aria-current="true"><span class="lamp" data-lamp="identity"></span>Identity</button></li>
+        <li><button data-bench="chat"><span class="lamp" data-lamp="chat"></span>Chat</button></li>
+        <li><button data-bench="tools"><span class="lamp" data-lamp="tools"></span>MCP tools</button></li>
+        <li><button data-bench="guardrails"><span class="lamp" data-lamp="guardrails"></span>Guardrails</button></li>
+        <li><button data-bench="realtime"><span class="lamp" data-lamp="realtime"></span>Realtime</button></li>
+        <li><button data-bench="limits"><span class="lamp" data-lamp="limits"></span>Rate limits</button></li>
+        <li><button data-bench="health"><span class="lamp" data-lamp="health"></span>Health &amp; traces</button></li>
+      </ul>
+      <div class="legend" aria-label="Lamp legend">
+        <span><i class="lamp" data-state="ok"></i>worked</span>
+        <span><i class="lamp" data-state="busy"></i>in flight</span>
+        <span><i class="lamp" data-state="fault"></i>refused</span>
+      </div>
+    </nav>
+
+    <main id="bench" tabindex="-1">
+
+      <!-- Identity -->
+      <section class="bench" data-bench="identity">
+        <header class="bench-head">
+          <h2>Identity</h2>
+          <p>Register into a tenant, sign in, and read the token chat_api and mcp_server will trust.</p>
+        </header>
+        <div class="cols">
+          <form class="card" id="register-form">
+            <h3>Register</h3>
+            <label>Email<input name="email" type="email" required autocomplete="off" placeholder="ada@example.com"></label>
+            <label>Password<input name="password" type="password" required value="Str0ng!pass" autocomplete="new-password"></label>
+            <label>Tenant<input name="tenantId" value="acme" required></label>
+            <p class="hint">Tokens carry the tenant as <code>tid</code>. Tools on mcp_server run as this tenant.</p>
+            <button type="submit">Register and sign in</button>
+          </form>
+          <form class="card" id="login-form">
+            <h3>Sign in</h3>
+            <label>Email<input name="email" type="email" required autocomplete="off"></label>
+            <label>Password<input name="password" type="password" required value="Str0ng!pass" autocomplete="current-password"></label>
+            <div class="row">
+              <button type="submit">Sign in</button>
+              <button type="button" class="ghost" id="refresh-btn" disabled>Refresh token</button>
+              <button type="button" class="ghost" id="me-btn" disabled>Load my profile</button>
+            </div>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Access token</h3>
+          <div id="token-empty" class="empty">Sign in to see the claims your requests carry.</div>
+          <dl class="claims" id="claims" hidden></dl>
+          <p class="hint" id="token-expiry"></p>
+        </div>
+      </section>
+
+      <!-- Chat -->
+      <section class="bench" data-bench="chat" hidden>
+        <header class="bench-head">
+          <h2>Chat</h2>
+          <p>A conversation stored in chat_api. Ask it to use a tool, such as “add 2.5 and 4” or “who am I?”.</p>
+        </header>
+        <div class="chat-shell">
+          <aside class="card convos">
+            <div class="row between"><h3>Conversations</h3><button class="ghost small" id="new-convo">New</button></div>
+            <ul id="convo-list"><li class="empty">None yet. Start one.</li></ul>
+          </aside>
+          <div class="card thread-card">
+            <div class="row between">
+              <h3 id="thread-title">No conversation</h3>
+              <div class="row toggles">
+                <label class="toggle"><input type="checkbox" id="opt-stream" checked><span>Stream</span></label>
+                <label class="toggle"><input type="checkbox" id="opt-debug"><span>Debug trace</span></label>
+              </div>
+            </div>
+            <ol class="thread" id="thread" aria-live="polite"></ol>
+            <form class="composer" id="composer">
+              <label class="sr" for="composer-input">Message</label>
+              <textarea id="composer-input" rows="2" placeholder="Ask something. Enter sends, Shift+Enter adds a line." disabled></textarea>
+              <button type="submit" id="send-btn" disabled>Send</button>
+            </form>
+            <details class="debug" id="debug-box" hidden>
+              <summary>Debug trace of the last reply</summary>
+              <pre id="debug-pre"></pre>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- MCP tools -->
+      <section class="bench" data-bench="tools" hidden>
+        <header class="bench-head">
+          <h2>MCP tools</h2>
+          <p>mcp_server serves these tools. chat_api reaches them over MCP using your own token, so each call runs as you.</p>
+        </header>
+        <div class="cols">
+          <div class="card">
+            <div class="row between"><h3>Served by mcp_server</h3><button class="ghost small" id="list-tools">List tools</button></div>
+            <ul class="tool-list" id="tool-list"><li class="empty">List them to see what the model can call.</li></ul>
+          </div>
+          <div class="card">
+            <h3>Call one through chat</h3>
+            <p class="hint">Each prompt opens a fresh conversation and asks the model to call a tool. The answer proves the round trip: chat_api → mcp_server → back to the model.</p>
+            <div class="stack" id="tool-prompts">
+              <button class="ghost" data-prompt="Use the whoami tool and tell me exactly what it returned.">whoami: which user and tenant does the tool see?</button>
+              <button class="ghost" data-prompt="Use the add tool to add 2.5 and 4. Reply with just the result.">add: 2.5 + 4</button>
+              <button class="ghost" data-prompt="Use the word_count tool on: the quick brown fox jumps over the lazy dog. Reply with just the number.">word_count: nine words</button>
+              <button class="ghost" data-prompt="Use the utc_now tool and tell me the time it returned.">utc_now: the server's clock</button>
+            </div>
+            <ol class="thread compact" id="tool-thread" aria-live="polite"></ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- Guardrails -->
+      <section class="bench" data-bench="guardrails" hidden>
+        <header class="bench-head">
+          <h2>Guardrails</h2>
+          <p>Each probe runs in a fresh conversation, so the result is not coloured by earlier turns.</p>
+        </header>
+        <div class="probes">
+          <article class="card probe">
+            <h3>PII redaction</h3>
+            <p>Your email and card number are redacted before the model sees them, so it can only repeat the placeholders.</p>
+            <button class="ghost" data-probe="pii">Send personal data</button>
+            <div class="probe-out" data-out="pii"></div>
+          </article>
+          <article class="card probe">
+            <h3>Moderation</h3>
+            <p>Text the moderation model scores above the threshold is refused before any model call.</p>
+            <button class="ghost" data-probe="moderation">Send violent text</button>
+            <div class="probe-out" data-out="moderation"></div>
+          </article>
+          <article class="card probe">
+            <h3>Streamed output</h3>
+            <p>Asks the model to write a card number back. The stream holds a short tail and redacts it before it reaches you.</p>
+            <button class="ghost" data-probe="output">Stream a card number</button>
+            <div class="probe-out" data-out="output"></div>
+          </article>
+          <article class="card probe">
+            <h3>Hostile tool result</h3>
+            <p>Tool results are checked for injection before the model reads them. This has mcp_server's <code>echo</code> tool hand back an injection phrase.</p>
+            <button class="ghost" data-probe="injection">Echo an injection phrase</button>
+            <div class="probe-out" data-out="injection"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Realtime -->
+      <section class="bench" data-bench="realtime" hidden>
+        <header class="bench-head">
+          <h2>Realtime</h2>
+          <p>A websocket opened with a single-use ticket. Type or talk; the model answers in text and voice, and can call MCP tools.</p>
+        </header>
+        <div class="cols">
+          <div class="card">
+            <div class="row between">
+              <h3>Socket</h3>
+              <span class="pill" id="rt-state">closed</span>
+            </div>
+            <div class="row">
+              <button id="rt-connect">Get ticket and connect</button>
+              <button class="ghost" id="rt-disconnect" disabled>Disconnect</button>
+              <button class="ghost" id="rt-mic" disabled aria-pressed="false">Start microphone</button>
+            </div>
+            <dl class="kv" id="rt-meta"></dl>
+            <ol class="thread compact" id="rt-thread" aria-live="polite"></ol>
+            <form class="composer" id="rt-composer">
+              <label class="sr" for="rt-input">Say something</label>
+              <input id="rt-input" placeholder="Type to the model…" disabled>
+              <button type="submit" id="rt-send" disabled>Send</button>
+            </form>
+          </div>
+          <div class="card">
+            <h3>Durable delivery</h3>
+            <p class="hint">A notification goes to every open device and is kept in your inbox. Disconnect, send one, reconnect, then resume to get what you missed.</p>
+            <div class="row">
+              <button class="ghost" id="rt-notify">Send myself a notification</button>
+              <button class="ghost" id="rt-resume" disabled>Resume from my last ack</button>
+              <button class="ghost" id="rt-presence">Check my presence</button>
+            </div>
+            <dl class="kv" id="rt-delivery">
+              <dt>Last acknowledged</dt><dd id="rt-acked">0</dd>
+              <dt>Presence</dt><dd id="rt-presence-out">unknown</dd>
+            </dl>
+            <ol class="thread compact" id="rt-inbox"></ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- Rate limits -->
+      <section class="bench" data-bench="limits" hidden>
+        <header class="bench-head">
+          <h2>Rate limits</h2>
+          <p>Budgets are counted in Redis, so every replica shares them. The console stack sets low budgets so you can hit them.</p>
+        </header>
+        <div class="cols">
+          <div class="card">
+            <h3>Requests per minute</h3>
+            <p class="hint">Fires cheap authenticated reads at chat_api until it answers 429.</p>
+            <div class="row">
+              <label class="inline">Burst<input type="number" id="burst" value="80" min="1" max="500"></label>
+              <button id="hammer">Fire burst</button>
+            </div>
+            <div class="meter" id="meter" aria-label="Burst results"></div>
+            <p class="hint" id="hammer-out"></p>
+          </div>
+          <div class="card">
+            <h3>Sign-in attempts</h3>
+            <p class="hint">Wrong-password logins against identity, which has a tighter budget for auth routes. Signing in is refused for about a minute afterwards.</p>
+            <div class="row"><button class="ghost" id="auth-hammer">Try 30 bad logins</button></div>
+            <div class="meter" id="auth-meter"></div>
+            <p class="hint" id="auth-out"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Health -->
+      <section class="bench" data-bench="health" hidden>
+        <header class="bench-head">
+          <h2>Health &amp; traces</h2>
+          <p>Readiness of each service and its capabilities. A degraded capability keeps the service in rotation.</p>
+        </header>
+        <div class="row"><button id="check-health">Check every service</button><a class="button ghost" id="jaeger-link" href="http://localhost:16686" target="_blank" rel="noopener">Open traces in Jaeger</a></div>
+        <div class="health" id="health-grid"></div>
+      </section>
+    </main>
+
+    <aside class="wire" aria-label="Wire: every request this console makes">
+      <div class="wire-head">
+        <h2>Wire</h2>
+        <div class="row">
+          <span class="wire-count" id="wire-count">0</span>
+          <button class="ghost small" id="wire-clear">Clear</button>
+        </div>
+      </div>
+      <ol class="wire-log" id="wire-log" aria-live="off"></ol>
+      <div class="wire-empty" id="wire-empty">Every request, stream frame and socket message lands here, with its status and timing.</div>
+    </aside>
+  </div>
+
+  <template id="wire-item">
+    <li class="wire-item">
+      <div class="wire-line">
+        <span class="svc"></span>
+        <span class="verb"></span>
+        <span class="path"></span>
+        <span class="status"></span>
+      </div>
+      <div class="wire-bar"><i></i><span class="ms"></span></div>
+      <pre class="wire-body" hidden></pre>
+    </li>
+  </template>
+
+  <script src="console.js" type="module"></script>
+</body>
+</html>

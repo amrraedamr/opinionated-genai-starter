@@ -41,6 +41,7 @@ tools/           scaffolder, boundary lint, affected detection
 tests/           unit, integration and live suites
 deploy/          compose stacks
 docker/          one parameterised image for every service
+frontend/        a test console for trying every capability by hand
 ```
 
 Four services ship as reference implementations, not as the product. They
@@ -113,6 +114,13 @@ Or the whole stack:
 
 ```bash
 docker compose -f deploy/docker-compose.yml up --build
+```
+
+Or the whole stack with every capability on and the test console in front of it,
+at <http://localhost:8090> (see [GETTING_STARTED](GETTING_STARTED.md#test-everything-by-hand)):
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml -f deploy/docker-compose.console.yml up --build
 ```
 
 Every service builds from the same image, selected by a build argument:

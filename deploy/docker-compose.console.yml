@@ -1,0 +1,64 @@
+# LOCAL DEVELOPMENT ONLY. The full stack with every capability switched on, and
+# the test console in front of it on http://localhost:8090.
+#
+#   mkdir -p keys && openssl genpkey -algorithm RSA -out keys/private.pem \
+#     && openssl rsa -in keys/private.pem -pubout -out keys/public.pem
+#   docker compose --env-file .env \
+#     -f deploy/docker-compose.yml -f deploy/docker-compose.console.yml up --build
+#
+# Already running the infrastructure on its own (project `genai-infra`)? Pass
+# `-p genai-infra` so these services join it rather than starting a second copy.
+#
+# `--env-file .env` makes the root `.env` the source for the ${...} provider
+# credentials below; nothing else from it reaches a container. Budgets are set
+# low so the console can show a 429 without a load generator.
+name: genai-starter
+
+x-telemetry: &telemetry
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_ENDPOINT: http://otel-collector:4317
+
+services:
+  identity:
+    environment:
+      <<: *telemetry
+      RATE_LIMIT_BACKEND: redis
+      RATE_LIMIT_AUTH_PER_MINUTE: "10"
+
+  chat_api:
+    environment:
+      <<: *telemetry
+      RATE_LIMIT_BACKEND: redis
+      RATE_LIMIT_REQUESTS_PER_MINUTE: "60"
+      TENANCY_ENABLED: "true"
+      GUARDRAILS_ENABLED: "true"
+      MODERATION_ENABLED: "true"
+      MCP_SERVERS: '[{"name": "tools", "transport": "http", "url": "http://mcp_server:8000/mcp/", "credential": "caller"}]'
+      AZURE_OPENAI_LLM_ENDPOINT: ${AZURE_OPENAI_LLM_ENDPOINT:-}
+      AZURE_OPENAI_LLM_API_KEY: ${AZURE_OPENAI_LLM_API_KEY:-}
+      AZURE_OPENAI_LLM_DEPLOYMENT_NAME: ${AZURE_OPENAI_LLM_DEPLOYMENT_NAME:-azure.gpt-5.6-terra}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}
+      OPENAI_LLM_ENDPOINT: ${OPENAI_LLM_ENDPOINT:-}
+      OPENAI_LLM_API_KEY: ${OPENAI_LLM_API_KEY:-}
+      REALTIME_PROVIDER: openai
+      REALTIME_MODEL: gpt-realtime
+      REALTIME_INSTRUCTIONS: You are a concise assistant. Use the tools you are given when they help.
+    depends_on:
+      mcp_server:
+        condition: service_started
+
+  mcp_server:
+    environment:
+      <<: *telemetry
+      TENANCY_ENABLED: "true"
+
+  console:
+    build:
+      context: ../frontend
+    image: genai/console:local
+    ports:
+      - "8090:8080"
+    depends_on:
+      - identity
+      - chat_api
+      - mcp_server
