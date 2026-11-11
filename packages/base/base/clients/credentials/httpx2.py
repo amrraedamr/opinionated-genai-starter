@@ -2,12 +2,12 @@
 
 `httpx2` is a separate distribution from `httpx`, with its own `Auth` base
 class that rejects `httpx`'s outright, so `BearerTokenAuth` cannot be handed to
-a client built on it — the Anthropic SDK being the one in this library. This is
-the same behaviour against the other library; both read from one
-`TokenProvider`, so a token acquired for either is the token used by both.
+a client built on it — the Anthropic SDK and the MCP transport being the ones in
+this library. Both read from one `TokenProvider`, so a token acquired for either
+is the token used by both.
 
 Kept out of the package `__init__` because `httpx2` arrives only with the
-`anthropic` extra, while `httpx` is a core dependency.
+`anthropic` or `mcp` extra, while `httpx` is a core dependency.
 """
 
 from collections.abc import AsyncGenerator, Generator

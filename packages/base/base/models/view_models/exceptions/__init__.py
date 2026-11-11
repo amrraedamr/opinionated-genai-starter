@@ -77,6 +77,14 @@ from base.models.view_models.exceptions.llm import (
     LLMTimeoutError,
     LLMUnexpectedError,
 )
+from base.models.view_models.exceptions.mcp import (
+    McpConfigError,
+    McpConnectionError,
+    McpError,
+    McpRetryExhausted,
+    McpTimeoutError,
+    McpToolNameError,
+)
 from base.models.view_models.exceptions.nosql import (
     NoSqlAuthError,
     NoSqlBadRequestError,
@@ -203,6 +211,12 @@ __all__ = [
     "LLMStreamError",
     "LLMTimeoutError",
     "LLMUnexpectedError",
+    "McpConfigError",
+    "McpConnectionError",
+    "McpError",
+    "McpRetryExhausted",
+    "McpTimeoutError",
+    "McpToolNameError",
     "NoSqlAuthError",
     "NoSqlBadRequestError",
     "NoSqlConfigError",

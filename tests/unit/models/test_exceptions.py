@@ -20,6 +20,7 @@ from base.models.view_models.exceptions.llm import (
     LLMIncompleteError,
     LLMStreamError,
 )
+from base.models.view_models.exceptions.mcp import McpError
 from base.models.view_models.exceptions.nosql import NoSqlError
 from base.models.view_models.exceptions.provider import (
     ProviderConfigError,
@@ -36,6 +37,7 @@ ROOTS: list[type[ProviderError]] = [
     EmbeddingError,
     KeyVaultError,
     LLMError,
+    McpError,
     NoSqlError,
     RerankError,
     SQLError,
@@ -116,8 +118,14 @@ def test_a_retryable_class_is_always_a_retry_exhausted_class(
     assert issubclass(cls, ProviderRetryExhausted)
 
 
-def test_every_family_contributes_its_four_retryable_classes() -> None:
-    assert len(retryable_errors()) == 4 * len(ROOTS)
+RETRYABLE_CLASSES: dict[type[ProviderError], int] = {McpError: 2}
+"""Families the SDK lets split less finely; MCP folds a rate limit and a server error into one."""
+
+
+def test_every_family_contributes_its_retryable_classes() -> None:
+    for root in ROOTS:
+        found = [cls for cls in retryable_errors() if issubclass(cls, root)]
+        assert len(found) == RETRYABLE_CLASSES.get(root, 4), root.__name__
 
 
 @pytest.mark.parametrize("root", ROOTS, ids=lambda cls: cls.__name__)

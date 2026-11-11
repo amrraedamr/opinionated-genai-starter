@@ -464,6 +464,10 @@ azure = [
 gemini = [
     { name = "google-genai" },
 ]
+mcp = [
+    { name = "jsonschema" },
+    { name = "mcp" },
+]
 mongo = [
     { name = "pymongo" },
 ]
@@ -544,7 +548,9 @@ requires-dist = [
     { name = "greenlet", marker = "extra == 'sql'", specifier = ">=3.3.2,<4" },
     { name = "gunicorn", marker = "extra == 'server'", specifier = ">=25.1.0,<26" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.28.1,<0.29" },
+    { name = "jsonschema", marker = "extra == 'mcp'", specifier = ">=4.26.0,<5" },
     { name = "jsonschema", marker = "extra == 'tools'", specifier = ">=4.26.0,<5" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.3.0,<3" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=2.24.0,<3" },
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.45.2,<2" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'otel'", specifier = ">=1.45.2,<2" },
@@ -570,7 +576,7 @@ requires-dist = [
     { name = "tiktoken", marker = "extra == 'tokenizer'", specifier = ">=0.12.0,<0.13" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.41.0,<0.42" },
 ]
-provides-extras = ["server", "sql", "sqlite", "postgres", "mysql", "auth", "openai", "anthropic", "gemini", "tokenizer", "tools", "otel", "redis", "rerank", "mongo", "vectors", "sse", "azure"]
+provides-extras = ["server", "sql", "sqlite", "postgres", "mysql", "auth", "openai", "anthropic", "gemini", "tokenizer", "tools", "mcp", "otel", "redis", "rerank", "mongo", "vectors", "sse", "azure"]
 
 [[package]]
 name = "certifi"
@@ -1756,6 +1762,44 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/df/5bd7a48c256faecd1d36edc13133e51397e41b73bb77e1a69deab746ebac/markupsafe-3.0.3-cp314-cp314t-win32.whl", hash = "sha256:915c04ba3851909ce68ccc2b8e2cd691618c4dc4c4232fb7982bca3f41fd8c3d", size = 14819, upload-time = "2025-09-27T18:37:26.285Z" },
     { url = "https://files.pythonhosted.org/packages/1a/8a/0402ba61a2f16038b48b39bccca271134be00c5c9f0f623208399333c448/markupsafe-3.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4faffd047e07c38848ce017e8725090413cd80cbc23d86e55c587bf979e579c9", size = 15426, upload-time = "2025-09-27T18:37:27.316Z" },
     { url = "https://files.pythonhosted.org/packages/70/bc/6f1c2f612465f5fa89b95bead1f44dcb607670fd42891d8fdcd5d039f4f4/markupsafe-3.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:32001d6a8fc98c8cb5c947787c5d08b0a50663d139f1305bac5885d98d9b40fa", size = 14146, upload-time = "2025-09-27T18:37:28.327Z" },
+]
+
+[[package]]
+name = "mcp"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "httpx2" },
+    { name = "jsonschema" },
+    { name = "mcp-types" },
+    { name = "opentelemetry-api" },
+    { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "python-multipart" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "sse-starlette" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+    { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/8d/e0d339616f4810e9051d4aba6887afab289ab1f81875fe908b606cdfd0e3/mcp-2.3.0.tar.gz", hash = "sha256:8b147a50441cf059dc88c684e0aeed3687f0aa0f39c6cde7b90330effd2b34d8", size = 4171955, upload-time = "2026-10-02T22:06:56.091Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/d7/4a2878f128df729db3ca04e71bfce26405cc2e0c9ebe19c592feeb4c61b9/mcp-2.3.0-py3-none-any.whl", hash = "sha256:dd0c44c089d16453e8ae31a3877a0054d7a2314caaa81f5e0541b9b1734b2377", size = 368664, upload-time = "2026-10-02T22:06:52.119Z" },
+]
+
+[[package]]
+name = "mcp-types"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9e/2d/7c251e34207f6c51000312fc8839111ac45cfe02023f90b44e7f1051dd8e/mcp_types-2.3.0.tar.gz", hash = "sha256:d1e46549edb35ee19a94940fcee6d1addd7e589ab7ea92dda83f5d84781fc362", size = 65898, upload-time = "2026-10-02T22:06:57.863Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/48/32583066b155bb5d4507e7887dc88ee23118cc4de8e2a12870c49719e2a8/mcp_types-2.3.0-py3-none-any.whl", hash = "sha256:968efdbdaedfab06adae40d378a34395f1090c5921d4be3c9cde283aaf76d91d", size = 69108, upload-time = "2026-10-02T22:06:54.099Z" },
 ]
 
 [[package]]
