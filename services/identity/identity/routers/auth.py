@@ -35,6 +35,7 @@ async def register(
         password_hash=PasswordHashingService.hash(request.password),
         first_name=request.first_name,
         last_name=request.last_name,
+        tenant_id=request.tenant_id,
     )
     created = await UserStore().aregister(user)
     return BaseResponse(data=CreateUserResponse(user_id=created.id))

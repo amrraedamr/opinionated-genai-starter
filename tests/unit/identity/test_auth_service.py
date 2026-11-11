@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from base.models.definitions.errors import AuthErrors, DatabaseErrors
+from base.models.definitions.tenancy import DEFAULT_TENANT, DEFAULT_TENANT_CLAIM
 from base.models.definitions.tokens import TokenType
 from base.models.view_models.auth import Principal
 from base.services.auth import TokenIssuer, TokenVerifier
@@ -87,6 +88,21 @@ async def test_the_access_token_carries_the_address_and_the_refresh_does_not(
     refresh = verifier.decode_local(pair.refresh_token, expected_type=TokenType.REFRESH)
     assert access["email"] == "person@example.com"
     assert "email" not in refresh
+
+
+async def test_the_access_token_names_the_users_tenant(service: AuthService) -> None:
+    user = await a_user(tenant_id="acme")
+    access = TokenVerifier().decode_local(
+        service.generate_token_pair(user).access_token, expected_type=TokenType.ACCESS
+    )
+    assert access[DEFAULT_TENANT_CLAIM] == "acme"
+
+
+async def test_a_user_registered_without_a_tenant_is_in_the_default_one(
+    service: AuthService,
+) -> None:
+    user = await a_user()
+    assert user.tenant_id == DEFAULT_TENANT
 
 
 async def test_the_two_halves_declare_different_types(service: AuthService) -> None:

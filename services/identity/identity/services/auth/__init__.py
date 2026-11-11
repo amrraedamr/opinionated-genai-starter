@@ -1,6 +1,7 @@
 """User-bound authentication."""
 
 from base.models.definitions.errors import AuthErrors
+from base.models.definitions.tenancy import DEFAULT_TENANT_CLAIM
 from base.models.definitions.tokens import TokenType
 from base.services.auth import Principal, TokenIssuer, TokenPair, TokenVerifier
 from base.services.common.meta import Singleton
@@ -25,7 +26,11 @@ class AuthService(metaclass=Singleton):
     def generate_token_pair(self, user: UserDTO) -> TokenPair:
         """Issue an access/refresh pair for a user."""
         return self._issuer.issue_pair(
-            {"user_id": str(user.id), "email": user.email},
+            {
+                "user_id": str(user.id),
+                "email": user.email,
+                DEFAULT_TENANT_CLAIM: user.tenant_id,
+            },
         )
 
     async def arefresh_access_token(self, refresh_token: RefreshToken) -> TokenPair:

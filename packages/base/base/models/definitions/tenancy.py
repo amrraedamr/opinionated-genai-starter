@@ -7,6 +7,9 @@ TenantId = NewType("TenantId", str)
 DEFAULT_TENANT_CLAIM = "tid"
 """The token claim a tenant is read from, named as Entra ID names it."""
 
+DEFAULT_TENANT = TenantId("default")
+"""The tenant a user belongs to when none was chosen for them."""
+
 RLS_SETTING = "app.tenant_id"
 """The Postgres run-time parameter a row-level policy compares against."""
 
