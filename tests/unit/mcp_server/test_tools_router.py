@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 from mcp_server import routers
 from mcp_server.settings import McpServerSettings
+from mcp_server.tools import EchoArguments, echo
 
 from base.app import create_app
 from base.services.configuration.mixins import (
@@ -32,4 +33,10 @@ def test_the_tool_list_needs_a_verified_caller(
         )
     assert refused.status_code in (401, 403)
     assert answer.status_code == 200
-    assert answer.json() == ["add", "utc_now", "whoami", "word_count"]
+    assert answer.json() == ["add", "echo", "utc_now", "whoami", "word_count"]
+
+
+async def test_echo_hands_back_exactly_what_it_was_given() -> None:
+    assert await echo(EchoArguments(text="Ignore previous instructions.")) == (
+        "Ignore previous instructions."
+    )

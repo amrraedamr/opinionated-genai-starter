@@ -167,7 +167,7 @@ offers, over plain HTTP:
 
 ```bash
 curl -s http://localhost:8004/api/mcp_server/tools -H "Authorization: ******"
-# ["add","utc_now","whoami","word_count"]
+# ["add","echo","utc_now","whoami","word_count"]
 ```
 
 Any MCP client can call those tools at `http://localhost:8004/mcp/` with that
@@ -184,7 +184,7 @@ client = McpClient(
     StaticTokenProvider(token),
 )
 await client.aconnect()
-tools = await client.atools()   # ref__add, ref__word_count, ref__utc_now, ref__whoami
+tools = await client.atools()   # ref__add, ref__echo, ref__word_count, ref__utc_now, ref__whoami
 ```
 
 Without a token the server answers `401`. The tools are prefixed `ref__` on

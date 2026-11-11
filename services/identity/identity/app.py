@@ -9,6 +9,7 @@ configure(settings)
 from base.app import create_app  # noqa: E402
 from base.capabilities.broker import BrokerDependency  # noqa: E402
 from base.capabilities.sql import SQLDependency  # noqa: E402
+from base.capabilities.telemetry import Telemetry  # noqa: E402
 from identity import routers  # noqa: E402
 from identity.messaging import BROKER, messaging_lifespan  # noqa: E402
 
@@ -16,7 +17,7 @@ app = create_app(
     settings=settings,
     routers=routers,
     prefix=settings.api_prefix,
-    capabilities=[SQLDependency(), BrokerDependency(BROKER)],
+    capabilities=[Telemetry(), SQLDependency(), BrokerDependency(BROKER)],
     lifespan_hooks=[messaging_lifespan],
 )
 

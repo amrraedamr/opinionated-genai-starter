@@ -4,9 +4,11 @@ from pydantic_settings import SettingsConfigDict
 
 from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
+    GuardrailSettingsMixin,
     McpServerSettingsMixin,
     RateLimitSettingsMixin,
     ServerSettingsMixin,
+    TelemetrySettingsMixin,
     TenancySettingsMixin,
     TokenVerificationSettingsMixin,
 )
@@ -18,6 +20,8 @@ class McpServerSettings(
     RateLimitSettingsMixin,
     TokenVerificationSettingsMixin,
     TenancySettingsMixin,
+    TelemetrySettingsMixin,
+    GuardrailSettingsMixin,
     McpServerSettingsMixin,
 ):
     model_config = SettingsConfigDict(

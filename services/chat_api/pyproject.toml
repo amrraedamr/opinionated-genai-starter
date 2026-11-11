@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Chat API service — conversations, messages, users and auth"
 requires-python = ">=3.12,<3.15"
 dependencies = [
-    "base[server,sql,postgres,auth,openai,tokenizer,redis,sse]",
+    "base[server,sql,postgres,auth,openai,tokenizer,redis,sse,otel,mcp]",
 ]
 
 [project.scripts]
@@ -33,8 +33,9 @@ mixins = [
     "LLMSettingsMixin",
     "PromptSettingsMixin",
     "RealtimeSettingsMixin",
+    "McpClientSettingsMixin",
 ]
-extras = ["openai", "tokenizer", "sse"]
+extras = ["openai", "tokenizer", "sse", "otel", "mcp"]
 publishes_events = true
 
 [[tool.starter.slice.capabilities]]

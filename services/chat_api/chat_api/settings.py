@@ -6,7 +6,10 @@ from base.services.configuration.core import CoreSettings
 from base.services.configuration.mixins import (
     AzureOpenAILLMSettingsMixin,
     BrokerSettingsMixin,
+    GuardrailSettingsMixin,
     LLMSettingsMixin,
+    McpClientSettingsMixin,
+    OpenAILLMSettingsMixin,
     PostgresSettingsMixin,
     PromptSettingsMixin,
     RateLimitSettingsMixin,
@@ -14,6 +17,8 @@ from base.services.configuration.mixins import (
     RedisSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
+    TelemetrySettingsMixin,
+    TenancySettingsMixin,
     TokenVerificationSettingsMixin,
 )
 from base.tools.misc import split_csv
@@ -28,10 +33,15 @@ class ChatApiSettings(
     BrokerSettingsMixin,
     LLMSettingsMixin,
     AzureOpenAILLMSettingsMixin,
+    OpenAILLMSettingsMixin,
     TokenVerificationSettingsMixin,
     PromptSettingsMixin,
     RealtimeSettingsMixin,
     RateLimitSettingsMixin,
+    TenancySettingsMixin,
+    TelemetrySettingsMixin,
+    GuardrailSettingsMixin,
+    McpClientSettingsMixin,
 ):
     model_config = SettingsConfigDict(
         # Later files win; real process environment beats every file.

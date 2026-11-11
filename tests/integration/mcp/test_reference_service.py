@@ -144,7 +144,13 @@ async def test_the_service_offers_its_tools_namespaced(
         names = Toolbox(*await client.atools()).names
     finally:
         await client.aclose()
-    assert names == ["ref__add", "ref__utc_now", "ref__whoami", "ref__word_count"]
+    assert names == [
+        "ref__add",
+        "ref__echo",
+        "ref__utc_now",
+        "ref__whoami",
+        "ref__word_count",
+    ]
 
 
 async def test_a_tool_runs_on_the_service(service: str, issuer: TokenIssuer) -> None:

@@ -8,6 +8,7 @@ configure(settings)
 
 from base.app import create_app  # noqa: E402
 from base.capabilities.mcp_server import McpServer  # noqa: E402
+from base.capabilities.telemetry import Telemetry  # noqa: E402
 from mcp_server import routers  # noqa: E402
 from mcp_server.tools import toolbox  # noqa: E402
 
@@ -15,7 +16,7 @@ app = create_app(
     settings=settings,
     routers=routers,
     prefix=settings.api_prefix,
-    capabilities=[McpServer(toolbox, server_name=settings.service_name)],
+    capabilities=[Telemetry(), McpServer(toolbox, server_name=settings.service_name)],
 )
 
 

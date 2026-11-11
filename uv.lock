@@ -762,7 +762,7 @@ name = "chat-api"
 version = "0.1.0"
 source = { editable = "services/chat_api" }
 dependencies = [
-    { name = "base", extra = ["auth", "openai", "postgres", "redis", "server", "sql", "sse", "tokenizer"] },
+    { name = "base", extra = ["auth", "mcp", "openai", "otel", "postgres", "redis", "server", "sql", "sse", "tokenizer"] },
 ]
 
 [package.dev-dependencies]
@@ -771,7 +771,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "auth", "openai", "tokenizer", "redis", "sse"], editable = "packages/base" }]
+requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "auth", "openai", "tokenizer", "redis", "sse", "otel", "mcp"], editable = "packages/base" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "base", extras = ["sqlite"], editable = "packages/base" }]
@@ -1531,7 +1531,7 @@ name = "identity"
 version = "0.1.0"
 source = { editable = "services/identity" }
 dependencies = [
-    { name = "base", extra = ["auth", "postgres", "redis", "server", "sql"] },
+    { name = "base", extra = ["auth", "otel", "postgres", "redis", "server", "sql"] },
 ]
 
 [package.dev-dependencies]
@@ -1540,7 +1540,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "auth", "redis"], editable = "packages/base" }]
+requires-dist = [{ name = "base", extras = ["server", "sql", "postgres", "auth", "redis", "otel"], editable = "packages/base" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "base", extras = ["sqlite"], editable = "packages/base" }]
@@ -1795,11 +1795,11 @@ name = "mcp-server"
 version = "0.1.0"
 source = { editable = "services/mcp_server" }
 dependencies = [
-    { name = "base", extra = ["auth", "mcp", "server"] },
+    { name = "base", extra = ["auth", "mcp", "otel", "server"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "base", extras = ["server", "mcp", "auth"], editable = "packages/base" }]
+requires-dist = [{ name = "base", extras = ["server", "mcp", "auth", "otel"], editable = "packages/base" }]
 
 [[package]]
 name = "mcp-types"

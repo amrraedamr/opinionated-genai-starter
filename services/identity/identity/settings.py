@@ -17,6 +17,7 @@ from base.services.configuration.mixins import (
     RedisSettingsMixin,
     ServerSettingsMixin,
     SQLSettingsMixin,
+    TelemetrySettingsMixin,
     TokenIssuingSettingsMixin,
 )
 
@@ -30,6 +31,7 @@ class IdentitySettings(
     BrokerSettingsMixin,
     TokenIssuingSettingsMixin,
     RateLimitSettingsMixin,
+    TelemetrySettingsMixin,
     OAuthSettingsMixin,
     # The reference identity service offers all five. A service that offers
     # fewer composes fewer, and declares no credentials for the rest.

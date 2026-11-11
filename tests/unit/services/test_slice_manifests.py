@@ -41,13 +41,17 @@ INFRASTRUCTURE = {
     "RedisSettingsMixin",
     "BrokerSettingsMixin",
     "TokenVerificationSettingsMixin",
+    "TenancySettingsMixin",
+    "TelemetrySettingsMixin",
+    "GuardrailSettingsMixin",
 }
 
 SLICE_OWNED = {
     # Every mixin a slice's settings composes, manifest-declared or not. The
     # entries beyond the manifest are the per-provider companions its umbrella
     # mixin implies — `OAuthSettingsMixin` plus the five providers identity
-    # offers, `LLMSettingsMixin` plus the SDK chat_api is configured for.
+    # offers, `LLMSettingsMixin` plus the two OpenAI-protocol providers chat_api
+    # talks to: Azure for chat, OpenAI for realtime and moderation.
     "identity": {
         "TokenIssuingSettingsMixin",
         "OAuthSettingsMixin",
@@ -61,11 +65,13 @@ SLICE_OWNED = {
     "chat_api": {
         "LLMSettingsMixin",
         "AzureOpenAILLMSettingsMixin",
+        "OpenAILLMSettingsMixin",
         "PromptSettingsMixin",
         "RealtimeSettingsMixin",
+        "McpClientSettingsMixin",
     },
     "ingestion_worker": set(),
-    "mcp_server": {"McpServerSettingsMixin", "TenancySettingsMixin"},
+    "mcp_server": {"McpServerSettingsMixin"},
 }
 
 
@@ -140,6 +146,8 @@ def test_identity_composes_exactly_its_declared_bases() -> None:
             "MySQLSettingsMixin",
             "MongoSettingsMixin",
             "TokenVerificationSettingsMixin",
+            "TenancySettingsMixin",
+            "GuardrailSettingsMixin",
         }
         | SLICE_OWNED["identity"]
     )

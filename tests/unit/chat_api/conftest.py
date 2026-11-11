@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import pathlib
 import uuid
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
@@ -24,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from base.app import create_app
+from base.models.view_models.mcp import McpServerConfig
 from base.models.view_models.streams import StreamEnd, StreamMessage
 from base.services.auth import TokenIssuer
 from base.services.common.meta import KeyedSingleton, Singleton, purge_all
@@ -35,6 +37,7 @@ from base.services.configuration.mixins import (
 from base.services.execution_context import ExecutionContext
 from base.services.sql.service import SQLService
 from chat_api import routers
+from chat_api.mcp import MCP
 
 # The DTO modules are imported for their side effect: a table absent from the
 # metadata is a table `create_all` never builds, and the foreign key into it
@@ -68,6 +71,22 @@ def _fresh_services() -> Iterator[None]:
     yield
     _abandon_engines()
     purge_all()
+
+
+@pytest.fixture(autouse=True)
+async def _no_mcp_servers() -> AsyncIterator[None]:
+    """The service's MCP capability started with no servers, as `MCP_SERVERS=[]` deploys."""
+    MCP._config = NoMcpServers()
+    await MCP.astartup(None)  # type: ignore[arg-type]
+    yield
+    await MCP.ashutdown(None)  # type: ignore[arg-type]
+    MCP._config = None
+    MCP._clients = None
+
+
+@dataclass
+class NoMcpServers:
+    mcp_servers: list[McpServerConfig] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -148,9 +167,9 @@ def other_user_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
-def access_token(user_id: uuid.UUID) -> str:
-    """A genuine signed access token asserting this user."""
-    return TokenIssuer().issue_access({"user_id": str(user_id)})
+def access_token(user_id: uuid.UUID, **claims: Any) -> str:
+    """A genuine signed access token asserting this user, with any extra claims."""
+    return TokenIssuer().issue_access({"user_id": str(user_id), **claims})
 
 
 def bearer(user_id: uuid.UUID) -> dict[str, str]:

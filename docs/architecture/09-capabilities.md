@@ -26,9 +26,10 @@ an `AttributeError` somewhere deep.
 Which customer a request acts for, and that nobody acts for one unasked.
 
 The tenant comes from a token claim, `tid` by default (`TENANT_CLAIM`), the one Entra
-ID issues. It is read **only** where a service set `TENANCY_ENABLED=true`: an identity
-provider sends `tid` on every token, and a service that read it without asking would
-start partitioning data it never meant to.
+ID issues and the one `identity` stamps from each user's `tenant_id` (`default` unless
+set at registration). It is read **only** where a service set `TENANCY_ENABLED=true`: an
+identity provider sends `tid` on every token, and a service that read it without asking
+would start partitioning data it never meant to.
 
 `tenant_id_dependency` gives a route the caller's tenant and refuses a token naming
 none, so a scoped query never runs for nobody. Below the route, `TenantContext` holds
@@ -160,8 +161,8 @@ and can offer its own toolbox to any MCP client. Both live behind the `mcp` extr
 
 ### Calling other servers
 
-`McpClients` connects to every server in `MCP_SERVERS` at startup and offers their tools
-as one `Toolbox`:
+`McpClients` offers the tools of every server in `MCP_SERVERS` as one `Toolbox`, asked
+for per request:
 
 ```bash
 MCP_SERVERS='[{"name": "docs", "transport": "http", "url": "https://docs.internal/mcp/", "credential": "docs"}]'
@@ -172,7 +173,7 @@ mcp = McpClients(credentials={"docs": OutboundCredentials().provider})
 app = create_app(settings=settings, capabilities=[mcp, ...])
 
 # inside a request, after startup
-ToolRunner(mcp.toolbox).arun(messages)
+await ToolRunner(await mcp.atoolbox()).arun(messages)
 ```
 
 Each tool is named `server__tool`, so two servers offering `search` do not collide. A
@@ -180,9 +181,24 @@ name no model provider accepts — MCP allows dots and 128 characters, providers
 neither — is refused at startup rather than at the provider. A server's token comes
 from a `TokenProvider` named by `credential`, so no secret sits in the server list.
 
-Sessions are held for the service's lifetime and reconnect once when a server drops;
-`/readyz` fails while a server is unreachable. Transports are streamable HTTP, and stdio
-for a server run as a subprocess (`"transport": "stdio", "command": …, "args": […]`).
+A session opens on first use and is held for the service's lifetime, reconnecting once
+when a server drops. A server that cannot be reached is left out of that request's
+toolbox, so the model answers without its tools rather than failing. `/readyz` reports
+`degraded`, not failed, while a server's last call failed: the probe sends nothing,
+since it has no caller to send as. Transports are streamable HTTP, and stdio for a
+server run as a subprocess (`"transport": "stdio", "command": …, "args": […]`).
+
+### Acting as the caller
+
+`ForwardedTokenProvider` sends the token the current caller presented, so a tool runs
+as that user and tenant rather than as the service. `current_principal` keeps the token,
+with its expiry, in `BearerContext`; a realtime ticket carries it to the socket. A call
+with no live caller token fails before it is sent, so one request without a token cannot
+end the session the others share. Forwarding needs a stateless server: the SDK ties a
+stateful session to the token that opened it. `McpServer` serves stateless.
+
+`chat_api` forwards to `services/mcp_server` this way, under the credential name
+`caller`; its chat agent and realtime sessions both get the tools.
 
 ### Offering a toolbox
 
@@ -195,7 +211,8 @@ app = create_app(settings=settings, capabilities=[McpServer(toolbox)])
 Tools are listed and called straight from the toolbox, so a tool's schema and validation
 are the ones every agent already uses, whether it was described by a Pydantic model or
 by raw JSON Schema. Every call needs a bearer this service can verify, and runs as that
-caller's tenant and user, as a route would. A tool that raises is reported to the calling
+caller's tenant and user, as a route would. It serves stateless, so each request is
+authenticated on its own. A tool that raises is reported to the calling
 model as a failure; the exception text stays in this service's log.
 
 `services/mcp_server` is a reference service built on it.
@@ -226,7 +243,8 @@ user can talk over the model and a tool can run mid-sentence without either wait
 
 Text is guarded in both directions, and the transcript of what the model heard is
 checked as the user's own words; audio itself is samples, not sentences, and is not.
-Tools come from the same `Toolbox` agents use. Each turn is checked against the LLM
+Tools come from the same `Toolbox` agents use; in `chat_api`, the MCP servers' tools,
+called as the user whose ticket opened the socket until their token expires. Each turn is checked against the LLM
 token budget before input is forwarded and charged when it ends; an exhausted budget
 tells the client and keeps the socket open.
 
@@ -242,5 +260,7 @@ Redis pub/sub. A channel is one of two kinds:
   and is dropped a day after its last write.
 
 Presence is tracked per socket, so a user is online while any replica holds one of their
-devices, and keeps a last-seen time for a week after the last one closes. On shutdown a
+devices, and keeps a last-seen time for a week after the last one closes. `chat_api`
+exposes both to the caller: `POST /realtime/notifications` sends them a durable message,
+and `GET /realtime/presence` reads their own presence. On shutdown a
 replica tells its clients to reconnect elsewhere before closing them.
