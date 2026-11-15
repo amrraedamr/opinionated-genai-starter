@@ -158,6 +158,15 @@ class KeyedSingleton(type):
     def get(cls: type[T], key: str) -> T | None:
         return cast(T | None, KeyedSingleton._keyed_instances.get((cls, key)))
 
+    def default_key(cls: type[T]) -> str:
+        """The key a no-argument construction resolves to.
+
+        Anything installing an instance for bare callers to find has to agree
+        with `__call__` on the key, and `_derive_key` binds `__init__` and
+        applies its defaults — so a literal `hash_args()` no longer matches.
+        """
+        return KeyedSingleton._derive_key(cls, (), {})
+
     def replace(cls: type[T], key: str, instance: T) -> T:
         KeyedSingleton._keyed_instances[(cls, key)] = instance
         return instance

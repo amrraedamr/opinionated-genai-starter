@@ -29,8 +29,8 @@ from base.services.configuration.mixins import (
 )
 from base.services.llm.openai import OpenAIService
 from base.tools.errors import MissingSettingsError
-from base.tools.hashing import hash_args
 from tests.conftest import MakeSettings
+from tests.unit.agents.fake_llm import build_agent
 
 APP = FastAPI()
 
@@ -229,7 +229,56 @@ async def test_startup_installs_the_authenticated_client_where_a_bare_one_resolv
     configured = service_type.get(CONFIGURED_SERVICE_KEY)
     assert configured is not None
     assert configured.auth is auth
-    assert service_type.get(hash_args()) is configured
+    # The point of the install: what a bare construction resolves to, which is
+    # what `AbstractAgent.__init__` does. Asserting the key the capability
+    # happened to write would agree with itself and prove nothing.
+    assert service_type() is configured
+
+
+async def test_an_agent_built_after_startup_receives_the_credentialled_client(
+    make_settings: MakeSettings,
+) -> None:
+    """The integration the key-level assertions only approximate.
+
+    `AbstractAgent.__init__` constructs its provider with no arguments, so the
+    install only reaches agents if it lands on the key that bare construction
+    derives. Asserting on keys agrees with whatever the capability wrote; this
+    asks the consumer instead, and is what would have caught the key changing
+    underneath `AuthenticatedLLM`.
+    """
+    make_settings(CredentialsSettingsMixin)
+    service_type = stand_in()
+    await AuthenticatedLLM(
+        BearerTokenAuth(StaticTokenProvider("t")),
+        model_config=ModelConfigurations(),
+        service_type=service_type,
+    ).astartup(APP)
+
+    agent = build_agent(LLM_SERVICE=service_type)
+
+    assert agent._llm_service is service_type.get(CONFIGURED_SERVICE_KEY)
+    assert agent._llm_service.auth is not None
+
+
+async def test_an_agent_pinning_its_own_model_opts_out_of_the_credential(
+    make_settings: MakeSettings,
+) -> None:
+    """`MODEL_CONFIGURATIONS` is keyed, so it resolves a different instance."""
+    make_settings(CredentialsSettingsMixin)
+    service_type = stand_in()
+    await AuthenticatedLLM(
+        BearerTokenAuth(StaticTokenProvider("t")),
+        model_config=ModelConfigurations(),
+        service_type=service_type,
+    ).astartup(APP)
+
+    agent = build_agent(
+        LLM_SERVICE=service_type,
+        MODEL_CONFIGURATIONS=ModelConfigurations(model_name="pinned"),
+    )
+
+    assert agent._llm_service is not service_type.get(CONFIGURED_SERVICE_KEY)
+    assert agent._llm_service.auth is None
 
 
 async def test_the_installed_client_carries_the_providers_default_configuration(
@@ -341,7 +390,9 @@ async def test_the_probe_fails_again_if_a_bare_client_displaces_the_configured_o
     )
     await capability.astartup(APP)
 
-    service_type.replace(hash_args(), service_type(_key="somewhere-else"))
+    service_type.replace(
+        service_type.default_key(), service_type(_key="somewhere-else")
+    )
 
     assert (await capability.aprobe()).status is ProbeStatus.FAILED
 
