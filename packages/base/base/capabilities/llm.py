@@ -12,7 +12,6 @@ from base.services.configuration.protocols import SupportsCredentialsConfig
 from base.services.llm import AbstractLLMService
 from base.services.llm.openai import OpenAIService
 from base.services.logging.console import ConsoleLoggerService
-from base.tools.hashing import hash_args
 
 CONFIGURED_SERVICE_KEY: str = "authenticated-llm"
 """Explicit key: the default hashes constructor args, and an `httpx.Auth` has
@@ -85,7 +84,7 @@ class AuthenticatedLLM:
         # agents need no configuration. Safe because capabilities start before
         # the first request and agents are built lazily inside routers — a
         # service constructing one at import time would lose the race.
-        self._service_type.replace(hash_args(), configured)
+        self._service_type.replace(self._service_type.default_key(), configured)
         self._logger.info(
             "Authenticated %s installed as the default LLM client.",
             self._service_type.__name__,
@@ -99,7 +98,8 @@ class AuthenticatedLLM:
         # the model here would bill a token on every readiness check.
         configured = self._service_type.get(CONFIGURED_SERVICE_KEY)
         installed = (
-            configured is not None and self._service_type.get(hash_args()) is configured
+            configured is not None
+            and self._service_type.get(self._service_type.default_key()) is configured
         )
         return ProbeResult(
             name=self.name,
